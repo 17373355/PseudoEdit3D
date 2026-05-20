@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pseudoedit3d"
+version = "0.1.0"
+description = "Bootstrapping fine-grained 3D human motion editing from unlabeled SMPL-H motion."
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["pseudoedit3d*"]
