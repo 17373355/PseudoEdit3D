@@ -40,7 +40,11 @@ wandb/
 data_manifest*.jsonl
 attribute_cache*.jsonl
 mined_pairs*.jsonl
+artifacts/jsonl/**/*.jsonl
+artifacts/jsonl/**/*.tmp
+artifacts/jsonl/registry.jsonl
 
 # Local analysis scratch
 tmp/
 scratch/
+iter_runs/

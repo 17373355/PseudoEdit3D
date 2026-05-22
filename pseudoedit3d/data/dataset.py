@@ -9,7 +9,11 @@ import torch
 from torch.utils.data import Dataset
 
 from pseudoedit3d.constants import SMPLH_NUM_JOINTS, SMPLH_POSE_DIM
+from pseudoedit3d.edit.action_program import build_goal_spec, goal_spec_to_numpy
+from pseudoedit3d.edit import verbalize_program
+from pseudoedit3d.edit.schema import EditProgram, load_label_schema
 from pseudoedit3d.edit.synthetic import build_synthetic_edit_sample
+from pseudoedit3d.text import CharTokenizer
 
 
 def _iter_manifest(manifest_path: Path) -> Iterable[dict]:
@@ -27,11 +31,17 @@ class MotionEditDataset(Dataset):
         contact_filter: str = "any",
         max_clips: int = 0,
         delta_scale_deg: float = 15.0,
+        label_schema_path: str = "",
+        prompt_style: str = "template",
+        prompt_max_length: int = 96,
     ) -> None:
         self.dataset_root = Path(dataset_root)
         self.manifest_path = Path(manifest_path)
         self.contact_filter = contact_filter
         self.delta_scale_deg = delta_scale_deg
+        self.schema = load_label_schema(label_schema_path) if label_schema_path else load_label_schema()
+        self.prompt_style = prompt_style
+        self.tokenizer = CharTokenizer(max_length=prompt_max_length)
         self.records = self._load_records()
         if max_clips > 0:
             self.records = self.records[:max_clips]
@@ -66,9 +76,14 @@ class MotionEditDataset(Dataset):
             trans=trans,
             contact_mask=contact_mask,
             delta_scale_deg=self.delta_scale_deg,
+            label_schema_path=self.schema.path,
         )
         sample["source_path"] = str(npz_path)
-        return {
+        program = EditProgram.from_dict(sample["program"])
+        goal_spec = sample.get("goal_spec", goal_spec_to_numpy(build_goal_spec(program, schema=self.schema)))
+        prompt_text = verbalize_program(program, schema=self.schema, style=self.prompt_style, variant_index=index)
+        prompt_token_ids, prompt_attention_mask = self.tokenizer.encode(prompt_text)
+        output = {
             "source_pose": torch.from_numpy(sample["source_pose"]),
             "target_pose": torch.from_numpy(sample["target_pose"]),
             "source_trans": torch.from_numpy(sample["source_trans"]),
@@ -76,4 +91,10 @@ class MotionEditDataset(Dataset):
             "joint_mask": torch.from_numpy(sample["joint_mask"]),
             "time_mask": torch.from_numpy(sample["time_mask"]),
             "edit_vector": torch.from_numpy(sample["edit_vector"]),
+            "prompt_token_ids": torch.from_numpy(prompt_token_ids),
+            "prompt_attention_mask": torch.from_numpy(prompt_attention_mask),
+            "prompt_text": prompt_text,
         }
+        for key, value in goal_spec.items():
+            output[key] = torch.from_numpy(value)
+        return output

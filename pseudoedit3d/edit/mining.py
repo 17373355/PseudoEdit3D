@@ -8,6 +8,7 @@ import numpy as np
 from pseudoedit3d.edit.attributes import compute_motion_statistics, extract_upper_body_proxy_attributes, summarize_attributes
 from pseudoedit3d.edit.schema import EditProgram
 from pseudoedit3d.edit.segmentation import detect_active_span
+from pseudoedit3d.edit.skill_context import infer_skill_context, summarize_skill_attribute
 
 
 ATTRIBUTE_TO_PROGRAM = {
@@ -40,6 +41,7 @@ def build_attribute_record(npz_path: str, contact_bucket: str, sequence_group: s
         attribute_active_ratios[key] = float(active_mask.mean())
         serializable_attributes[key] = [float(v) for v in values]
         summary[f"{key}_active_ratio"] = float(active_mask.mean())
+    skill_context = infer_skill_context(attributes, motion_stats=summary, num_frames=int(poses.shape[0]))
     return {
         "path": npz_path,
         "contact_bucket": contact_bucket,
@@ -48,6 +50,7 @@ def build_attribute_record(npz_path: str, contact_bucket: str, sequence_group: s
         "summary": summary,
         "attributes": serializable_attributes,
         "segments": attribute_segments,
+        "skill_context": skill_context,
         "num_frames": int(poses.shape[0]),
     }
 
@@ -68,10 +71,14 @@ def _delta_to_bin(delta_abs: float) -> str:
     return "large"
 
 
-def _build_program(attr_key: str, delta_value: float, diff_seq: np.ndarray, contact_bucket: str) -> EditProgram:
+def _build_program(attr_key: str, delta_value: float, diff_seq: np.ndarray, contact_bucket: str, source_record: dict) -> EditProgram:
     part, positive_attr, negative_attr = ATTRIBUTE_TO_PROGRAM[attr_key]
     active_mask, segments = detect_active_span(diff_seq, min_len=5)
     start_frame, end_frame = segments[0]
+    skill_context = source_record.get("skill_context", {})
+    skill_label = skill_context.get("skill_label", "unknown")
+    skill_phase = skill_context.get("skill_phase")
+    preserve_mode = "skill_structure" if skill_context.get("is_relative_friendly", False) else "all_non_target"
     return EditProgram(
         part=part,
         attribute=positive_attr if delta_value >= 0.0 else negative_attr,
@@ -83,6 +90,21 @@ def _build_program(attr_key: str, delta_value: float, diff_seq: np.ndarray, cont
         direction="increase" if delta_value >= 0.0 else "decrease",
         delta_value_deg=float(delta_value),
         source_type="mined",
+        operator="add",
+        reference="current_state",
+        skill_label=skill_label,
+        skill_phase=skill_phase,
+        preserve_mode=preserve_mode,
+        preserve_parts=[],
+        metadata={
+            "source_attr_mean_deg": float(np.mean(source_record["attributes"][attr_key])),
+            "source_attr_amplitude_deg": float(summarize_skill_attribute(np.asarray(source_record["attributes"][attr_key], dtype=np.float32))["amplitude_deg"]),
+            "relative_skill_parameter": "offset_deg" if skill_label == "periodic_arm_motion" else "attribute_delta_deg",
+            "target_offset_deg": float(np.mean(source_record["attributes"][attr_key]) + delta_value) if skill_label == "periodic_arm_motion" else float("nan"),
+            "preserve_amplitude": bool(skill_label == "periodic_arm_motion"),
+            "periodic_limb": skill_context.get("periodic_limb"),
+            "periodic_state": skill_context.get("periodic_states", {}).get(skill_context.get("periodic_limb", ""), {}),
+        },
     )
 
 
@@ -147,7 +169,7 @@ def mine_triplets(
                     source["attributes"][attr_key], dtype=np.float32
                 )
                 delta_value = best_pair["summary"][f"{attr_key}_mean"] - source_mean
-                program = _build_program(attr_key, delta_value, diff_seq, source["contact_bucket"])
+                program = _build_program(attr_key, delta_value, diff_seq, source["contact_bucket"], source_record=source)
                 mined_pairs.append(
                     {
                         "source_path": source["path"],

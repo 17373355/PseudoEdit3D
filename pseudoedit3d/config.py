@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 
 @dataclass
 class TrainConfig:
@@ -25,6 +27,24 @@ class TrainConfig:
     max_frames: int
     delta_scale_deg: float
     save_dir: str
+    condition_mode: str = "program"
+    label_schema_path: str = ""
+    prompt_style: str = "template"
+    prompt_max_length: int = 96
+    prefix_task_mode: str = "relative_edit"
+    input_source_mode: str = "source_motion"
+    source_prefix_frames: int = 1
+    lambda_keep: float = 0.5
+    lambda_smooth: float = 0.01
+    lambda_condition: float = 0.0
+    use_goal_satisfaction_loss: bool = False
+    lambda_goal_delta: float = 0.0
+    lambda_goal_direction: float = 0.0
+    lambda_goal_tolerance: float = 0.0
+    lambda_goal_span: float = 0.0
+    lambda_goal_offset: float = 0.0
+    lambda_goal_amplitude: float = 0.0
+    lambda_goal_preserve_attr: float = 0.0
 
 
 def _parse_scalar(value: str) -> Any:
@@ -39,11 +59,5 @@ def _parse_scalar(value: str) -> Any:
 
 
 def load_simple_yaml(path: str | Path) -> TrainConfig:
-    raw = {}
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        key, value = stripped.split(":", 1)
-        raw[key.strip()] = _parse_scalar(value.strip())
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     return TrainConfig(**raw)

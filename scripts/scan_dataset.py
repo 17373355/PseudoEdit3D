@@ -17,12 +17,12 @@ def scan_npz(npz_path: Path) -> dict:
             record[f"{key}_shape"] = list(value.shape)
             record[f"{key}_dtype"] = str(value.dtype)
     parent_name = npz_path.parent.name
-    if parent_name.endswith("_contact_sequences"):
+    if parent_name.endswith("_non_contact_sequences"):
+        record["contact_bucket"] = "non_contact"
+    elif parent_name.endswith("_contact_sequences"):
         record["contact_bucket"] = "contact"
     elif parent_name.endswith("_neutral_sequences"):
         record["contact_bucket"] = "neutral"
-    elif parent_name.endswith("_non_contact_sequences"):
-        record["contact_bucket"] = "non_contact"
     else:
         record["contact_bucket"] = "unknown"
     record["sequence_group"] = parent_name

@@ -15,8 +15,8 @@ num_layers: 4
 dropout: 0.1
 max_frames: 60
 delta_scale_deg: 15.0
-save_dir: /mnt/data/home/guoruoxi/code/PseudoEdit3D/outputs/stage1_upper_body
-condition_mode: program
+save_dir: /mnt/data/home/guoruoxi/code/PseudoEdit3D/outputs/stage1_hybrid_upper_body
+condition_mode: hybrid
 label_schema_path: /mnt/data/home/guoruoxi/code/PseudoEdit3D/configs/label_schema.yaml
 prompt_style: template
 prompt_max_length: 96

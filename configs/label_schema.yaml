@@ -1,0 +1,154 @@
+schema_version: v0.2
+
+parts:
+  left_arm:
+    display: left arm
+    aliases: ["left arm", "left hand", "left upper limb"]
+  right_arm:
+    display: right arm
+    aliases: ["right arm", "right hand", "right upper limb"]
+  both_arms:
+    display: both arms
+    aliases: ["both arms", "arms"]
+  torso:
+    display: torso
+    aliases: ["torso", "upper body", "body"]
+
+attributes:
+  raise:
+    display: raise
+    applicable_parts: ["left_arm", "right_arm", "both_arms"]
+    prompt_variants: ["raise", "lift", "move up"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 0
+    synthetic_sign: 1.0
+  lower:
+    display: lower
+    applicable_parts: ["left_arm", "right_arm", "both_arms"]
+    prompt_variants: ["lower", "bring down", "move down"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 0
+    synthetic_sign: -1.0
+  bend:
+    display: bend
+    applicable_parts: ["left_arm", "right_arm", "both_arms"]
+    prompt_variants: ["bend", "flex", "curl"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 2
+    synthetic_sign: 1.0
+  extend:
+    display: extend
+    applicable_parts: ["left_arm", "right_arm", "both_arms"]
+    prompt_variants: ["extend", "straighten", "open up"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 2
+    synthetic_sign: -1.0
+  lean_left:
+    display: lean left
+    applicable_parts: ["torso"]
+    prompt_variants: ["lean left", "tilt left", "move left"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 2
+    synthetic_sign: 1.0
+  lean_right:
+    display: lean right
+    applicable_parts: ["torso"]
+    prompt_variants: ["lean right", "tilt right", "move right"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 2
+    synthetic_sign: -1.0
+  lean_forward:
+    display: lean forward
+    applicable_parts: ["torso"]
+    prompt_variants: ["lean forward", "tilt forward", "move forward"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 0
+    synthetic_sign: 1.0
+  lean_backward:
+    display: lean backward
+    applicable_parts: ["torso"]
+    prompt_variants: ["lean backward", "tilt backward", "move backward"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+    synthetic_axis: 0
+    synthetic_sign: -1.0
+
+delta_bins:
+  small:
+    display: small
+    phrases: ["a little", "slightly"]
+    default_degrees: 8.0
+  medium:
+    display: medium
+    phrases: ["moderately", "a bit more"]
+    default_degrees: 15.0
+  large:
+    display: large
+    phrases: ["significantly", "much more"]
+    default_degrees: 22.5
+
+contact_policies:
+  ignore:
+    display: ignore
+  keep:
+    display: keep
+
+operators:
+  add:
+    display: add
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+      - "{verb} the {part} {delta_phrase} {time_phrase}"
+  set:
+    display: set
+    prompt_templates:
+      - "set the {part} to {target_value} {time_phrase}"
+      - "move the {part} to {target_value} {time_phrase}"
+
+references:
+  current_state:
+    display: current state
+  absolute:
+    display: absolute
+
+preserve_modes:
+  all_non_target:
+    display: preserve non-target parts
+  skill_structure:
+    display: preserve current skill structure
+  none:
+    display: no preserve preference
+
+skill_labels:
+  unknown:
+    display: unknown motion
+  static_pose:
+    display: static pose
+  locomotion:
+    display: locomotion
+  periodic_arm_motion:
+    display: ongoing arm motion
+  torso_leaning:
+    display: torso leaning motion
+  arm_reaching_or_repositioning:
+    display: arm repositioning motion
+
+prompt_defaults:
+  templates:
+    - "{verb} the {part} by {delta_value} {time_phrase}"
+  default_tolerance_deg: 5.0

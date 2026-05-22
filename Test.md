@@ -14,6 +14,11 @@ It covers:
 - proxy attribute extraction
 - mined pseudo triplet generation
 - mined training path
+- iterative mined-pair refinement
+- schema-driven prompt generation
+- text-conditioned motion editing smoke training
+- inference and GIF visualization
+- CMU train/test split workflow
 
 It does not claim that the full dataset pipeline has been executed end to end. The full commands are included below, but the verified runs here were smoke-scale runs.
 
@@ -250,6 +255,149 @@ bash scripts/run_full_pipeline.sh smoke
 RUN_TRAIN=1 bash scripts/run_full_pipeline.sh smoke
 ```
 
+## Inference and GIF visualization
+
+Current visualization output:
+
+- a GIF with four panels:
+  - source pose
+  - prompt text
+  - GT prompt-scoped motion
+  - predicted target motion
+
+Verified smoke export:
+
+- output directory:
+  - `outputs/HumanML3D-CMU/vis_program_clean_smoke_gt`
+- output files:
+  - `case_0000.gif`
+  - `summary.jsonl`
+
+Smoke command used:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/infer_and_visualize.py \
+  --config configs/stage1_mined_cmu_program_clean.yaml \
+  --checkpoint outputs/HumanML3D-CMU/stage1_mined_cmu_program_clean/stage1_last.pt \
+  --pair-manifest artifacts/jsonl/HumanML3D-CMU/mining/mined_pairs_full.jsonl \
+  --output-dir outputs/HumanML3D-CMU/vis_program_clean_smoke_gt \
+  --indices 0 \
+  --num-cases 1 \
+  --frame-limit 20
+```
+
+Observed result:
+
+- exported GIF path:
+  - `outputs/HumanML3D-CMU/vis_program_clean_smoke_gt/case_0000.gif`
+- summary path:
+  - `outputs/HumanML3D-CMU/vis_program_clean_smoke_gt/summary.jsonl`
+- GIF size:
+  - `1600 x 420`
+- frame count:
+  - `20`
+
+Batch inference command template:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/infer_and_visualize.py \
+  --config configs/stage1_mined_cmu_train_program_goal_clean.yaml \
+  --checkpoint outputs/HumanML3D-CMU-train/stage1_mined_program_goal_clean/stage1_last.pt \
+  --pair-manifest artifacts/jsonl/HumanML3D-CMU-test/mining/mined_pairs_full.jsonl \
+  --output-dir outputs/HumanML3D-CMU-test/vis_program_goal_clean_heldout \
+  --num-cases 16 \
+  --frame-limit 30
+```
+
+Start-pose corrected batch inference:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/infer_and_visualize.py \
+  --config configs/stage1_mined_cmu_train_startpose_goal_clean.yaml \
+  --checkpoint outputs/HumanML3D-CMU-train/stage1_mined_startpose_goal_clean/stage1_last.pt \
+  --pair-manifest artifacts/jsonl/HumanML3D-CMU-test/mining/mined_pairs_full.jsonl \
+  --output-dir outputs/HumanML3D-CMU-test/vis_program_startpose_goal_clean_heldout \
+  --num-cases 16 \
+  --frame-limit 30
+```
+
+Salient held-out inference:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/infer_and_visualize.py \
+  --config configs/stage1_mined_cmu_train_startpose_goal_clean.yaml \
+  --checkpoint outputs/HumanML3D-CMU-train/stage1_mined_startpose_goal_clean/stage1_last.pt \
+  --pair-manifest artifacts/jsonl/HumanML3D-CMU-test/mining/mined_pairs_full.jsonl \
+  --output-dir outputs/HumanML3D-CMU-test/vis_program_startpose_goal_clean_salient \
+  --selection salient \
+  --num-cases 16 \
+  --frame-limit 24 \
+  --min-delta-deg 15 \
+  --min-duration-frames 8
+```
+
+## CMU train/test split workflow
+
+Split rule:
+
+- deterministic split by original clip group
+- not by individual 60-frame chunk
+- intended to reduce near-duplicate leakage across train and test
+
+Build split manifests:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_group_split.py \
+  --subset HumanML3D-CMU \
+  --manifest artifacts/jsonl/HumanML3D-CMU/scan/manifest_full.jsonl \
+  --seed 42 \
+  --test-ratio 0.2
+```
+
+Rebuild split-specific artifacts:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_artifacts_from_manifest.py \
+  --subset HumanML3D-CMU-train \
+  --manifest artifacts/jsonl/HumanML3D-CMU-train/scan/manifest_full.jsonl
+
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_artifacts_from_manifest.py \
+  --subset HumanML3D-CMU-test \
+  --manifest artifacts/jsonl/HumanML3D-CMU-test/scan/manifest_full.jsonl
+```
+
+Observed split after fixing `non_contact` bucket parsing:
+
+- train records: `6704`
+  - `contact: 2560`
+  - `neutral: 1617`
+  - `non_contact: 2527`
+- test records: `1685`
+  - `contact: 617`
+  - `neutral: 391`
+  - `non_contact: 677`
+
+Observed split-specific mined pairs:
+
+- train mined pairs: `26782`
+- test mined pairs: `6708`
+
+Train-split goal-loss config:
+
+- `configs/stage1_mined_cmu_train_program_goal_clean.yaml`
+
+Held-out visualization output already exported:
+
+- `outputs/HumanML3D-CMU-test/vis_program_goal_clean_heldout`
+- `outputs/HumanML3D-CMU-test/vis_program_startpose_goal_clean_heldout`
+- `outputs/HumanML3D-CMU-test/vis_program_startpose_goal_clean_salient_smoke`
+
 ## Known limitations at this stage
 
 - proxy attributes are derived from local axis-angle channels, not full FK joint geometry
@@ -257,3 +405,128 @@ RUN_TRAIN=1 bash scripts/run_full_pipeline.sh smoke
 - mined pairs rely on coarse similarity and may include false-positive edit pairs
 - contact is used only as a coarse bucket and policy flag, not a hard motion constraint
 - no natural language or dialogue supervision is included in this stage
+
+## Schema-driven prompt layer
+
+Added in this stage:
+
+- configurable label schema:
+  - `configs/label_schema.yaml`
+- program verbalization:
+  - `pseudoedit3d/edit/verbalizer.py`
+- character tokenizer:
+  - `pseudoedit3d/text/tokenizer.py`
+- prompt preview script:
+  - `scripts/preview_prompts.py`
+
+Prompt preview smoke command:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/preview_prompts.py \
+  --mode synthetic \
+  --manifest /mnt/data/home/guoruoxi/code/PseudoEdit3D/data_manifest.jsonl \
+  --num-samples 5
+```
+
+Observed examples:
+
+- `raise the right arm by 22.5 degrees during the middle of the motion`
+- `flex the right arm moderately during the middle of the motion`
+- `curl the right arm by 22.5 degrees early in the motion`
+- `extend the right arm significantly late in the motion`
+- `straighten the left arm by 22.5 degrees during the middle of the motion`
+
+## Text-conditioned motion editing smoke
+
+Current condition modes supported by `train.py`:
+
+- `program`
+- `text`
+- `hybrid`
+
+Forward-check result for text-only conditioning:
+
+- sample prompt example:
+  - `raise the both arms by 15 degrees during the middle of the motion`
+- prompt token shape:
+  - `(96,)`
+- model output shape:
+  - `(1, 60, 156)`
+
+Smoke training:
+
+- config: `configs/stage1_text_upper_body.yaml`
+- temporary overrides:
+  - `max_clips: 16`
+  - `batch_size: 4`
+  - `num_workers: 0`
+  - `epochs: 1`
+  - `save_dir: /mnt/data/home/guoruoxi/code/PseudoEdit3D/outputs/stage1_text_upper_body_smoke`
+- result:
+  - `epoch=0 loss=0.610044`
+
+## Iterative mined-pair refinement
+
+Current implementation adds a simple bootstrapped loop:
+
+1. mine raw pairs from the attribute cache
+2. select a seed subset using heuristic mining scores
+3. train a mined-pair editor on that subset
+4. score all raw pairs with the trained editor
+5. filter and refresh the pair set for the next round
+
+Entrypoint:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/iterate_mined_pairs.py \
+  --attribute-cache /mnt/data/home/guoruoxi/code/PseudoEdit3D/attribute_cache_full.jsonl \
+  --output-dir /mnt/data/home/guoruoxi/code/PseudoEdit3D/iter_runs/default \
+  --num-rounds 2
+```
+
+Useful debug knobs:
+
+- `--max-train-pairs`
+- `--max-pairs-per-source`
+- `--train-epochs`
+- `--train-batch-size`
+- `--train-num-workers`
+- `--mine-candidate-limit`
+- `--mine-distance-threshold`
+
+Artifacts per run:
+
+- `iter_raw_pairs.jsonl`
+- `iter_seed_pairs.jsonl`
+- `round_XX/train_pairs.jsonl`
+- `round_XX/scored_pairs.jsonl`
+- `round_XX/refined_pairs.jsonl`
+- `round_XX/train_outputs/round_XX_last.pt`
+- `iteration_summary.jsonl`
+
+Smoke verification performed:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/iterate_mined_pairs.py \
+  --attribute-cache /mnt/data/home/guoruoxi/code/PseudoEdit3D/attribute_cache_smoke.jsonl \
+  --output-dir /mnt/data/home/guoruoxi/code/PseudoEdit3D/iter_runs/smoke_iter \
+  --num-rounds 2 \
+  --max-train-pairs 32 \
+  --train-epochs 1 \
+  --train-batch-size 4 \
+  --train-num-workers 0 \
+  --mine-candidate-limit 32 \
+  --mine-max-pairs-per-clip 2 \
+  --mine-distance-threshold 3.0
+```
+
+Observed result:
+
+- `raw_pairs=235`
+- `round=0 input_pairs=32 refined_pairs=32 last_loss=0.562269315123558`
+- `round=1 input_pairs=32 refined_pairs=32 last_loss=0.5716654546558857`
+- summary:
+  - `/mnt/data/home/guoruoxi/code/PseudoEdit3D/iter_runs/smoke_iter/iteration_summary.jsonl`

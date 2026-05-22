@@ -60,6 +60,13 @@ Train the minimal baseline:
   --config configs/stage1_upper_body.yaml
 ```
 
+Train a prompt-conditioned baseline:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python train.py \
+  --config configs/stage1_text_upper_body.yaml
+```
+
 Build attribute cache and mined pseudo triplets:
 
 ```bash
@@ -70,6 +77,24 @@ Build attribute cache and mined pseudo triplets:
 /mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/mine_triplets.py \
   --attribute-cache /mnt/data/home/guoruoxi/code/PseudoEdit3D/attribute_cache.jsonl \
   --output /mnt/data/home/guoruoxi/code/PseudoEdit3D/mined_pairs.jsonl
+```
+
+Iterative mined-pair refinement:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/iterate_mined_pairs.py \
+  --attribute-cache /mnt/data/home/guoruoxi/code/PseudoEdit3D/attribute_cache_full.jsonl \
+  --output-dir /mnt/data/home/guoruoxi/code/PseudoEdit3D/iter_runs/default \
+  --num-rounds 2
+```
+
+Preview generated prompt templates:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/preview_prompts.py \
+  --mode synthetic \
+  --manifest /mnt/data/home/guoruoxi/code/PseudoEdit3D/data_manifest.jsonl \
+  --num-samples 5
 ```
 
 Organized end-to-end runner:
