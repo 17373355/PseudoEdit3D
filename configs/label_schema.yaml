@@ -13,6 +13,9 @@ parts:
   torso:
     display: torso
     aliases: ["torso", "upper body", "body"]
+  whole_body:
+    display: whole body
+    aliases: ["whole body", "body", "full body"]
 
 attributes:
   raise:
@@ -87,6 +90,30 @@ attributes:
       - "{verb} the {part} {delta_phrase} {time_phrase}"
     synthetic_axis: 0
     synthetic_sign: -1.0
+  turn_left:
+    display: turn left
+    applicable_parts: ["whole_body"]
+    prompt_variants: ["turn left", "rotate left", "spin left"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+  turn_right:
+    display: turn right
+    applicable_parts: ["whole_body"]
+    prompt_variants: ["turn right", "rotate right", "spin right"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+  jump_up:
+    display: jump up
+    applicable_parts: ["whole_body"]
+    prompt_variants: ["jump up", "leap upward", "move upward"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
+  land:
+    display: land
+    applicable_parts: ["whole_body"]
+    prompt_variants: ["land", "come down", "drop down"]
+    prompt_templates:
+      - "{verb} the {part} by {delta_value} {time_phrase}"
 
 delta_bins:
   small:

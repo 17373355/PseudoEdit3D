@@ -27,6 +27,7 @@ class TrainConfig:
     max_frames: int
     delta_scale_deg: float
     save_dir: str
+    model_arch: str = "masked_editor"
     condition_mode: str = "program"
     label_schema_path: str = ""
     prompt_style: str = "template"
@@ -34,9 +35,15 @@ class TrainConfig:
     prefix_task_mode: str = "relative_edit"
     input_source_mode: str = "source_motion"
     source_prefix_frames: int = 1
+    base_step_scale: float = 0.01
+    active_step_scale: float = 0.05
+    lambda_edit: float = 1.0
     lambda_keep: float = 0.5
     lambda_smooth: float = 0.01
     lambda_condition: float = 0.0
+    lambda_future_all: float = 0.0
+    lambda_velocity: float = 0.0
+    lambda_acceleration: float = 0.0
     use_goal_satisfaction_loss: bool = False
     lambda_goal_delta: float = 0.0
     lambda_goal_direction: float = 0.0

@@ -1,0 +1,252 @@
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+import torch
+
+MOMASK_ROOT = Path('/mnt/data/home/guoruoxi/code/momask-codes')
+HML_ROOT = MOMASK_ROOT / 'dataset' / 'HumanML3D'
+if str(MOMASK_ROOT) not in sys.path:
+    sys.path.insert(0, str(MOMASK_ROOT))
+
+from common.skeleton import Skeleton  # type: ignore
+from utils import motion_process as mp  # type: ignore
+from utils.paramUtil import t2m_kinematic_chain, t2m_raw_offsets  # type: ignore
+
+
+def _json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, tuple):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    return obj
+
+
+def read_all_prompts(case_id: str) -> list[tuple[str, float, float]]:
+    text_path = HML_ROOT / 'texts' / f'{case_id}.txt'
+    out = []
+    for line in text_path.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split('#')
+        caption = parts[0].strip()
+        start, end = 0.0, 0.0
+        if len(parts) >= 4:
+            try:
+                start = float(parts[-2])
+                end = float(parts[-1])
+            except Exception:
+                pass
+        out.append((caption, start, end))
+    return out
+
+
+def read_first_prompt(case_id: str) -> str:
+    prompts = read_all_prompts(case_id)
+    if not prompts:
+        raise RuntimeError(f'No prompt lines for {case_id}')
+    return prompts[0][0]
+
+
+def load_joints3d(case_id: str) -> np.ndarray:
+    pth = HML_ROOT / 'joints3d.pth'
+    data = torch.load(pth, map_location='cpu')
+    key = f'{case_id}.npy'
+    item = data[key]
+    joints = item['joints3d']
+    if isinstance(joints, torch.Tensor):
+        joints = joints.cpu().numpy()
+    return np.asarray(joints, dtype=np.float32)
+
+
+def setup_momask_preprocess(example_joints22: np.ndarray) -> None:
+    mp.l_idx1, mp.l_idx2 = 5, 8
+    mp.fid_r, mp.fid_l = [8, 11], [7, 10]
+    mp.face_joint_indx = [2, 1, 17, 16]
+    mp.r_hip, mp.l_hip = 2, 1
+    mp.joints_num = 22
+    mp.n_raw_offsets = torch.from_numpy(t2m_raw_offsets)
+    mp.kinematic_chain = t2m_kinematic_chain
+    tgt_skel = Skeleton(mp.n_raw_offsets, mp.kinematic_chain, 'cpu')
+    mp.tgt_offsets = tgt_skel.get_offsets_joints(torch.from_numpy(example_joints22[0]).float())
+
+
+def heading_deg(joints: np.ndarray) -> np.ndarray:
+    l_hip = joints[:, 1][:, [0, 2]]
+    r_hip = joints[:, 2][:, [0, 2]]
+    l_sh = joints[:, 16][:, [0, 2]]
+    r_sh = joints[:, 17][:, [0, 2]]
+    across = (r_hip - l_hip) + (r_sh - l_sh)
+    forward = np.stack([-across[:, 1], across[:, 0]], axis=-1)
+    forward = forward / np.clip(np.linalg.norm(forward, axis=-1, keepdims=True), 1e-8, None)
+    yaw = np.rad2deg(np.unwrap(np.arctan2(forward[:, 0], forward[:, 1])))
+    return yaw - yaw[0]
+
+
+def root_height(joints: np.ndarray) -> np.ndarray:
+    return joints[:, 0, 1]
+
+
+def both_arm_raise_deg(joints: np.ndarray) -> np.ndarray:
+    shoulders = 0.5 * (joints[:, 16, 1] + joints[:, 17, 1])
+    wrists = 0.5 * (joints[:, 20, 1] + joints[:, 21, 1])
+    return (wrists - shoulders) * 180.0
+
+
+def first_cross(values: np.ndarray, source: float, thr: float, start: int) -> int:
+    for i in range(start, len(values)):
+        if abs(float(values[i] - source)) >= thr:
+            return i
+    return start
+
+
+def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
+    joints = load_joints3d(case_id)
+    setup_momask_preprocess(joints)
+    motion_263, _, _, _ = mp.process_file(joints.copy(), 0.002)
+
+    yaw = heading_deg(joints)
+    yaw_source = float(yaw[min(prefix_frames - 1, len(yaw) - 1)])
+    yaw_future = yaw[prefix_frames:]
+    height = root_height(joints)
+    h_source = float(height[min(prefix_frames - 1, len(height) - 1)])
+    h_future = height[prefix_frames:]
+    arm = both_arm_raise_deg(joints)
+    a_source = float(arm[min(prefix_frames - 1, len(arm) - 1)])
+    a_future = arm[prefix_frames:]
+
+    prompts = []
+    edits = []
+
+    if len(yaw_future) > 0:
+        max_idx = int(np.argmax(yaw_future))
+        min_idx = int(np.argmin(yaw_future))
+        max_delta = float(yaw_future[max_idx] - yaw_source)
+        min_delta = float(yaw_future[min_idx] - yaw_source)
+        if abs(max_delta) >= abs(min_delta):
+            delta = max_delta
+            peak_idx = max_idx
+        else:
+            delta = min_delta
+            peak_idx = min_idx
+        if abs(delta) >= 20.0:
+            attr = 'turn_left' if delta >= 0 else 'turn_right'
+            st = first_cross(yaw, yaw_source, 0.15 * abs(delta), prefix_frames)
+            ed = min(len(yaw) - 1, prefix_frames + max(peak_idx, 6))
+            prompts.append(f'whole_body {attr} by {abs(delta):.1f} degrees from frame {st} to {ed}')
+            edits.append({'part': 'whole_body', 'attribute': attr, 'delta_value_deg': delta, 'start_frame': st, 'end_frame': ed})
+
+    if len(h_future) > 0:
+        max_idx = int(np.argmax(h_future))
+        min_idx = int(np.argmin(h_future))
+        max_delta = float(h_future[max_idx] - h_source)
+        min_delta = float(h_future[min_idx] - h_source)
+        if max_delta >= 0.08:
+            st = first_cross(height, h_source, 0.2 * abs(max_delta), prefix_frames)
+            ed = min(len(height) - 1, prefix_frames + max(max_idx, 4))
+            prompts.append(f'whole_body jump_up by {max_delta:.2f} meters from frame {st} to {ed}')
+            edits.append({'part': 'whole_body', 'attribute': 'jump_up', 'delta_value_deg': max_delta, 'start_frame': st, 'end_frame': ed})
+        if min_delta <= -0.05:
+            st = first_cross(height, h_source, 0.2 * abs(min_delta), prefix_frames)
+            ed = min(len(height) - 1, prefix_frames + max(min_idx, 4))
+            prompts.append(f'whole_body land by {abs(min_delta):.2f} meters from frame {st} to {ed}')
+            edits.append({'part': 'whole_body', 'attribute': 'land', 'delta_value_deg': min_delta, 'start_frame': st, 'end_frame': ed})
+
+    if len(a_future) > 0:
+        peak_idx = int(np.argmax(a_future))
+        delta = float(a_future[peak_idx] - a_source)
+        if abs(delta) >= 8.0:
+            st = first_cross(arm, a_source, 0.2 * abs(delta), prefix_frames)
+            ed = min(len(arm) - 1, prefix_frames + max(peak_idx, 4))
+            prompts.append(f'both_arms raise by {abs(delta):.1f} degrees from frame {st} to {ed}')
+            edits.append({'part': 'both_arms', 'attribute': 'raise', 'delta_value_deg': delta, 'start_frame': st, 'end_frame': ed})
+
+    text_prompt = ' then '.join(prompts) if prompts else 'a person moves naturally'
+    if edits:
+        mask_start = min(int(e['start_frame']) for e in edits)
+        mask_end = max(int(e['end_frame']) for e in edits)
+    else:
+        mask_start = prefix_frames
+        mask_end = joints.shape[0] - 1
+
+    return {
+        'motion_263': motion_263.astype(np.float32),
+        'program': {'task_mode': 'multi_atomic_realize', 'edits': edits, 'source_prefix_frames': prefix_frames},
+        'auto_prompt': text_prompt,
+        'mask_edit_section': f'{mask_start},{mask_end}',
+        'source_num_frames': int(len(joints)),
+        'raw_prompt_segments': read_all_prompts(case_id),
+    }
+
+
+def run_gen(prompt: str, ext: str) -> None:
+    cmd = [
+        '/mnt/data/home/guoruoxi/miniconda3/envs/momask/bin/python',
+        'gen_t2m.py',
+        '--gpu_id', '0',
+        '--dataset_name', 't2m',
+        '--name', 't2m_nlayer8_nhead6_ld384_ff1024_cdp0.1_rvq6ns',
+        '--res_name', 'tres_nlayer8_ld384_ff1024_rvq6ns_cdp0.2_sw',
+        '--text_prompt', prompt,
+        '--motion_length', '60',
+        '--repeat_times', '1',
+        '--time_steps', '10',
+        '--cond_scale', '4',
+        '--ext', ext,
+    ]
+    subprocess.run(cmd, cwd=MOMASK_ROOT, check=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--case-ids', required=True)
+    parser.add_argument('--prefix-frames', type=int, default=20)
+    parser.add_argument('--output-dir', required=True)
+    args = parser.parse_args()
+
+    case_ids = [x.strip() for x in args.case_ids.split(',') if x.strip()]
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    summary = []
+    for case_id in case_ids:
+        gt_prompt = read_first_prompt(case_id)
+        auto = build_auto_prompt(case_id, args.prefix_frames)
+        case_dir = out_dir / case_id
+        case_dir.mkdir(parents=True, exist_ok=True)
+        np.save(case_dir / 'source_motion.npy', auto['motion_263'])
+        (case_dir / 'auto_meta.json').write_text(json.dumps(_json_safe(auto), ensure_ascii=True, indent=2), encoding='utf-8')
+        gt_ext = f'case_study_{case_id}_gtprompt'
+        auto_ext = f'case_study_{case_id}_autoprompt'
+        run_gen(gt_prompt, gt_ext)
+        run_gen(auto['auto_prompt'], auto_ext)
+        summary.append({
+            'case_id': case_id,
+            'gt_prompt': gt_prompt,
+            'auto_prompt': auto['auto_prompt'],
+            'program': auto['program'],
+            'gt_ext': gt_ext,
+            'auto_ext': auto_ext,
+            'source_num_frames': auto['source_num_frames'],
+            'raw_prompt_segments': auto['raw_prompt_segments'],
+        })
+
+    (out_dir / 'summary.json').write_text(json.dumps(_json_safe(summary), ensure_ascii=True, indent=2), encoding='utf-8')
+    print(json.dumps(_json_safe(summary), ensure_ascii=True, indent=2))
+    print(f'saved_summary={out_dir / "summary.json"}')
+
+
+if __name__ == '__main__':
+    main()

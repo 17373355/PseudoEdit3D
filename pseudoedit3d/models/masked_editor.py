@@ -13,12 +13,15 @@ class MaskedMotionEditor(nn.Module):
         num_layers: int = 4,
         dropout: float = 0.1,
         text_vocab_size: int = 0,
+        max_frames: int = 60,
     ) -> None:
         super().__init__()
         self.pose_proj = nn.Linear(pose_dim, hidden_dim)
         self.edit_proj = nn.Linear(edit_dim, hidden_dim)
         self.text_embed = nn.Embedding(text_vocab_size, hidden_dim) if text_vocab_size > 0 else None
         self.text_proj = nn.Linear(hidden_dim, hidden_dim) if text_vocab_size > 0 else None
+        self.pos_embed = nn.Parameter(torch.zeros(1, max_frames, hidden_dim))
+        self.frame_type_embed = nn.Embedding(2, hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
             nhead=8,
@@ -35,10 +38,21 @@ class MaskedMotionEditor(nn.Module):
         edit_vector: torch.Tensor | None = None,
         prompt_token_ids: torch.Tensor | None = None,
         prompt_attention_mask: torch.Tensor | None = None,
+        conditioning_frame_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         batch_size, num_frames, pose_dim = source_pose.shape
         pose_feat = self.pose_proj(source_pose)
-        cond_feat = torch.zeros_like(pose_feat)
+        if num_frames > self.pos_embed.shape[1]:
+            raise ValueError(f"num_frames={num_frames} exceeds max_frames={self.pos_embed.shape[1]}")
+
+        cond_feat = self.pos_embed[:, :num_frames].expand(batch_size, -1, -1)
+
+        if conditioning_frame_mask is not None:
+            frame_mask = conditioning_frame_mask
+            if frame_mask.dim() == 3:
+                frame_mask = frame_mask[..., 0]
+            frame_type_ids = (frame_mask > 0.5).long()
+            cond_feat = cond_feat + self.frame_type_embed(frame_type_ids)
 
         if edit_vector is not None:
             cond_feat = cond_feat + self.edit_proj(edit_vector).unsqueeze(1).expand(batch_size, num_frames, -1)
@@ -59,4 +73,10 @@ class MaskedMotionEditor(nn.Module):
 
         hidden = self.encoder(pose_feat + cond_feat)
         residual = self.out_proj(hidden)
-        return source_pose + residual
+        pred = source_pose + residual
+        if conditioning_frame_mask is not None:
+            mask = conditioning_frame_mask
+            if mask.dim() == 2:
+                mask = mask.unsqueeze(-1)
+            pred = pred * (1.0 - mask) + source_pose * mask
+        return pred

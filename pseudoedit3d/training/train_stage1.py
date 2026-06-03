@@ -11,9 +11,9 @@ from torch.utils.tensorboard import SummaryWriter
 
 from pseudoedit3d.config import load_simple_yaml
 from pseudoedit3d.constants import SMPLH_POSE_DIM
-from pseudoedit3d.data import MinedMotionEditDataset, MotionEditDataset
+from pseudoedit3d.data import MinedMotionEditDataset, MotionEditDataset, PrefixMotionDataset
 from pseudoedit3d.edit.schema import load_label_schema
-from pseudoedit3d.models import MaskedMotionEditor
+from pseudoedit3d.models import create_model
 from pseudoedit3d.text import CharTokenizer
 from pseudoedit3d.training.goal_losses import compute_goal_satisfaction_losses
 
@@ -31,7 +31,41 @@ def _masked_l1(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> 
     return masked_error.sum() / denom
 
 
+def _future_dynamics_losses(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    conditioning_frame_mask: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    # Use the current frame mask so the prefix->future transition step is included.
+    future_step_mask = (1.0 - conditioning_frame_mask[:, 1:]).unsqueeze(-1).expand_as(pred[:, 1:])
+    pred_vel = pred[:, 1:] - pred[:, :-1]
+    target_vel = target[:, 1:] - target[:, :-1]
+    velocity_loss = _masked_l1(pred_vel, target_vel, future_step_mask)
+
+    if pred.shape[1] < 3:
+        acceleration_loss = torch.zeros((), device=pred.device, dtype=pred.dtype)
+    else:
+        future_acc_mask = (1.0 - conditioning_frame_mask[:, 2:]).unsqueeze(-1).expand_as(pred[:, 2:])
+        pred_acc = pred[:, 2:] - 2.0 * pred[:, 1:-1] + pred[:, :-2]
+        target_acc = target[:, 2:] - 2.0 * target[:, 1:-1] + target[:, :-2]
+        acceleration_loss = _masked_l1(pred_acc, target_acc, future_acc_mask)
+    return velocity_loss, acceleration_loss
+
+
 def build_dataset(cfg):
+    if cfg.data_mode == "prefix":
+        return PrefixMotionDataset(
+            manifest_path=cfg.manifest_path,
+            max_clips=cfg.max_clips,
+            label_schema_path=cfg.label_schema_path,
+            prompt_style=cfg.prompt_style,
+            prompt_max_length=cfg.prompt_max_length,
+            prefix_frames=cfg.source_prefix_frames,
+            task_mode=cfg.prefix_task_mode,
+            contact_filter=cfg.contact_filter,
+            seed=cfg.seed,
+            input_source_mode=cfg.input_source_mode,
+        )
     if cfg.data_mode == "mined":
         return MinedMotionEditDataset(
             pair_manifest_path=cfg.pair_manifest_path,
@@ -57,22 +91,49 @@ def build_dataset(cfg):
 def build_model(cfg, device):
     tokenizer = CharTokenizer(max_length=cfg.prompt_max_length)
     schema = load_label_schema(cfg.label_schema_path) if cfg.label_schema_path else load_label_schema()
-    return MaskedMotionEditor(
+    return create_model(
+        model_arch=cfg.model_arch,
         pose_dim=SMPLH_POSE_DIM,
         edit_dim=schema.vector_dim,
         hidden_dim=cfg.hidden_dim,
         num_layers=cfg.num_layers,
         dropout=cfg.dropout,
         text_vocab_size=tokenizer.vocab_size if cfg.condition_mode in {"text", "hybrid"} else 0,
+        max_frames=cfg.max_frames,
+        base_step_scale=cfg.base_step_scale,
+        active_step_scale=cfg.active_step_scale,
     ).to(device)
 
 
 def _build_condition_inputs(batch, device, condition_mode: str) -> dict:
     condition = {}
+    condition["conditioning_frame_mask"] = batch["conditioning_frame_mask"].to(device)
     if condition_mode in {"program", "hybrid"}:
         condition["edit_vector"] = batch["edit_vector"].to(device)
+        condition["goal_start_frame"] = batch["goal_start_frame"].to(device)
+        condition["goal_end_frame"] = batch["goal_end_frame"].to(device)
+        condition["goal_delta_deg"] = batch["goal_delta_deg"].float().to(device)
+        condition["goal_direction_sign"] = batch["goal_direction_sign"].float().to(device)
+        condition["joint_mask"] = batch["joint_mask"].to(device)
+        condition["seq_edit_vectors"] = batch["seq_edit_vectors"].to(device)
+        condition["seq_start_frames"] = batch["seq_start_frames"].to(device)
+        condition["seq_end_frames"] = batch["seq_end_frames"].to(device)
+        condition["seq_delta_deg"] = batch["seq_delta_deg"].float().to(device)
+        condition["seq_direction_sign"] = batch["seq_direction_sign"].float().to(device)
+        condition["seq_num_edits"] = batch["seq_num_edits"].to(device)
     else:
         condition["edit_vector"] = None
+        condition["goal_start_frame"] = None
+        condition["goal_end_frame"] = None
+        condition["goal_delta_deg"] = None
+        condition["goal_direction_sign"] = None
+        condition["joint_mask"] = None
+        condition["seq_edit_vectors"] = None
+        condition["seq_start_frames"] = None
+        condition["seq_end_frames"] = None
+        condition["seq_delta_deg"] = None
+        condition["seq_direction_sign"] = None
+        condition["seq_num_edits"] = None
     if condition_mode in {"text", "hybrid"}:
         condition["prompt_token_ids"] = batch["prompt_token_ids"].to(device)
         condition["prompt_attention_mask"] = batch["prompt_attention_mask"].to(device)
@@ -90,6 +151,9 @@ def train_one_epoch(model, loader, optimizer, device, condition_mode: str, cfg, 
         "keep_loss": 0.0,
         "smooth_loss": 0.0,
         "condition_loss": 0.0,
+        "future_all_loss": 0.0,
+        "velocity_loss": 0.0,
+        "acceleration_loss": 0.0,
         "goal_delta_loss": 0.0,
         "goal_direction_loss": 0.0,
         "goal_tolerance_loss": 0.0,
@@ -104,6 +168,7 @@ def train_one_epoch(model, loader, optimizer, device, condition_mode: str, cfg, 
         target_pose = batch["target_pose"].to(device).reshape(batch["target_pose"].shape[0], batch["target_pose"].shape[1], -1)
         joint_mask = batch["joint_mask"].to(device).unsqueeze(-1).expand(-1, -1, -1, 3).reshape_as(source_pose)
         conditioning_frame_mask = batch["conditioning_frame_mask"].to(device).unsqueeze(-1).expand_as(source_pose)
+        future_frame_mask = (1.0 - conditioning_frame_mask)
         if cfg.input_source_mode == "source_motion":
             keep_mask = 1.0 - joint_mask
         else:
@@ -114,8 +179,18 @@ def train_one_epoch(model, loader, optimizer, device, condition_mode: str, cfg, 
         edit_loss = _masked_l1(pred_pose, target_pose, joint_mask)
         keep_loss = _masked_l1(pred_pose, source_pose, keep_mask)
         condition_loss = _masked_l1(pred_pose, source_pose, conditioning_frame_mask)
+        future_all_loss = _masked_l1(pred_pose, target_pose, future_frame_mask)
         smooth_loss = (pred_pose[:, 1:] - pred_pose[:, :-1]).abs().mean()
-        loss = edit_loss + cfg.lambda_keep * keep_loss + cfg.lambda_condition * condition_loss + cfg.lambda_smooth * smooth_loss
+        velocity_loss, acceleration_loss = _future_dynamics_losses(pred_pose, target_pose, conditioning_frame_mask[..., 0])
+        loss = (
+            cfg.lambda_edit * edit_loss
+            + cfg.lambda_keep * keep_loss
+            + cfg.lambda_condition * condition_loss
+            + cfg.lambda_future_all * future_all_loss
+            + cfg.lambda_smooth * smooth_loss
+            + cfg.lambda_velocity * velocity_loss
+            + cfg.lambda_acceleration * acceleration_loss
+        )
 
         goal_loss_terms = None
         if cfg.use_goal_satisfaction_loss:
@@ -138,12 +213,18 @@ def train_one_epoch(model, loader, optimizer, device, condition_mode: str, cfg, 
         edit_loss_value = float(edit_loss.item())
         keep_loss_value = float(keep_loss.item())
         condition_loss_value = float(condition_loss.item())
+        future_all_loss_value = float(future_all_loss.item())
         smooth_loss_value = float(smooth_loss.item())
+        velocity_loss_value = float(velocity_loss.item())
+        acceleration_loss_value = float(acceleration_loss.item())
         sums["loss"] += loss_value
         sums["edit_loss"] += edit_loss_value
         sums["keep_loss"] += keep_loss_value
         sums["condition_loss"] += condition_loss_value
+        sums["future_all_loss"] += future_all_loss_value
         sums["smooth_loss"] += smooth_loss_value
+        sums["velocity_loss"] += velocity_loss_value
+        sums["acceleration_loss"] += acceleration_loss_value
         if goal_loss_terms is not None:
             for key in [
                 "goal_delta_loss",
@@ -161,7 +242,10 @@ def train_one_epoch(model, loader, optimizer, device, condition_mode: str, cfg, 
             writer.add_scalar("train_step/edit_loss", edit_loss_value, global_step)
             writer.add_scalar("train_step/keep_loss", keep_loss_value, global_step)
             writer.add_scalar("train_step/condition_loss", condition_loss_value, global_step)
+            writer.add_scalar("train_step/future_all_loss", future_all_loss_value, global_step)
             writer.add_scalar("train_step/smooth_loss", smooth_loss_value, global_step)
+            writer.add_scalar("train_step/velocity_loss", velocity_loss_value, global_step)
+            writer.add_scalar("train_step/acceleration_loss", acceleration_loss_value, global_step)
             if goal_loss_terms is not None:
                 writer.add_scalar("train_step/goal_delta_loss", float(goal_loss_terms["goal_delta_loss"].item()), global_step)
                 writer.add_scalar(
@@ -236,7 +320,10 @@ def train_from_config(cfg, checkpoint_name: str = "stage1_last.pt") -> dict:
             f"edit_loss={epoch_metrics['edit_loss']:.6f} "
             f"keep_loss={epoch_metrics['keep_loss']:.6f} "
             f"condition_loss={epoch_metrics['condition_loss']:.6f} "
-            f"smooth_loss={epoch_metrics['smooth_loss']:.6f}"
+            f"future_all_loss={epoch_metrics['future_all_loss']:.6f} "
+            f"smooth_loss={epoch_metrics['smooth_loss']:.6f} "
+            f"velocity_loss={epoch_metrics['velocity_loss']:.6f} "
+            f"acceleration_loss={epoch_metrics['acceleration_loss']:.6f}"
         )
         if cfg.use_goal_satisfaction_loss:
             line += (
@@ -255,7 +342,10 @@ def train_from_config(cfg, checkpoint_name: str = "stage1_last.pt") -> dict:
         writer.add_scalar("train_epoch/edit_loss", epoch_metrics["edit_loss"], epoch)
         writer.add_scalar("train_epoch/keep_loss", epoch_metrics["keep_loss"], epoch)
         writer.add_scalar("train_epoch/condition_loss", epoch_metrics["condition_loss"], epoch)
+        writer.add_scalar("train_epoch/future_all_loss", epoch_metrics["future_all_loss"], epoch)
         writer.add_scalar("train_epoch/smooth_loss", epoch_metrics["smooth_loss"], epoch)
+        writer.add_scalar("train_epoch/velocity_loss", epoch_metrics["velocity_loss"], epoch)
+        writer.add_scalar("train_epoch/acceleration_loss", epoch_metrics["acceleration_loss"], epoch)
         if cfg.use_goal_satisfaction_loss:
             writer.add_scalar("train_epoch/goal_delta_loss", epoch_metrics["goal_delta_loss"], epoch)
             writer.add_scalar("train_epoch/goal_direction_loss", epoch_metrics["goal_direction_loss"], epoch)

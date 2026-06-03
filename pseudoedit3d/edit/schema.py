@@ -258,3 +258,31 @@ def load_label_schema(path: str | Path | None = None) -> LabelSchema:
 @lru_cache(maxsize=4)
 def get_default_schema() -> LabelSchema:
     return load_label_schema(_default_schema_path())
+
+
+@dataclass
+class MultiEditProgram:
+    edits: list[EditProgram]
+    source_type: str = "same_clip_multi_atomic"
+    schema_version: str | None = None
+    input_mode: str = "motion_prefix"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "edits": [edit.to_dict() for edit in self.edits],
+            "source_type": self.source_type,
+            "schema_version": self.schema_version,
+            "input_mode": self.input_mode,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "MultiEditProgram":
+        return cls(
+            edits=[EditProgram.from_dict(item) for item in payload.get("edits", [])],
+            source_type=payload.get("source_type", "same_clip_multi_atomic"),
+            schema_version=payload.get("schema_version"),
+            input_mode=payload.get("input_mode", "motion_prefix"),
+            metadata=payload.get("metadata", {}) or {},
+        )

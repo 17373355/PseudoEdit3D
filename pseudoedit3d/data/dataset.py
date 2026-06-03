@@ -90,6 +90,7 @@ class MotionEditDataset(Dataset):
             "target_trans": torch.from_numpy(sample["target_trans"]),
             "joint_mask": torch.from_numpy(sample["joint_mask"]),
             "time_mask": torch.from_numpy(sample["time_mask"]),
+            "conditioning_frame_mask": torch.ones((sample["source_pose"].shape[0],), dtype=torch.float32),
             "edit_vector": torch.from_numpy(sample["edit_vector"]),
             "prompt_token_ids": torch.from_numpy(prompt_token_ids),
             "prompt_attention_mask": torch.from_numpy(prompt_attention_mask),

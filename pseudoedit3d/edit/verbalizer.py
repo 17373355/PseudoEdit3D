@@ -78,7 +78,12 @@ def verbalize_program(
         time_phrase=time_phrase,
         attribute=attribute_entry.display,
     )
-    if program.reference == "current_state" and program.skill_label not in {None, "unknown", "static_pose"}:
+    task_mode = program.metadata.get("task_mode")
+    if (
+        program.reference == "current_state"
+        and program.skill_label not in {None, "unknown", "static_pose"}
+        and task_mode != "semantic_continue"
+    ):
         if program.operator == "add":
             prompt = f"{prompt} while continuing {skill_phrase}"
         else:

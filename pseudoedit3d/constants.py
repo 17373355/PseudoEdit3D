@@ -24,4 +24,5 @@ BODY_PART_TO_JOINTS = {
         JOINT_INDEX["R_Collar"], JOINT_INDEX["R_Shoulder"], JOINT_INDEX["R_Elbow"], JOINT_INDEX["R_Wrist"],
     ],
     "torso": [JOINT_INDEX["Pelvis"], JOINT_INDEX["Spine1"], JOINT_INDEX["Spine2"], JOINT_INDEX["Spine3"], JOINT_INDEX["Neck"]],
+    "whole_body": list(range(22)),
 }

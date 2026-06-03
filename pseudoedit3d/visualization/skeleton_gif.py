@@ -2,23 +2,19 @@ from __future__ import annotations
 
 import json
 import math
-import os
-import sys
 from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-
-CHARRET_MULTI_ROOT = Path("/mnt/data/home/guoruoxi/code/CharRet_multi")
-if str(CHARRET_MULTI_ROOT) not in sys.path:
-    sys.path.append(str(CHARRET_MULTI_ROOT))
-
-import body_models.smpl_skeleton_simple as smpl_skeleton_simple  # type: ignore
-
-SMPLSkeleton = smpl_skeleton_simple.SMPLSkeleton
-
 from pseudoedit3d.constants import BODY_PART_TO_JOINTS
+
+
+def _load_font(size: int = 20):
+    try:
+        return ImageFont.truetype('DejaVuSans.ttf', size=size)
+    except Exception:
+        return ImageFont.load_default()
 
 
 BODY_EDGES = [
@@ -27,42 +23,72 @@ BODY_EDGES = [
     (16, 18), (17, 19), (18, 20), (19, 21), (12, 15),
 ]
 
-DEFAULT_SMPLH_CANDIDATES = [
-    "/mnt/data/home/guoruoxi/code/CharRet_multi/body_models/smplh/SMPLH_NEUTRAL.npz",
-    "/mnt/data/home/guoruoxi/code/LoopReg/body_models/smplh/SMPLH_NEUTRAL.npz",
-    "/mnt/data/home/guoruoxi/code/MyGVHMR/inputs/checkpoints/body_models/smplh/SMPLH_NEUTRAL.npz",
-]
+SMPLH_STICK_PARENTS = np.asarray([
+    -1, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8,
+    9, 12, 12, 12, 13, 14, 16, 17, 18, 19,
+], dtype=np.int64)
 
 
-def _load_font(size: int = 20):
-    try:
-        return ImageFont.truetype("DejaVuSans.ttf", size=size)
-    except Exception:
-        return ImageFont.load_default()
+SMPLH_STICK_OFFSETS = np.asarray([
+    [0.0, 0.0, 0.0],
+    [0.09, -0.10, 0.0],
+    [-0.09, -0.10, 0.0],
+    [0.0, 0.12, 0.0],
+    [0.0, -0.42, 0.02],
+    [0.0, -0.42, 0.02],
+    [0.0, 0.14, 0.0],
+    [0.0, -0.43, 0.02],
+    [0.0, -0.43, 0.02],
+    [0.0, 0.15, 0.0],
+    [0.0, -0.05, 0.10],
+    [0.0, -0.05, -0.10],
+    [0.0, 0.18, 0.0],
+    [0.08, 0.12, 0.0],
+    [-0.08, 0.12, 0.0],
+    [0.0, 0.13, 0.0],
+    [0.28, 0.0, 0.0],
+    [-0.28, 0.0, 0.0],
+    [0.27, 0.0, 0.0],
+    [-0.27, 0.0, 0.0],
+    [0.20, 0.0, 0.0],
+    [-0.20, 0.0, 0.0],
+], dtype=np.float32)
 
 
-def resolve_smplh_model_path(user_path: str | None = None) -> str:
-    if user_path and os.path.exists(user_path):
-        return user_path
-    for path in DEFAULT_SMPLH_CANDIDATES:
-        if os.path.exists(path):
-            return path
-    raise FileNotFoundError(
-        "Could not find a usable SMPL-H model. Checked: " + ", ".join(DEFAULT_SMPLH_CANDIDATES)
-    )
+def _axis_angle_to_matrix(axis_angle: np.ndarray) -> np.ndarray:
+    angle = np.linalg.norm(axis_angle, axis=-1, keepdims=True)
+    axis = axis_angle / np.clip(angle, 1e-8, None)
+    x = axis[..., 0:1]
+    y = axis[..., 1:2]
+    z = axis[..., 2:3]
+    zeros = np.zeros_like(x)
+    k = np.concatenate([
+        zeros, -z, y,
+        z, zeros, -x,
+        -y, x, zeros,
+    ], axis=-1).reshape(axis.shape[:-1] + (3, 3))
+    eye = np.broadcast_to(np.eye(3, dtype=np.float32), axis.shape[:-1] + (3, 3))
+    sin = np.sin(angle)[..., None]
+    cos = np.cos(angle)[..., None]
+    return eye + sin * k + (1.0 - cos) * np.matmul(k, k)
 
 
-def _load_model_data_allow_pickle(model_path: str):
-    model_path = os.path.abspath(model_path)
-    assert os.path.exists(model_path), f"Path {model_path} does not exist!"
-    if model_path.endswith(".npz"):
-        data = np.load(model_path, allow_pickle=True)
-        return dict(data)
-    if model_path.endswith(".pkl"):
-        import pickle
-        with open(model_path, "rb") as f:
-            return pickle.load(f, encoding="latin1")
-    raise ValueError(f"Unsupported model file: {model_path}")
+def _compute_joints(poses: np.ndarray, trans: np.ndarray, betas: np.ndarray | None = None, smplh_model_path: str | None = None) -> np.ndarray:
+    del betas, smplh_model_path
+    pose = poses[:, :22].astype(np.float32)
+    rot_mats = _axis_angle_to_matrix(pose)
+    num_frames = pose.shape[0]
+    joints = np.zeros((num_frames, 22, 3), dtype=np.float32)
+    global_rot = np.zeros((num_frames, 22, 3, 3), dtype=np.float32)
+    for j in range(22):
+        parent = int(SMPLH_STICK_PARENTS[j])
+        if parent < 0:
+            global_rot[:, j] = rot_mats[:, j]
+            joints[:, j] = trans + SMPLH_STICK_OFFSETS[j]
+        else:
+            global_rot[:, j] = np.matmul(global_rot[:, parent], rot_mats[:, j])
+            joints[:, j] = joints[:, parent] + np.einsum('fij,j->fi', global_rot[:, parent], SMPLH_STICK_OFFSETS[j])
+    return joints
 
 
 def _project_points(points3d: np.ndarray) -> np.ndarray:
@@ -136,21 +162,21 @@ def _draw_skeleton(
         draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=color)
 
 
-def _compute_joints(poses: np.ndarray, trans: np.ndarray, betas: np.ndarray, smplh_model_path: str) -> np.ndarray:
-    smpl_skeleton_simple.load_model_data = _load_model_data_allow_pickle
-    model = SMPLSkeleton(model_path=smplh_model_path)
-    device = model.device
-    poses_t = poses.reshape(poses.shape[0], -1)
-    if betas.shape[0] == 1:
-        betas = np.repeat(betas, poses.shape[0], axis=0)
-    params = {
-        "poses": __import__("torch").tensor(poses_t, dtype=__import__("torch").float32, device=device),
-        "trans": __import__("torch").tensor(trans, dtype=__import__("torch").float32, device=device),
-        "shapes": __import__("torch").tensor(betas, dtype=__import__("torch").float32, device=device),
-    }
-    with __import__("torch").no_grad():
-        joints = model(params)["keypoints3d"].cpu().numpy()
-    return joints[:, :22]
+
+
+def _build_prefix_locked_display_motion(
+    prefix_pose: np.ndarray,
+    future_pose: np.ndarray,
+    reference_trans: np.ndarray,
+    prefix_frames: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    total_frames = future_pose.shape[0]
+    prefix = min(max(1, prefix_frames), total_frames)
+    display_pose = future_pose.copy()
+    display_trans = np.repeat(reference_trans[prefix - 1 : prefix], total_frames, axis=0)
+    display_pose[:prefix] = prefix_pose[:prefix]
+    display_trans[:prefix] = reference_trans[:prefix]
+    return display_pose, display_trans
 
 
 def export_case_gif(
@@ -160,7 +186,6 @@ def export_case_gif(
     fps: int = 12,
     frame_limit: int | None = None,
 ) -> str:
-    smplh_model_path = resolve_smplh_model_path(smplh_model_path)
     source_pose = case_result["source_pose"]
     target_pose = case_result["target_pose"]
     pred_pose = case_result["pred_pose"]
@@ -169,31 +194,50 @@ def export_case_gif(
     betas = case_result["betas"]
     prompt_text = case_result["prompt_text"]
     program = case_result["program"]
+    task_mode = program.get("task_mode", "")
+    is_edit_task = (
+        "part" in program and "attribute" in program and "start_frame" in program and "end_frame" in program
+        and task_mode not in {"semantic_continue", "atomic_realize"}
+    )
 
     total_frames = pred_pose.shape[0]
+    prefix_frames = int(program.get("source_prefix_frames", 1))
+    valid_end_frame = int(program.get("valid_end_frame", total_frames - 1))
+    display_total_frames = min(total_frames, valid_end_frame + 1)
     if frame_limit is None or frame_limit >= total_frames:
-        frame_indices = np.arange(total_frames)
+        frame_indices = np.arange(display_total_frames)
     else:
-        span_start = int(program["start_frame"])
-        span_end = int(program["end_frame"])
-        span_center = 0.5 * (span_start + span_end)
-        half = frame_limit // 2
-        window_start = int(round(span_center)) - half
-        window_start = max(0, min(window_start, total_frames - frame_limit))
-        frame_indices = np.arange(window_start, window_start + frame_limit)
+        frame_indices = np.arange(min(frame_limit, display_total_frames))
     num_frames = len(frame_indices)
 
-    source_joints = _compute_joints(source_pose[frame_indices], source_trans[frame_indices], betas[:1], smplh_model_path)
-    target_masked_pose = np.repeat(source_pose[:1], total_frames, axis=0)
-    target_masked_pose[:] = source_pose[:1]
-    target_joint_ids = BODY_PART_TO_JOINTS.get(program["part"], [])
-    span_start = int(program["start_frame"])
-    span_end = int(program["end_frame"])
-    target_masked_pose[span_start:span_end + 1, target_joint_ids] = target_pose[span_start:span_end + 1, target_joint_ids]
-    target_masked_trans = np.repeat(source_trans[:1], total_frames, axis=0)
+    source_display_pose, source_display_trans = _build_prefix_locked_display_motion(
+        prefix_pose=source_pose,
+        future_pose=np.repeat(source_pose[prefix_frames - 1 : prefix_frames], total_frames, axis=0),
+        reference_trans=target_trans,
+        prefix_frames=prefix_frames,
+    )
+    source_joints = _compute_joints(source_display_pose[frame_indices], source_display_trans[frame_indices], betas[:1], None)
+    if is_edit_task:
+        target_masked_pose = source_pose.copy()
+        target_joint_ids = BODY_PART_TO_JOINTS.get(program["part"], [])
+        span_start = int(program["start_frame"])
+        span_end = int(program["end_frame"])
+        target_masked_pose[span_start:span_end + 1, target_joint_ids] = target_pose[span_start:span_end + 1, target_joint_ids]
+        target_masked_trans = target_trans.copy()
+        gt_title = "GT Prompt-Scoped Motion"
+    else:
+        target_masked_pose = target_pose.copy()
+        target_masked_trans = target_trans.copy()
+        gt_title = "GT Full Motion"
 
-    target_joints = _compute_joints(target_masked_pose[frame_indices], target_masked_trans[frame_indices], betas[:1], smplh_model_path)
-    pred_joints = _compute_joints(pred_pose[frame_indices], target_masked_trans[frame_indices], betas[:1], smplh_model_path)
+    target_joints = _compute_joints(target_masked_pose[frame_indices], target_masked_trans[frame_indices], betas[:1], None)
+    pred_display_pose, pred_display_trans = _build_prefix_locked_display_motion(
+        prefix_pose=source_pose,
+        future_pose=pred_pose,
+        reference_trans=target_trans,
+        prefix_frames=prefix_frames,
+    )
+    pred_joints = _compute_joints(pred_display_pose[frame_indices], pred_display_trans[frame_indices], betas[:1], None)
 
     all_points = np.concatenate([source_joints, target_joints, pred_joints], axis=0)
     all_proj = _project_points(all_points)
@@ -210,6 +254,7 @@ def export_case_gif(
     right_box = (1210, 40, 1570, 400)
     font_title = _load_font(24)
     font_body = _load_font(18)
+    font_small = _load_font(13)
 
     frames = []
     for frame_idx in range(num_frames):
@@ -220,22 +265,27 @@ def export_case_gif(
         draw.rounded_rectangle(gt_box, radius=16, outline=(210, 210, 220), width=2, fill=(255, 255, 255))
         draw.rounded_rectangle(right_box, radius=16, outline=(210, 210, 220), width=2, fill=(255, 255, 255))
 
-        draw.text((40, 10), "Source Pose", fill=(20, 20, 20), font=font_title)
-        draw.text((450, 10), "Prompt", fill=(20, 20, 20), font=font_title)
-        draw.text((835, 10), "GT Prompt-Scoped Motion", fill=(20, 20, 20), font=font_title)
+        source_title = "Source Prefix Motion" if prefix_frames > 1 else "Source Pose"
+        draw.text((40, 10), source_title, fill=(20, 20, 20), font=font_title)
+        draw.text((450, 10), "EditProgram", fill=(20, 20, 20), font=font_title)
+        draw.text((835, 10), gt_title, fill=(20, 20, 20), font=font_title)
         draw.text((1230, 10), "Predicted Target Motion", fill=(20, 20, 20), font=font_title)
 
-        highlight_joints = set(BODY_PART_TO_JOINTS.get(program["part"], []))
-        highlight_edges = _part_edge_indices(program["part"])
+        has_part = "part" in program
+        highlight_joints = set(BODY_PART_TO_JOINTS.get(program.get("part", ""), [])) if has_part else set()
+        highlight_edges = _part_edge_indices(program["part"]) if has_part else set()
 
         source_panel = source_proj[frame_idx].copy()
         source_panel[:, 0] = source_panel[:, 0] - 180 + (left_box[0] + left_box[2]) / 2.0
         source_panel[:, 1] = source_panel[:, 1] - 180 + (left_box[1] + left_box[3]) / 2.0
+        in_prefix = frame_indices[frame_idx] < prefix_frames
+        source_base = (180, 184, 195) if in_prefix else (220, 223, 230)
+        source_highlight = (55, 100, 230) if in_prefix else (150, 168, 215)
         _draw_skeleton(
             draw,
             source_panel,
-            base_color=(180, 184, 195),
-            highlight_color=(55, 100, 230),
+            base_color=source_base,
+            highlight_color=source_highlight,
             highlight_joints=highlight_joints,
             highlight_edges=highlight_edges,
         )
@@ -264,24 +314,65 @@ def export_case_gif(
             highlight_edges=highlight_edges,
         )
 
-        text_lines = _wrap_text(draw, prompt_text, font_body, max_width=(mid_box[2] - mid_box[0] - 40))
-        y = mid_box[1] + 30
-        for line in text_lines:
-            draw.text((mid_box[0] + 20, y), line, fill=(30, 30, 35), font=font_body)
-            y += 28
-        info_lines = [
-            f"part={program['part']}",
-            f"attr={program['attribute']}",
-            f"delta={float(program.get('delta_value_deg') or 0.0):+.1f} deg",
-            f"span={program['start_frame']}-{program['end_frame']}",
-            f"skill={program.get('skill_label', 'unknown')}",
-            f"shown_frames={int(frame_indices[0])}-{int(frame_indices[-1])}",
-        ]
-        y_info = mid_box[1] + 170
-        for line in info_lines:
-            draw.text((mid_box[0] + 20, y_info), line, fill=(80, 80, 90), font=font_body)
-            y_info += 24
-        draw.text((mid_box[0] + 20, mid_box[3] - 50), f"frame {int(frame_indices[frame_idx]) + 1}/{total_frames}", fill=(80, 80, 90), font=font_body)
+        if is_edit_task:
+            info_lines = [
+                f"task: edit_task",
+                f"part: {program['part']}",
+                f"attribute: {program['attribute']}",
+                f"direction: {program.get('direction', '-')}",
+                f"delta_deg: {float(program.get('delta_value_deg') or 0.0):+.1f}",
+                f"start: {int(program.get('start_frame', -1))}",
+                f"end: {int(program.get('end_frame', -1))}",
+                f"shown_frames: {int(frame_indices[0])}-{int(frame_indices[-1])}",
+            ]
+        elif task_mode == "semantic_continue":
+            info_lines = [
+                f"task: {task_mode}",
+                f"part: {program['part']}",
+                f"attribute: {program['attribute']}",
+                f"direction: {program.get('direction', '-')}",
+                f"delta_deg: {float(program.get('delta_value_deg') or 0.0):+.1f}",
+                f"start: {int(program.get('start_frame', -1))}",
+                f"end: {int(program.get('end_frame', -1))}",
+                f"prefix_frames: {int(program.get('source_prefix_frames', 0))}",
+                f"shown_frames: {int(frame_indices[0])}-{int(frame_indices[-1])}",
+            ]
+        else:
+            if 'edits' in program:
+                info_lines = [
+                    f"task: {program.get('task_mode', 'multi_atomic_realize')}",
+                    f"num_edits: {len(program.get('edits', []))}",
+                    f"prefix_frames: {int(program.get('source_prefix_frames', 0))}",
+                ]
+                for i, edit in enumerate(program.get('edits', [])[:3], start=1):
+                    info_lines.extend([
+                        f"edit{i}.part: {edit.get('part', '-')}",
+                        f"edit{i}.attribute: {edit.get('attribute', '-')}",
+                        f"edit{i}.direction: {edit.get('direction', '-')}",
+                        f"edit{i}.delta_deg: {float(edit.get('delta_value_deg') or 0.0):+.1f}",
+                        f"edit{i}.span: {int(edit.get('start_frame', -1))}-{int(edit.get('end_frame', -1))}",
+                    ])
+            else:
+                info_lines = [
+                    f"task: {program.get('task_mode', 'continue')}",
+                    f"part: {program.get('part', '-')}",
+                    f"attribute: {program.get('attribute', '-')}",
+                    f"direction: {program.get('direction', '-')}",
+                    f"delta_deg: {float(program.get('delta_value_deg') or 0.0):+.1f}",
+                    f"start: {int(program.get('start_frame', -1))}",
+                    f"end: {int(program.get('end_frame', -1))}",
+                    f"prefix_frames: {int(program.get('source_prefix_frames', 0))}",
+                ]
+        y_info = mid_box[1] + 30
+        for line in info_lines[:12]:
+            draw.text((mid_box[0] + 20, y_info), line, fill=(55, 55, 65), font=font_body)
+            y_info += 22
+        prompt_lines = _wrap_text(draw, f"prompt: {prompt_text}", font_small, max_width=(mid_box[2] - mid_box[0] - 40))
+        y_prog = min(y_info + 8, mid_box[3] - 92)
+        for line in prompt_lines[:3]:
+            draw.text((mid_box[0] + 20, y_prog), line, fill=(95, 95, 105), font=font_small)
+            y_prog += 16
+        draw.text((mid_box[0] + 20, mid_box[3] - 50), f"frame {int(frame_indices[frame_idx]) + 1}/{display_total_frames}", fill=(80, 80, 90), font=font_body)
         draw.text((mid_box[0] + 20, mid_box[3] - 25), f"case {case_result['case_idx']}", fill=(80, 80, 90), font=font_body)
 
         frames.append(img)

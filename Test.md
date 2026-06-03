@@ -19,6 +19,7 @@ It covers:
 - text-conditioned motion editing smoke training
 - inference and GIF visualization
 - CMU train/test split workflow
+- Stage 1 prefix continuation training path
 
 It does not claim that the full dataset pipeline has been executed end to end. The full commands are included below, but the verified runs here were smoke-scale runs.
 
@@ -397,6 +398,114 @@ Held-out visualization output already exported:
 - `outputs/HumanML3D-CMU-test/vis_program_goal_clean_heldout`
 - `outputs/HumanML3D-CMU-test/vis_program_startpose_goal_clean_heldout`
 - `outputs/HumanML3D-CMU-test/vis_program_startpose_goal_clean_salient_smoke`
+
+## Stage 1 prefix continuation
+
+Current Stage 1 training objective:
+
+- same-clip prefix -> future continuation
+
+Main config:
+
+- `configs/stage1_prefix_cmu_train_continue.yaml`
+
+Smoke training:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+cp configs/stage1_prefix_cmu_train_continue.yaml /tmp/pseudoedit_stage1_prefix_continue_smoke.yaml
+```
+
+Then set:
+
+- `max_clips: 16`
+- `batch_size: 4`
+- `epochs: 1`
+- `save_dir: /mnt/data/home/guoruoxi/code/PseudoEdit3D/outputs/stage1_prefix_continue_smoke`
+
+Run:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python train.py \
+  --config /tmp/pseudoedit_stage1_prefix_continue_smoke.yaml
+```
+
+Observed result:
+
+- `epoch=0 loss=0.675221`
+
+Smoke visualization:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/infer_and_visualize.py \
+  --config /tmp/pseudoedit_stage1_prefix_continue_smoke.yaml \
+  --checkpoint outputs/stage1_prefix_continue_smoke/stage1_last.pt \
+  --manifest artifacts/jsonl/HumanML3D-CMU-test/scan/manifest_full.jsonl \
+  --output-dir outputs/stage1_prefix_continue_vis_smoke \
+  --num-cases 1 \
+  --frame-limit 20
+```
+
+Observed result:
+
+- `outputs/stage1_prefix_continue_vis_smoke/case_0000.gif`
+- `outputs/stage1_prefix_continue_vis_smoke/summary.jsonl`
+
+## Stage 1 semantic continuation
+
+Current Stage 1 semantic-continuation objective:
+
+- same-clip prefix + semantic continuation prompt -> future continuation
+
+Main config:
+
+- `configs/stage1_prefix_cmu_train_semantic_continue.yaml`
+
+Full training command:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+CUDA_VISIBLE_DEVICES=1 /mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python train.py \
+  --config configs/stage1_prefix_cmu_train_semantic_continue.yaml
+```
+
+Observed full training result:
+
+- output dir:
+  - `outputs/HumanML3D-CMU-train/stage1_prefix_semantic_continue`
+- checkpoint:
+  - `outputs/HumanML3D-CMU-train/stage1_prefix_semantic_continue/stage1_last.pt`
+- epochs:
+  - `epoch=0 loss=0.384225`
+  - `epoch=1 loss=0.218774`
+  - `epoch=2 loss=0.168395`
+  - `epoch=3 loss=0.145855`
+  - `epoch=4 loss=0.135401`
+
+Held-out visualization:
+
+```bash
+cd /mnt/data/home/guoruoxi/code/PseudoEdit3D
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/infer_and_visualize.py \
+  --config configs/stage1_prefix_cmu_train_semantic_continue.yaml \
+  --checkpoint outputs/HumanML3D-CMU-train/stage1_prefix_semantic_continue/stage1_last.pt \
+  --manifest artifacts/jsonl/HumanML3D-CMU-test/scan/manifest_full.jsonl \
+  --output-dir outputs/HumanML3D-CMU-test/vis_stage1_prefix_semantic_continue_heldout \
+  --num-cases 8 \
+  --frame-limit 24
+```
+
+Observed result:
+
+- `outputs/HumanML3D-CMU-test/vis_stage1_prefix_semantic_continue_heldout`
+- `summary.jsonl` plus 8 GIFs
+
+Example prompt patterns:
+
+- `continue the ongoing arm motion and raise the left arm significantly late in the motion`
+- `continue the ongoing arm motion and lift the right arm by 72.5 degrees during the middle of the motion`
+- `continue the ongoing arm motion and curl the right arm by 78.1 degrees during the middle of the motion`
 
 ## Known limitations at this stage
 

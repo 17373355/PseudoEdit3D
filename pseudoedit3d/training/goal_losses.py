@@ -23,8 +23,10 @@ def compute_goal_satisfaction_losses(
     source_pose = source_pose.view(source_pose.shape[0], source_pose.shape[1], -1, 3)
     pred_pose = pred_pose.view(pred_pose.shape[0], pred_pose.shape[1], -1, 3)
 
-    source_attrs = stack_proxy_attributes_torch(extract_upper_body_proxy_attributes_torch(source_pose))
-    pred_attrs = stack_proxy_attributes_torch(extract_upper_body_proxy_attributes_torch(pred_pose))
+    source_trans = torch.zeros((source_pose.shape[0], source_pose.shape[1], 3), device=source_pose.device, dtype=source_pose.dtype)
+    pred_trans = torch.zeros((pred_pose.shape[0], pred_pose.shape[1], 3), device=pred_pose.device, dtype=pred_pose.dtype)
+    source_attrs = stack_proxy_attributes_torch(extract_upper_body_proxy_attributes_torch(source_pose, trans=source_trans))
+    pred_attrs = stack_proxy_attributes_torch(extract_upper_body_proxy_attributes_torch(pred_pose, trans=pred_trans))
 
     goal_attr_idx = batch["goal_attr_idx"].long().to(pred_pose.device)
     goal_operator_idx = batch["goal_operator_idx"].long().to(pred_pose.device)
