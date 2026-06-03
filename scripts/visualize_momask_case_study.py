@@ -37,6 +37,22 @@ def _load_np(path: Path) -> np.ndarray:
     return np.asarray(np.load(path), dtype=np.float32)
 
 
+def _find_joint_file(base_dir: Path) -> Path:
+    matches = sorted([p for p in base_dir.glob('sample0_repeat0_len*.npy') if '_ik' not in p.name])
+    if not matches:
+        raise FileNotFoundError(f'No joint file found in {base_dir}')
+    return matches[0]
+
+
+def _pad_to_length(arr: np.ndarray, target_len: int) -> np.ndarray:
+    if len(arr) >= target_len:
+        return arr[:target_len]
+    if len(arr) == 0:
+        raise ValueError('Cannot pad empty array')
+    pad = np.repeat(arr[-1:], target_len - len(arr), axis=0)
+    return np.concatenate([arr, pad], axis=0)
+
+
 def _load_gt_joints(case_id: str) -> np.ndarray:
     data = torch.load(HML_ROOT / "joints3d.pth", map_location="cpu")
     item = data[f"{case_id}.npy"]
@@ -84,12 +100,12 @@ def render_case(case: dict, output_path: Path, fps: int = 12) -> None:
     program = case["program"]
     raw_prompt_segments = case.get("raw_prompt_segments", [])
 
-    gt_joints = _load_gt_joints(case_id)[:60]
-    gt_pred = _load_np(MOMASK_ROOT / "generation" / case["gt_ext"] / "joints" / "0" / "sample0_repeat0_len60.npy")
-    auto_pred = _load_np(MOMASK_ROOT / "generation" / case["auto_ext"] / "joints" / "0" / "sample0_repeat0_len60.npy")
-    gt_joints = gt_joints[: min(len(gt_joints), len(gt_pred), len(auto_pred))]
-    gt_pred = gt_pred[: len(gt_joints)]
-    auto_pred = auto_pred[: len(gt_joints)]
+    source_num_frames = int(case.get('source_num_frames', 60))
+    gt_joints = _load_gt_joints(case_id)[:source_num_frames]
+    gt_pred = _load_np(_find_joint_file(MOMASK_ROOT / "generation" / case["gt_ext"] / "joints" / "0"))
+    auto_pred = _load_np(_find_joint_file(MOMASK_ROOT / "generation" / case["auto_ext"] / "joints" / "0"))
+    gt_pred = _pad_to_length(gt_pred, source_num_frames)
+    auto_pred = _pad_to_length(auto_pred, source_num_frames)
 
     gt_proj, gtpred_proj, autopred_proj = _normalize_panel([gt_joints, gt_pred, auto_pred])
 
@@ -149,10 +165,10 @@ def render_case(case: dict, output_path: Path, fps: int = 12) -> None:
         gt_prompt_lines = _wrap_text(draw, f"selected_hml3d_prompt: {gt_prompt}", font_prompt, max_width=(mid_box[2] - mid_box[0] - 40))
         auto_prompt_lines = _wrap_text(draw, f"auto_prompt: {auto_prompt}", font_prompt, max_width=(mid_box[2] - mid_box[0] - 40))
         for line in gt_prompt_lines[:3]:
-            draw.text((mid_box[0] + 20, y), line, fill=(95, 95, 105), font=font_prompt)
+            draw.text((mid_box[0] + 20, y), line, fill=(70, 120, 220), font=font_prompt)
             y += 18
         for line in auto_prompt_lines[:4]:
-            draw.text((mid_box[0] + 20, y), line, fill=(95, 95, 105), font=font_prompt)
+            draw.text((mid_box[0] + 20, y), line, fill=(190, 120, 40), font=font_prompt)
             y += 18
         if raw_prompt_segments:
             raw_text = "raw_prompts: " + " | ".join(seg[0] for seg in raw_prompt_segments[:3])

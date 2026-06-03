@@ -69,6 +69,9 @@ def main():
         if case_id in resolved:
             continue
         prompts = mod.read_all_prompts(case_id)
+        joints = mod.load_joints3d(case_id)
+        if len(joints) <= 20:
+            continue
         prior = mod.build_caption_prior(case_id)
         cats = classify_case(prior, prompts)
         if not cats:
@@ -119,6 +122,7 @@ def main():
             if len(selected) >= args.batch_size:
                 break
 
+    selected = [item for item in selected if item['case_id'] not in resolved]
     selected = selected[:args.batch_size]
     OUT_ROOT.mkdir(parents=True, exist_ok=True)
     manifest_path = OUT_ROOT / f'batch_{args.batch_id}_manifest.jsonl'

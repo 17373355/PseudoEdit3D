@@ -35,7 +35,7 @@ wandb/
 *.pth
 *.ckpt
 *.log
-
+*.pdf
 # Local generated manifests and mining artifacts
 data_manifest*.jsonl
 attribute_cache*.jsonl

@@ -193,9 +193,48 @@ def root_step_speed(joints: np.ndarray) -> np.ndarray:
     return np.linalg.norm(step, axis=-1)
 
 
+def pelvis_to_ankle_height(joints: np.ndarray) -> np.ndarray:
+    ankles = 0.5 * (joints[:, 7, 1] + joints[:, 8, 1])
+    pelvis = joints[:, 0, 1]
+    return pelvis - ankles
+
+
+def torso_bend_drop_signal(joints: np.ndarray) -> np.ndarray:
+    pelvis_y = joints[:, 0, 1]
+    neck_rel = joints[:, 12, 1] - pelvis_y
+    head_rel = joints[:, 15, 1] - pelvis_y
+    shoulder_rel = 0.5 * (joints[:, 16, 1] + joints[:, 17, 1]) - pelvis_y
+    return (neck_rel + head_rel + shoulder_rel) / 3.0
+
+
+def torso_forward_extent(joints: np.ndarray) -> np.ndarray:
+    pelvis_xz = joints[:, 0][:, [0, 2]]
+    neck_xz = np.linalg.norm(joints[:, 12][:, [0, 2]] - pelvis_xz, axis=-1)
+    head_xz = np.linalg.norm(joints[:, 15][:, [0, 2]] - pelvis_xz, axis=-1)
+    shoulder_center = 0.5 * (joints[:, 16][:, [0, 2]] + joints[:, 17][:, [0, 2]])
+    shoulder_xz = np.linalg.norm(shoulder_center - pelvis_xz, axis=-1)
+    return (neck_xz + head_xz + shoulder_xz) / 3.0
+
+
+def left_arm_raise_deg(joints: np.ndarray) -> np.ndarray:
+    return (joints[:, 20, 1] - joints[:, 16, 1]) * 180.0
+
+
+def right_arm_raise_deg(joints: np.ndarray) -> np.ndarray:
+    return (joints[:, 21, 1] - joints[:, 17, 1]) * 180.0
+
+
+def left_elbow_lift_deg(joints: np.ndarray) -> np.ndarray:
+    return (joints[:, 18, 1] - joints[:, 16, 1]) * 180.0
+
+
+def right_elbow_lift_deg(joints: np.ndarray) -> np.ndarray:
+    return (joints[:, 19, 1] - joints[:, 17, 1]) * 180.0
+
+
 def both_arm_raise_deg(joints: np.ndarray) -> np.ndarray:
-    left_raise = (joints[:, 20, 1] - joints[:, 16, 1]) * 180.0
-    right_raise = (joints[:, 21, 1] - joints[:, 17, 1]) * 180.0
+    left_raise = left_arm_raise_deg(joints)
+    right_raise = right_arm_raise_deg(joints)
     return np.minimum(left_raise, right_raise)
 
 
@@ -218,6 +257,48 @@ def find_repeated_height_peaks(values: np.ndarray, source_value: float, start_fr
             peaks.append((start_frame + i, delta))
             last_peak = i
     return peaks
+
+
+def find_repeated_height_valleys(values: np.ndarray, source_value: float, start_frame: int, min_drop: float = 0.03, min_gap: int = 3) -> list[tuple[int, float]]:
+    valleys: list[tuple[int, float]] = []
+    future = values[start_frame:]
+    last_valley = -min_gap
+    for i in range(1, len(future) - 1):
+        delta = float(source_value - future[i])
+        if delta < min_drop:
+            continue
+        if future[i] < future[i - 1] and future[i] <= future[i + 1] and (i - last_valley) >= min_gap:
+            valleys.append((start_frame + i, delta))
+            last_valley = i
+    return valleys
+
+
+def find_repeated_signal_peaks(values: np.ndarray, source_value: float, start_frame: int, min_peak: float, min_gap: int = 3) -> list[tuple[int, float]]:
+    peaks: list[tuple[int, float]] = []
+    future = values[start_frame:]
+    last_peak = -min_gap
+    for i in range(1, len(future) - 1):
+        delta = float(future[i] - source_value)
+        if delta < min_peak:
+            continue
+        if future[i] > future[i - 1] and future[i] >= future[i + 1] and (i - last_peak) >= min_gap:
+            peaks.append((start_frame + i, delta))
+            last_peak = i
+    return peaks
+
+
+def find_repeated_signal_valleys(values: np.ndarray, source_value: float, start_frame: int, min_drop: float, min_gap: int = 3) -> list[tuple[int, float]]:
+    valleys: list[tuple[int, float]] = []
+    future = values[start_frame:]
+    last_valley = -min_gap
+    for i in range(1, len(future) - 1):
+        delta = float(source_value - future[i])
+        if delta < min_drop:
+            continue
+        if future[i] < future[i - 1] and future[i] <= future[i + 1] and (i - last_valley) >= min_gap:
+            valleys.append((start_frame + i, delta))
+            last_valley = i
+    return valleys
 
 
 def _format_turn(delta: float) -> str:
@@ -244,12 +325,26 @@ def _edit_clause(edit: dict) -> str:
         return 'jumps upward'
     if attr == 'bounce_repeated':
         return 'jumps up and down repeatedly in place'
+    if attr == 'hop_repeated':
+        return 'hops repeatedly in place'
+    if attr == 'crouch_repeated':
+        return 'repeatedly squats down and stands back up'
     if attr == 'crouch_bend':
         return 'squats down and rises back up'
+    if attr == 'torso_bend_forward':
+        return 'bends forward at the waist'
     if attr == 'stop_pause':
         return 'comes to a stop'
     if attr == 'raise':
         return 'raises both arms'
+    if attr == 'arm_updown_repeated':
+        return 'moves both arms up and down repeatedly'
+    if attr == 'elbow_flap_repeated':
+        return 'flaps both elbows up and down near the chest'
+    if attr == 'left_arm_updown':
+        return 'moves the left arm up and down'
+    if attr == 'right_arm_updown':
+        return 'moves the right arm up and down'
     if attr == 'land':
         return 'lands back down'
     if attr == 'lean_forward':
@@ -263,6 +358,27 @@ def naturalize_auto_prompt(prompts: list[str], edits: list[dict]) -> str:
     del prompts
     attrs = [edit.get('attribute', '') for edit in edits]
     attr_set = set(attrs)
+
+    if 'hop_repeated' in attr_set:
+        return 'a person hops repeatedly in place'
+
+    if 'crouch_repeated' in attr_set:
+        return 'a person repeatedly squats down and stands back up'
+
+    if 'torso_bend_forward' in attr_set:
+        return 'a person bends forward repeatedly at the waist'
+
+    if 'arm_updown_repeated' in attr_set:
+        return 'a person moves both arms up and down repeatedly'
+
+    if 'elbow_flap_repeated' in attr_set:
+        return 'a person flaps both elbows up and down near the chest'
+
+    if 'left_arm_updown' in attr_set:
+        return 'a person moves the left arm up and down'
+
+    if 'right_arm_updown' in attr_set:
+        return 'a person moves the right arm up and down'
 
     if 'bounce_repeated' in attr_set:
         return 'a person is jumping up and down repeatedly in place'
@@ -294,6 +410,83 @@ def naturalize_auto_prompt(prompts: list[str], edits: list[dict]) -> str:
     return 'a person ' + ', then '.join([clauses[0], *clauses[1:]])
 
 
+def _event_unit(attr: str) -> str:
+    if attr in {'turn_left', 'turn_right'}:
+        return 'deg'
+    if attr in {'walk_forward', 'walk_backward', 'stair_descent', 'stair_ascent', 'jump_up', 'land', 'crouch_bend', 'crouch_repeated', 'bounce_repeated'}:
+        return 'm'
+    if attr == 'stop_pause':
+        return 'frame'
+    if attr == 'torso_bend_forward':
+        return 'm'
+    if attr in {'arm_updown_repeated', 'elbow_flap_repeated', 'left_arm_updown', 'right_arm_updown'}:
+        return 'deg'
+    return 'unknown'
+
+
+def _event_direction(attr: str, delta: float) -> str:
+    if attr in {'turn_left', 'turn_right'}:
+        return 'left' if delta >= 0 else 'right'
+    if attr == 'walk_forward':
+        return 'forward'
+    if attr == 'walk_backward':
+        return 'backward'
+    if attr == 'stair_descent' or attr == 'land':
+        return 'down'
+    if attr == 'stair_ascent' or attr == 'jump_up':
+        return 'up'
+    if attr.startswith('crouch'):
+        return 'lower'
+    if attr == 'torso_bend_forward':
+        return 'forward_down'
+    if attr == 'hop_repeated':
+        return 'up_down'
+    if attr == 'bounce_repeated':
+        return 'up_down'
+    if attr == 'raise':
+        return 'up'
+    if attr in {'arm_updown_repeated', 'elbow_flap_repeated', 'left_arm_updown', 'right_arm_updown'}:
+        return 'up_down'
+    if attr == 'stop_pause':
+        return 'stop'
+    return 'unknown'
+
+
+def _event_confidence(edit: dict) -> float:
+    attr = edit.get('attribute', '')
+    delta = abs(float(edit.get('delta_value_deg') or 0.0))
+    if attr in {'turn_left', 'turn_right'}:
+        return min(1.0, delta / 180.0)
+    if attr in {'walk_forward', 'walk_backward'}:
+        return min(1.0, delta / 2.0)
+    if attr in {'stair_descent', 'stair_ascent', 'jump_up', 'land', 'crouch_bend', 'crouch_repeated', 'bounce_repeated', 'hop_repeated', 'torso_bend_forward'}:
+        return min(1.0, delta / 0.3)
+    if attr == 'raise':
+        return min(1.0, delta / 90.0)
+    if attr == 'stop_pause':
+        return 0.75
+    return 0.5
+
+
+def build_auto_program(edits: list[dict]) -> dict:
+    events = []
+    for edit in edits:
+        attr = edit.get('attribute', '')
+        delta = float(edit.get('delta_value_deg') or 0.0)
+        events.append({
+            'type': attr,
+            'part': edit.get('part', 'whole_body'),
+            'direction': _event_direction(attr, delta),
+            'magnitude': abs(delta),
+            'unit': _event_unit(attr),
+            'count': int(edit.get('count', 1)),
+            'start_frame': int(edit.get('start_frame', -1)),
+            'end_frame': int(edit.get('end_frame', -1)),
+            'confidence': round(_event_confidence(edit), 3),
+        })
+    return {'events': events}
+
+
 def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
     joints = load_joints3d(case_id)
     setup_momask_preprocess(joints)
@@ -312,9 +505,39 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
     fwd_source = float(fwd[min(prefix_frames - 1, len(fwd) - 1)])
     fwd_future = fwd[prefix_frames:]
     step_speed = root_step_speed(joints)
+    p2a = pelvis_to_ankle_height(joints)
+    p2a_source = float(p2a[min(prefix_frames - 1, len(p2a) - 1)])
+    p2a_future = p2a[prefix_frames:]
+    torso_bend = torso_bend_drop_signal(joints)
+    torso_bend_source = float(torso_bend[min(prefix_frames - 1, len(torso_bend) - 1)])
+    torso_bend_future = torso_bend[prefix_frames:]
+    torso_xz = torso_forward_extent(joints)
+    torso_xz_source = float(torso_xz[min(prefix_frames - 1, len(torso_xz) - 1)])
+    torso_xz_future = torso_xz[prefix_frames:]
+    left_arm = left_arm_raise_deg(joints)
+    right_arm = right_arm_raise_deg(joints)
+    left_elbow = left_elbow_lift_deg(joints)
+    right_elbow = right_elbow_lift_deg(joints)
+    chest = 0.5 * (joints[:, 16] + joints[:, 17])
+    left_wrist_chest = np.linalg.norm(joints[:, 20] - chest, axis=-1)
+    right_wrist_chest = np.linalg.norm(joints[:, 21] - chest, axis=-1)
     arm = both_arm_raise_deg(joints)
     a_source = float(arm[min(prefix_frames - 1, len(arm) - 1)])
     a_future = arm[prefix_frames:]
+    left_source = float(left_arm[min(prefix_frames - 1, len(left_arm) - 1)])
+    right_source = float(right_arm[min(prefix_frames - 1, len(right_arm) - 1)])
+    left_elbow_source = float(left_elbow[min(prefix_frames - 1, len(left_elbow) - 1)])
+    right_elbow_source = float(right_elbow[min(prefix_frames - 1, len(right_elbow) - 1)])
+    arm_peaks = find_repeated_signal_peaks(arm, a_source, prefix_frames, min_peak=20.0)
+    arm_valleys = find_repeated_signal_valleys(arm, a_source, prefix_frames, min_drop=20.0)
+    left_peaks = find_repeated_signal_peaks(left_arm, left_source, prefix_frames, min_peak=20.0)
+    left_valleys = find_repeated_signal_valleys(left_arm, left_source, prefix_frames, min_drop=20.0)
+    right_peaks = find_repeated_signal_peaks(right_arm, right_source, prefix_frames, min_peak=20.0)
+    right_valleys = find_repeated_signal_valleys(right_arm, right_source, prefix_frames, min_drop=20.0)
+    left_elbow_peaks = find_repeated_signal_peaks(left_elbow, left_elbow_source, prefix_frames, min_peak=8.0)
+    left_elbow_valleys = find_repeated_signal_valleys(left_elbow, left_elbow_source, prefix_frames, min_drop=8.0)
+    right_elbow_peaks = find_repeated_signal_peaks(right_elbow, right_elbow_source, prefix_frames, min_peak=8.0)
+    right_elbow_valleys = find_repeated_signal_valleys(right_elbow, right_elbow_source, prefix_frames, min_drop=8.0)
 
     prompts = []
     edits = []
@@ -345,6 +568,7 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
         backward_delta = float(np.min(fwd_future) - fwd_source)
         total_drop = float(np.min(h_future) - h_source)
         total_rise = float(np.max(h_future) - h_source)
+        compression_drop = float(p2a_source - np.min(p2a_future)) if len(p2a_future) > 0 else 0.0
         walk_thr = 0.45
         stair_thr = 0.18
         ascent_thr = 0.18
@@ -354,14 +578,7 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
             ed = min(len(fwd) - 1, prefix_frames + max(peak_idx, 8))
             prompts.append(f'whole_body walk_forward by {forward_delta:.2f} meters from frame {st} to {ed}')
             edits.append({'part': 'whole_body', 'attribute': 'walk_forward', 'delta_value_deg': forward_delta, 'start_frame': st, 'end_frame': ed})
-            tail = step_speed[min(len(step_speed) - 1, prefix_frames + peak_idx + 1):]
-            peak_speed = float(np.max(step_speed[prefix_frames:])) if len(step_speed) > prefix_frames else 0.0
-            if len(tail) >= 4 and float(np.mean(tail[-min(8, len(tail)):])) <= 0.02 and peak_speed >= 0.04:
-                stop_st = min(len(step_speed) - 1, prefix_frames + peak_idx + 1)
-                stop_ed = min(len(step_speed) - 1, stop_st + max(4, min(12, len(tail))))
-                prompts.append(f'whole_body stop_pause from frame {stop_st} to {stop_ed}')
-                edits.append({'part': 'whole_body', 'attribute': 'stop_pause', 'delta_value_deg': 0.0, 'start_frame': stop_st, 'end_frame': stop_ed})
-            if total_drop <= -stair_thr:
+            if total_drop <= -stair_thr and compression_drop < 0.08:
                 stair_detected = True
                 stair_idx = int(np.argmin(h_future))
                 stair_st = min(st, prefix_frames + max(0, stair_idx - 6))
@@ -382,21 +599,52 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
             prompts.append(f'whole_body walk_backward by {abs(backward_delta):.2f} meters from frame {st} to {ed}')
             edits.append({'part': 'whole_body', 'attribute': 'walk_backward', 'delta_value_deg': backward_delta, 'start_frame': st, 'end_frame': ed})
 
+    if not (stair_detected or stair_ascent_detected) and any(edit.get('attribute') in {'walk_forward', 'walk_backward'} for edit in edits):
+        tail_len = min(12, len(step_speed) - prefix_frames)
+        if tail_len >= 4:
+            tail = step_speed[-tail_len:]
+            body = step_speed[prefix_frames:-tail_len] if len(step_speed) > prefix_frames + tail_len else step_speed[prefix_frames:]
+            body_peak = float(np.max(body)) if len(body) > 0 else 0.0
+            tail_mean = float(np.mean(tail))
+            if tail_mean <= 0.02 and body_peak >= 0.03:
+                stop_st = len(step_speed) - tail_len
+                stop_ed = len(step_speed) - 1
+                if not any(edit.get('attribute') == 'stop_pause' for edit in edits):
+                    prompts.append(f'whole_body stop_pause from frame {stop_st} to {stop_ed}')
+                    edits.append({'part': 'whole_body', 'attribute': 'stop_pause', 'delta_value_deg': 0.0, 'start_frame': stop_st, 'end_frame': stop_ed})
+
     if len(h_future) > 0:
         max_idx = int(np.argmax(h_future))
         min_idx = int(np.argmin(h_future))
         max_delta = float(h_future[max_idx] - h_source)
         min_delta = float(h_future[min_idx] - h_source)
         repeated_peaks = find_repeated_height_peaks(height, h_source, prefix_frames)
+        repeated_valleys = find_repeated_height_valleys(height, h_source, prefix_frames)
         horizontal_range = max(abs(forward_delta), abs(backward_delta)) if len(fwd_future) > 0 else 0.0
         stationary_like = float(np.max(xz_future) - xz_source) <= 0.35
-        crouch_like = (horizontal_range <= 0.25) and (max_delta >= 0.12 or min_delta <= -0.12) and ((max_delta - min_delta) >= 0.18) and not (stair_detected or stair_ascent_detected)
-        if len(repeated_peaks) >= 3 and stationary_like and (not stair_detected):
+        torso_drop = float(torso_bend_source - np.min(torso_bend_future)) if len(torso_bend_future) > 0 else 0.0
+        torso_forward = float(np.max(torso_xz_future) - torso_xz_source) if len(torso_xz_future) > 0 else 0.0
+        torso_bend_like = torso_drop >= 0.12 and torso_forward <= 0.05 and horizontal_range <= 0.2 and not (stair_detected or stair_ascent_detected)
+        crouch_like = (horizontal_range <= 0.25 or compression_drop >= 0.12) and (max_delta >= 0.12 or min_delta <= -0.12 or compression_drop >= 0.12) and ((max_delta - min_delta) >= 0.18 or compression_drop >= 0.12) and not (stair_detected or stair_ascent_detected) and not torso_bend_like
+        if torso_bend_like:
+            st = first_cross(torso_bend, torso_bend_source, max(0.04, 0.2 * torso_drop), prefix_frames)
+            ed = min(len(torso_bend) - 1, prefix_frames + max(int(np.argmin(torso_bend_future)), 8))
+            prompts.append(f'whole_body torso_bend_forward from frame {st} to {ed}')
+            edits.append({'part': 'torso', 'attribute': 'torso_bend_forward', 'delta_value_deg': torso_drop, 'start_frame': st, 'end_frame': ed})
+        elif len(repeated_peaks) >= 3 and stationary_like and (not stair_detected):
             st = repeated_peaks[0][0]
             ed = repeated_peaks[-1][0]
             peak_height = max(delta for _, delta in repeated_peaks)
-            prompts.append(f'whole_body bounce_up_down repeated {len(repeated_peaks)} times from frame {st} to {ed}')
-            edits.append({'part': 'whole_body', 'attribute': 'bounce_repeated', 'delta_value_deg': peak_height, 'start_frame': st, 'end_frame': ed})
+            if len(repeated_valleys) >= 1 and abs(min_delta) >= 0.12:
+                if compression_drop >= 0.14:
+                    prompts.append(f'whole_body crouch_repeated from frame {st} to {ed}')
+                    edits.append({'part': 'whole_body', 'attribute': 'crouch_repeated', 'delta_value_deg': max(peak_height, abs(min_delta)), 'start_frame': st, 'end_frame': ed, 'count': len(repeated_peaks)})
+                else:
+                    prompts.append(f'whole_body hop_repeated from frame {st} to {ed}')
+                    edits.append({'part': 'whole_body', 'attribute': 'hop_repeated', 'delta_value_deg': peak_height, 'start_frame': st, 'end_frame': ed, 'count': len(repeated_peaks)})
+            else:
+                prompts.append(f'whole_body bounce_up_down repeated {len(repeated_peaks)} times from frame {st} to {ed}')
+                edits.append({'part': 'whole_body', 'attribute': 'bounce_repeated', 'delta_value_deg': peak_height, 'start_frame': st, 'end_frame': ed, 'count': len(repeated_peaks)})
         elif crouch_like:
             st = first_cross(height, h_source, max(0.05, 0.2 * max(abs(max_delta), abs(min_delta))), prefix_frames)
             ed = min(len(height) - 1, prefix_frames + max(max(max_idx, min_idx), 8))
@@ -417,7 +665,29 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
         peak_idx = int(np.argmax(a_future))
         delta = float(a_future[peak_idx] - a_source)
         arm_thr = 50.0
-        if abs(delta) >= arm_thr:
+        wrist_chest_mean = float(np.mean(np.concatenate([left_wrist_chest[prefix_frames:], right_wrist_chest[prefix_frames:]])))
+        elbow_peak_count = min(len(left_elbow_peaks), len(right_elbow_peaks))
+        if elbow_peak_count >= 4 and horizontal_range <= 0.2 and abs(delta) >= 40.0 and wrist_chest_mean <= 0.45:
+            st = min(left_elbow_peaks[0][0], right_elbow_peaks[0][0])
+            ed = max(left_elbow_peaks[-1][0], right_elbow_peaks[-1][0])
+            edits.append({'part': 'both_arms', 'attribute': 'elbow_flap_repeated', 'delta_value_deg': max(max(d for _, d in left_elbow_peaks), max(d for _, d in right_elbow_peaks)), 'start_frame': st, 'end_frame': ed, 'count': elbow_peak_count})
+            prompts.append(f'both_elbows up_down repeated {elbow_peak_count} times from frame {st} to {ed}')
+        elif len(left_peaks) >= 2 and len(right_peaks) >= 2 and len(left_valleys) >= 1 and len(right_valleys) >= 1 and horizontal_range <= 0.5:
+            st = min(left_peaks[0][0], right_peaks[0][0])
+            ed = max(left_peaks[-1][0], right_peaks[-1][0])
+            edits.append({'part': 'both_arms', 'attribute': 'arm_updown_repeated', 'delta_value_deg': max(max(d for _, d in left_peaks), max(d for _, d in right_peaks)), 'start_frame': st, 'end_frame': ed, 'count': min(len(left_peaks), len(right_peaks))})
+            prompts.append(f'both_arms up_down repeated {min(len(left_peaks), len(right_peaks))} times from frame {st} to {ed}')
+        elif len(left_peaks) >= 1 and len(left_valleys) >= 1 and max((d for _, d in left_peaks), default=0.0) >= 30.0:
+            st = min(left_peaks[0][0], left_valleys[0][0])
+            ed = max(left_peaks[-1][0], left_valleys[-1][0])
+            edits.append({'part': 'left_arm', 'attribute': 'left_arm_updown', 'delta_value_deg': max(d for _, d in left_peaks), 'start_frame': st, 'end_frame': ed, 'count': len(left_peaks)})
+            prompts.append(f'left_arm up_down from frame {st} to {ed}')
+        elif len(right_peaks) >= 1 and len(right_valleys) >= 1 and max((d for _, d in right_peaks), default=0.0) >= 30.0:
+            st = min(right_peaks[0][0], right_valleys[0][0])
+            ed = max(right_peaks[-1][0], right_valleys[-1][0])
+            edits.append({'part': 'right_arm', 'attribute': 'right_arm_updown', 'delta_value_deg': max(d for _, d in right_peaks), 'start_frame': st, 'end_frame': ed, 'count': len(right_peaks)})
+            prompts.append(f'right_arm up_down from frame {st} to {ed}')
+        elif abs(delta) >= arm_thr:
             st = first_cross(arm, a_source, 0.2 * abs(delta), prefix_frames)
             ed = min(len(arm) - 1, prefix_frames + max(peak_idx, 4))
             prompts.append(f'both_arms raise by {abs(delta):.1f} degrees from frame {st} to {ed}')
@@ -431,9 +701,11 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
         mask_start = prefix_frames
         mask_end = joints.shape[0] - 1
 
+    auto_program = build_auto_program(edits)
     return {
         'motion_263': motion_263.astype(np.float32),
         'program': {'task_mode': 'multi_atomic_realize', 'edits': edits, 'source_prefix_frames': prefix_frames},
+        'auto_program': auto_program,
         'auto_prompt': text_prompt,
         'mask_edit_section': f'{mask_start},{mask_end}',
         'source_num_frames': int(len(joints)),
@@ -441,7 +713,7 @@ def build_auto_prompt(case_id: str, prefix_frames: int) -> dict:
     }
 
 
-def run_gen(prompt: str, ext: str) -> None:
+def run_gen(prompt: str, ext: str, motion_length: int) -> int:
     cmd = [
         '/mnt/data/home/guoruoxi/miniconda3/envs/momask/bin/python',
         'gen_t2m.py',
@@ -450,13 +722,14 @@ def run_gen(prompt: str, ext: str) -> None:
         '--name', 't2m_nlayer8_nhead6_ld384_ff1024_cdp0.1_rvq6ns',
         '--res_name', 'tres_nlayer8_ld384_ff1024_rvq6ns_cdp0.2_sw',
         '--text_prompt', prompt,
-        '--motion_length', '60',
+        '--motion_length', str(motion_length),
         '--repeat_times', '1',
         '--time_steps', '10',
         '--cond_scale', '4',
         '--ext', ext,
     ]
     subprocess.run(cmd, cwd=MOMASK_ROOT, check=True)
+    return int(motion_length // 4) * 4
 
 
 def main() -> None:
@@ -464,6 +737,7 @@ def main() -> None:
     parser.add_argument('--case-ids', required=True)
     parser.add_argument('--prefix-frames', type=int, default=20)
     parser.add_argument('--output-dir', required=True)
+    parser.add_argument('--skip-generation', action='store_true')
     args = parser.parse_args()
 
     case_ids = [x.strip() for x in args.case_ids.split(',') if x.strip()]
@@ -481,16 +755,21 @@ def main() -> None:
         (case_dir / 'auto_meta.json').write_text(json.dumps(_json_safe(auto), ensure_ascii=True, indent=2), encoding='utf-8')
         gt_ext = f'case_study_{case_id}_gtprompt'
         auto_ext = f'case_study_{case_id}_autoprompt'
-        run_gen(gt_prompt, gt_ext)
-        run_gen(auto['auto_prompt'], auto_ext)
+        source_num_frames = int(auto['source_num_frames'])
+        generated_num_frames = int((source_num_frames // 4) * 4)
+        if not args.skip_generation:
+            generated_num_frames = run_gen(gt_prompt, gt_ext, source_num_frames)
+            generated_num_frames = run_gen(auto['auto_prompt'], auto_ext, source_num_frames)
         summary.append({
             'case_id': case_id,
             'gt_prompt': gt_prompt,
             'auto_prompt': auto['auto_prompt'],
             'program': auto['program'],
+            'auto_program': auto['auto_program'],
             'gt_ext': gt_ext,
             'auto_ext': auto_ext,
-            'source_num_frames': auto['source_num_frames'],
+            'source_num_frames': source_num_frames,
+            'generated_num_frames': generated_num_frames,
             'raw_prompt_segments': auto['raw_prompt_segments'],
             'caption_prior': caption_prior,
         })
