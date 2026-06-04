@@ -221,3 +221,64 @@ Takeaway:
 - `continue`-only training is useful as a prior but weak as a headline task
 - `semantic continue` shows that adding words is not enough if the prompt still mainly describes posture rather than dynamic motion primitives
 - `atomic realization` is currently the cleaner main direction, but likely needs a shift from posture prompts to dynamic primitive prompts such as `wave`, `swing`, `lift-and-lower`, and `step`
+
+
+### Annotation-layer regression milestone (current 600-case benchmark)
+
+Goal:
+
+- move from ad hoc prompt repair toward a stable motion-derived annotation layer on a fixed 600-case benchmark
+- require every meaningful update to pass local checks, global regression checks, and small qualitative checks
+
+Current fixed benchmark:
+
+- Batch 1: 100 cases
+- Batch 2: 500 disjoint cases
+- Combined triage: `good / soft_bad / hard_bad`
+
+Current triage summary:
+
+- `good = 276`
+- `soft_bad = 207`
+- `hard_bad = 117`
+
+Top soft-bad categories:
+
+- `walk_backward = 144`
+- `stop_pause = 32`
+- `turn = 16`
+- `stair_descent = 15`
+- `bounce_repeated = 15`
+
+Top hard-bad categories:
+
+- `crouch_bend = 46`
+- `turn = 33`
+- `walk_backward = 25`
+- `bounce_repeated = 22`
+- `stop_pause = 13`
+
+Representative fixes already achieved:
+
+- `000270 / 000526`: stairs up/down + turn no longer collapse to bounce/jump
+- `000324`: repeated bounce preserved
+- `000890`: repeated squat separated from repeated bounce
+- `000006`: crouch no longer collapses to stair descent
+- `000004`: torso bend no longer collapses to repeated bounce
+- `000028 / 000144 / 008344`: stop semantics largely recovered
+- `000179`: left-arm up/down recovered
+- `000230`: repeated hop recovered from repeated squat
+
+Main unresolved gap now:
+
+- finer limb-level patterns remain weaker than whole-body patterns, especially:
+  - `both elbows flap`
+  - `arm circling`
+  - `hand / rail support`
+
+Artifacts:
+
+- `outputs/hml3d_pattern_batches/triage_600/summary.json`
+- `outputs/hml3d_pattern_batches/triage_600/missing_category_stats.json`
+- `outputs/hml3d_pattern_batches/triage_600/regression_check_report.json`
+- `docs/experiments/regression_check_protocol.md`
