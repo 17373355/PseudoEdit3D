@@ -122,8 +122,47 @@ Each event should ideally contain:
 - `start_frame`
 - `end_frame`
 - `confidence`
+- `source`
 
 This is the true target representation.
+
+At the current stage, Layer 3 is not learned end-to-end yet. Instead, it is built by mapping:
+
+- stable `sub-motion` units
+- repeated `phase patterns`
+
+into a first structured `atomic-program candidate` layer.
+
+This candidate layer is useful because it is already:
+
+- more semantic than raw micro-events
+- more compact than flat event lists
+- still numerically traceable to underlying deltas and frame spans
+
+The current Layer 3 direction is **family-first abstraction** rather than direct action naming.
+Each output event is organized as:
+
+- `super_family`
+- `cluster_id`
+- `optional_semantic_name`
+- `role` (`primitive` / `composed` / `repeated_phase`)
+- `direction`
+- `count` / `magnitude` / `signed_delta` / `unit`
+- `source_span`
+- `supporting_units`
+
+This means the system first classifies motion into kinematic families, then refines into family-internal clusters, and only later attaches stable semantic names when justified by motion evidence and context. Current taxonomy checks treat tempo_bucket as a control parameter rather than a cluster-splitting dimension. For repeated vertical motion, alternation is a stronger split signal, so alternating repeated vertical phases are separated from non-alternating repeated vertical phases.
+
+
+A second validated Layer 3 refinement is context-coupled limb splitting. Repeated arm motion is separated into locomotion-coupled variants only when the arm event strongly overlaps with whole-body vertical motion. For example, `LA_REPEAT_LOCO` and `RA_REPEAT_LOCO` represent arm cycles that are likely coupled to walking or running, while `LA_REPEAT` and `RA_REPEAT` remain isolated or intentional arm periodic motion. This split is based on motion span overlap and corpus-level signature purity, not on HumanML3D caption words.
+
+General rule for family abstraction:
+
+- use full-corpus support and core-signature purity to decide whether a split is justified
+- use representative cases only for diagnosis, not for defining the taxonomy
+- keep tempo, magnitude, count, and signed deltas as control fields unless they consistently change the motion family
+- do not attach an action name until the motion family and context are stable
+
 
 `auto_prompt` is only a rendered probe or text view of this layer.
 
@@ -217,3 +256,27 @@ to:
 - and eventually a structured conditioning model
 
 So the next implementation focus should be Layer 0 first, not more ad hoc high-level prompt templates.
+
+
+## Semantic Merge, Numeric Retention
+
+A key design rule is:
+
+> merging should abstract semantics, but must not destroy the underlying numeric change information.
+
+In practice this means:
+
+- `sub-motion` units should be semantically more stable than raw micro-events
+- but each unit should still retain links to:
+  - original support tokens
+  - start/end frames
+  - signed deltas
+  - magnitude summaries
+  - repeat count when available
+
+This is important because the long-term target is not just to name motions, but to support instructions such as:
+
+- `open the right hand outward by another 30 degrees`
+- `walk forward two steps, then jump right three steps, without turning`
+
+So the representation must be compositional and interpretable, while keeping numeric residue accessible for later retrieval and control.

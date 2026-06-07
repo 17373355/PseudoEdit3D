@@ -282,3 +282,170 @@ Artifacts:
 - `outputs/hml3d_pattern_batches/triage_600/missing_category_stats.json`
 - `outputs/hml3d_pattern_batches/triage_600/regression_check_report.json`
 - `docs/experiments/regression_check_protocol.md`
+
+## AML family taxonomy v1 - 2026-06-05
+
+Goal:
+
+- move Layer 3 from semantic-name-first events toward family-first kinematic taxonomy
+- validate whether current `super_family` and `cluster_id` assignments are stable on the 1000-case AML mining corpus
+
+Artifacts:
+
+- script: `scripts/summarize_aml_family_taxonomy.py`
+- smoke report: `outputs/aml_family_taxonomy_hml3d20_smoke_v2.json`
+- full report: `outputs/aml_family_taxonomy_hml3d1000_v2.json`
+
+Main results on 1000 cases:
+
+- `num_cases = 1000`
+- `total_layer3_events = 10565`
+- `avg_layer1_count = 82.203`
+- `avg_layer2_count = 72.123`
+- `avg_layer25_count = 7.63`
+- `avg_layer3_count = 10.565`
+
+Family support:
+
+- `WHOLE_BODY_VERTICAL`: 980 cases
+- `LEFT_ARM_PERIODIC`: 688 cases
+- `RIGHT_ARM_PERIODIC`: 678 cases
+- `TORSO_PERIODIC`: 499 cases
+- `BIMANUAL_PERIODIC`: 443 cases
+
+Interpretation:
+
+- most clusters have `core_purity = 1.0` after removing `tempo_bucket` from the core signature
+- this supports treating `tempo_bucket` as a control field rather than a cluster-splitting dimension
+- stable clusters include `WB_VERT_UP`, `WB_VERT_DOWN`, `LA_REPEAT`, `RA_REPEAT`, `BI_OUT`, `LA_REPEAT_ALT`, `RA_REPEAT_ALT`, `TORSO_BEND_RECOVER`, `BI_UP`, `LA_NEAR_FAR`, `RA_NEAR_FAR`, `LA_COMPOSITE`, and `RA_COMPOSITE`
+- `WHOLE_BODY_VERTICAL/WB_VERT_REP` is the only split candidate in this pass: `core_purity = 0.508`, with near-balanced non-alternating and alternating vertical repeated signatures
+
+Next action:
+
+- split `WB_VERT_REP` into two kinematic clusters, likely `WB_VERT_REP` and `WB_VERT_REP_ALT` or equivalent naming
+- keep tempo as a parameter for control, not a category label
+
+## AML family taxonomy v2 - 2026-06-05
+
+Goal:
+
+- apply the first signature-driven split inside `WHOLE_BODY_VERTICAL`
+- separate alternating repeated vertical phases from non-alternating repeated vertical phases
+
+Code/doc changes:
+
+- `pseudoedit3d/edit/aml_atomic_program.py`: repeated vertical hop-like phases now map to `WB_VERT_REP_ALT` when `alternation=True`; otherwise they remain `WB_VERT_REP`
+- `docs/design/motion_subword_design.md`: clarified that `tempo_bucket` is a control parameter, while `alternation` is a cluster split signal for repeated vertical motion
+
+Artifacts:
+
+- 20-case smoke report: `outputs/aml_family_taxonomy_hml3d20_smoke_v3.json`
+- 1000-case full report: `outputs/aml_family_taxonomy_hml3d1000_v3.json`
+
+Results:
+
+- `split_candidates = []` after the split
+- `WB_VERT_REP`: 248 events, 198 supporting cases, `core_purity = 1.0`
+- `WB_VERT_REP_ALT`: 128 events, 106 supporting cases, `core_purity = 1.0`
+- `avg_layer3_count` changed from `10.565` to `10.693`, because alternating and non-alternating repeated phases can coexist in the same motion rather than being merged as one cluster
+
+Interpretation:
+
+- this is the first successful family-internal split driven by motion signature rather than action name
+- current taxonomy is more stable after separating alternation from the repeated vertical family
+- tempo remains a control field and should not drive category splitting at this stage
+
+## AML representative sampling and generalization check - 2026-06-05
+
+Goal:
+
+- make cluster inspection compatible with full HumanML3D scanning rather than only high-count examples
+- avoid selecting representatives solely by event count, which biases whole-body clusters toward long walking/running sequences
+
+Code change:
+
+- `scripts/select_aml_cluster_representatives.py` now supports `--mode diverse`
+- diverse mode ranks examples by cluster dominance, removes mirror duplicates before filling examples, and records coarse caption tags for inspection
+
+Artifacts:
+
+- top-count baseline: `outputs/aml_cluster_representatives_hml3d1000_v1.json`
+- diverse representatives: `outputs/aml_cluster_representatives_hml3d1000_diverse_v1.json`
+
+Generalization notes:
+
+- representative selection is only for human inspection; it must not define the taxonomy
+- full-corpus taxonomy decisions should be based on support, core signature purity, and split candidates
+- `tempo_bucket` remains a control field
+- some arm periodic clusters still appear in ordinary locomotion cases, suggesting a future split between locomotion-driven arm swing and intentional arm action
+
+Next action:
+
+- add an explicit signature or context field for `coupled_with_locomotion` versus isolated/intentional limb action
+- use this to refine `LEFT_ARM_PERIODIC` and `RIGHT_ARM_PERIODIC` without overfitting to caption names
+
+## AML context-coupled arm split v1 - 2026-06-05
+
+Goal:
+
+- separate ordinary locomotion-coupled arm swing from isolated or intentional arm periodic motion
+- keep the split driven by motion context, not by HumanML3D caption names
+- validate the change on the 1000-case AML mining corpus before treating it as a taxonomy update
+
+Code change:
+
+- `pseudoedit3d/edit/aml_atomic_program.py`: added `context_mode` and `coupled_with_locomotion` to Layer 3 motion signatures
+- repeated arm clusters are split into `_LOCO` variants when their temporal span overlaps strongly with whole-body vertical motion:
+  - `LA_REPEAT -> LA_REPEAT_LOCO`
+  - `RA_REPEAT -> RA_REPEAT_LOCO`
+  - `LA_REPEAT_ALT -> LA_REPEAT_ALT_LOCO`
+  - `RA_REPEAT_ALT -> RA_REPEAT_ALT_LOCO`
+- `scripts/summarize_aml_family_taxonomy.py`: includes `context_mode` in the core signature used for split-candidate detection
+
+Artifacts:
+
+- smoke report: `outputs/aml_family_taxonomy_hml3d20_context_split_smoke_v1.json`
+- full report: `outputs/aml_family_taxonomy_hml3d1000_context_split_v1.json`
+- schema-v2 full report with case-level core signatures: `outputs/aml_family_taxonomy_hml3d1000_context_split_v2.json`
+- stable-cluster representative index: `outputs/aml_cluster_representatives_hml3d1000_context_split_v2.json`
+- split-candidate representative index: `outputs/aml_split_candidate_representatives_hml3d1000_context_split_v1.json`
+- split-candidate case-id list: `outputs/aml_split_candidate_representatives_hml3d1000_context_split_case_ids.txt`
+- split-candidate AML visualization: `outputs/aml_vis_split_candidates_hml3d1000_context_split_v1/`
+
+Results on 1000 cases:
+
+- `num_cases = 1000`
+- `total_layer3_events = 10693`
+- `avg_layer3_count = 10.693`
+- base arm repeat clusters become single-core-signature clusters after the split:
+  - `LEFT_ARM_PERIODIC/LA_REPEAT`: 654 events, 414 cases, `core_purity = 1.0`
+  - `RIGHT_ARM_PERIODIC/RA_REPEAT`: 633 events, 408 cases, `core_purity = 1.0`
+  - `LEFT_ARM_PERIODIC/LA_REPEAT_ALT`: 126 events, 114 cases, `core_purity = 1.0`
+  - `RIGHT_ARM_PERIODIC/RA_REPEAT_ALT`: 116 events, 106 cases, `core_purity = 1.0`
+- locomotion-coupled arm repeat clusters are also stable:
+  - `LEFT_ARM_PERIODIC/LA_REPEAT_LOCO`: 551 events, 394 cases, `core_purity = 1.0`
+  - `RIGHT_ARM_PERIODIC/RA_REPEAT_LOCO`: 549 events, 386 cases, `core_purity = 1.0`
+  - `LEFT_ARM_PERIODIC/LA_REPEAT_ALT_LOCO`: 181 events, 160 cases, `core_purity = 1.0`
+  - `RIGHT_ARM_PERIODIC/RA_REPEAT_ALT_LOCO`: 175 events, 153 cases, `core_purity = 1.0`
+
+Remaining split candidates:
+
+- `TORSO_PERIODIC/TORSO_BEND_RECOVER`
+- `BIMANUAL_PERIODIC/BI_UP`
+- `TORSO_PERIODIC/TORSO_OSC_FB`
+- `BIMANUAL_PERIODIC/BI_OUT`
+
+Reusable diagnosis update:
+
+- `scripts/summarize_aml_family_taxonomy.py` now records per-case `cluster_core_signatures`, enabling signature-level inspection for any future split candidate
+- `scripts/select_aml_split_candidate_representatives.py` selects examples by split-candidate core signature rather than caption name
+- `scripts/visualize_aml_atomic_program.py` renders full-length GT motion with active Layer 3 AML events, cluster ids, context mode, and event timeline
+- current split-candidate representative set has 24 unique cases: `M002046`, `004381`, `001412`, `007344`, `M004950`, `004971`, `010780`, `000008`, `009585`, `M004289`, `M002463`, `M004334`, `004920`, `005716`, `014086`, `000090`, `M008251`, `001253`, `000584`, `002965`, `002534`, `000183`, `001878`, `M006848`
+- all 24 representatives were rendered to `outputs/aml_vis_split_candidates_hml3d1000_context_split_v1/`; `summary.json` confirms full original GT lengths are used
+
+Interpretation:
+
+- context coupling is a valid family-internal split signal for arm periodic motion
+- this reduces a known full-corpus failure mode where ordinary walking arm swing looked like intentional arm action
+- torso and bimanual context coupling should not be hard-split yet; those families need representative-case inspection because coupled torso/arm motion can be either locomotion byproduct or intended action
+

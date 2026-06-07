@@ -40,7 +40,8 @@ def part_prefix(symbol: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--case-ids', required=True)
+    parser.add_argument('--case-ids', default='')
+    parser.add_argument('--manifest', default='')
     parser.add_argument('--output', required=True)
     parser.add_argument('--min-support', type=int, default=3)
     args = parser.parse_args()
