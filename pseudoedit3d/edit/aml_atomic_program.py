@@ -87,6 +87,35 @@ def _sig(
     }
 
 
+def _rotation_magnitude_class(angle_deg: float) -> str:
+    angle = abs(float(angle_deg))
+    if angle < 75.0:
+        return 'small'
+    if angle < 135.0:
+        return 'quarter'
+    if angle < 225.0:
+        return 'half'
+    if angle < 315.0:
+        return 'three_quarter'
+    if angle < 450.0:
+        return 'full'
+    return 'multi'
+
+
+def _rotation_cluster(direction: str, angle_deg: float) -> tuple[str, str]:
+    mag_class = _rotation_magnitude_class(angle_deg)
+    side = 'LEFT' if direction == 'left' else 'RIGHT'
+    suffix = {
+        'small': 'SMALL',
+        'quarter': 'QTR',
+        'half': 'HALF',
+        'three_quarter': 'THREE_QTR',
+        'full': 'FULL',
+        'multi': 'MULTI',
+    }[mag_class]
+    return f'WB_ROT_{side}_{suffix}', mag_class
+
+
 def _submotion_to_event(unit: SubMotionUnit) -> dict[str, Any] | None:
     name = unit.name
     meta = unit.metadata or {}
@@ -94,6 +123,82 @@ def _submotion_to_event(unit: SubMotionUnit) -> dict[str, Any] | None:
     signed_delta = meta.get('net_delta_sum')
     support = [name]
     start, end = unit.start_frame, unit.end_frame
+
+    if name == 'whole_body_locomotion_active' or meta.get('direction') == 'locomotion_active':
+        path_length = float(meta.get('path_length', meta.get('delta_value', signed_delta or 0.0)))
+        mean_speed = float(meta.get('mean_speed', 0.0))
+        speed_class = 'fast' if mean_speed >= 0.045 else ('medium' if mean_speed >= 0.025 else 'slow')
+        trajectory_direction = str(meta.get('trajectory_direction') or 'unknown')
+        direction_suffix = {
+            'forward': 'FORWARD',
+            'backward': 'BACKWARD',
+            'left': 'LEFT',
+            'right': 'RIGHT',
+            'mixed': 'MIXED',
+        }.get(trajectory_direction, 'ACTIVE')
+        event_direction = trajectory_direction if trajectory_direction != 'unknown' else 'active'
+        return _event(
+            'whole_body', 'WHOLE_BODY_LOCOMOTION', f'LOCO_{direction_suffix}_{speed_class.upper()}', start, end,
+            direction=event_direction, role='state', optional_semantic_name='locomotion_active',
+            magnitude=path_length, signed_delta=path_length, unit='m', confidence=0.76,
+            source='state_event', supporting_units=support,
+            motion_signature=_sig('xz_path', 'state', f'locomotion_{event_direction}_{speed_class}', 'grounded', support_mode='feet', bilateral_symmetry='axial', tempo_bucket=_tempo_bucket(start, end)),
+            metadata={
+                'submotion': name,
+                'observable': meta.get('observable'),
+                'mean_speed': mean_speed,
+                'path_length': path_length,
+                'active_ratio': meta.get('active_ratio'),
+                'speed_threshold': meta.get('speed_threshold'),
+                'trajectory_direction': trajectory_direction,
+                'forward_displacement': meta.get('forward_displacement'),
+                'lateral_displacement': meta.get('lateral_displacement'),
+                'abs_forward_displacement': meta.get('abs_forward_displacement'),
+                'abs_lateral_displacement': meta.get('abs_lateral_displacement'),
+            },
+        )
+
+    if name == 'whole_body_low_body_hold' or meta.get('direction') == 'low_body_hold':
+        low_depth = float(meta.get('delta_value', magnitude or 0.0))
+        return _event(
+            'whole_body', 'WHOLE_BODY_POSTURE', 'WB_LOW_BODY_HOLD', start, end,
+            direction='low', role='state', optional_semantic_name='low_body_hold',
+            magnitude=low_depth, signed_delta=None, unit='m', confidence=0.76,
+            source='state_event', supporting_units=support,
+            motion_signature=_sig('height', 'state', 'low_body_hold', 'grounded', support_mode='feet_or_body', bilateral_symmetry='axial', tempo_bucket=_tempo_bucket(start, end)),
+            metadata={
+                'submotion': name,
+                'observable': meta.get('observable'),
+                'mean_height': meta.get('mean_height'),
+                'min_height': meta.get('min_height'),
+                'max_height_observed': meta.get('max_height_observed'),
+                'low_height_threshold': meta.get('low_height_threshold'),
+                'active_ratio': meta.get('active_ratio'),
+            },
+        )
+
+    if name in {'whole_body_turn_left', 'whole_body_turn_right'} or meta.get('observable') == 'root_yaw_proxy_deg':
+        raw_direction = str(meta.get('direction') or ('turn_left' if 'turn_left' in name else 'turn_right'))
+        direction = 'left' if raw_direction == 'turn_left' else 'right'
+        delta = float(meta.get('delta_value', signed_delta or 0.0))
+        duration = int(end) - int(start) + 1
+        if abs(delta) < 45.0 or duration < 4:
+            return None
+        cluster, mag_class = _rotation_cluster(direction, abs(delta))
+        return _event(
+            'whole_body', 'WHOLE_BODY_ROTATION', cluster, start, end,
+            direction=direction, role='primitive', optional_semantic_name='body_turn',
+            magnitude=abs(delta), signed_delta=delta, unit='deg', confidence=0.72,
+            source='micro_event', supporting_units=support,
+            motion_signature=_sig('yaw', 'single', f'turn_{direction}_{mag_class}', 'grounded', support_mode='feet', bilateral_symmetry='axial', tempo_bucket=_tempo_bucket(start, end)),
+            metadata={
+                'submotion': name,
+                'observable': meta.get('observable'),
+                'raw_direction': raw_direction,
+                'rotation_magnitude_class': mag_class,
+                'layer3_salience_gate': 'abs_angle>=45deg,duration>=4',
+            },
+        )
 
     if name in {'crouch_descent', 'crouch_descent_strong', 'root_down_then_leg_compress', 'root_down_compress_release_cycle'}:
         return _event(
@@ -272,7 +377,7 @@ def _overlap_ratio(a: dict[str, Any], b: dict[str, Any]) -> float:
 
 
 def _event_priority(evt: dict[str, Any]) -> tuple[int, float, int]:
-    role_rank = {'primitive': 1, 'composed': 2, 'repeated_phase': 3}.get(str(evt.get('role')), 0)
+    role_rank = {'primitive': 1, 'state': 2, 'composed': 3, 'repeated_phase': 4}.get(str(evt.get('role')), 0)
     confidence = float(evt.get('confidence', 0.0))
     duration = int(evt.get('end_frame', -1)) - int(evt.get('start_frame', -1))
     return (role_rank, confidence, duration)
@@ -298,7 +403,7 @@ def _merge_support(prev: dict[str, Any], evt: dict[str, Any]) -> None:
 
 
 def _annotate_context_coupling(events: list[dict[str, Any]]) -> None:
-    body_events = [e for e in events if e.get('super_family') == 'WHOLE_BODY_VERTICAL']
+    body_events = [e for e in events if e.get('super_family') in {'WHOLE_BODY_VERTICAL', 'WHOLE_BODY_LOCOMOTION'}]
     split_clusters = {
         'LA_REPEAT',
         'RA_REPEAT',
@@ -348,12 +453,91 @@ def abstract_atomic_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]
     return kept
 
 
+
+def _unit_overlap_ratio(a: SubMotionUnit, b: SubMotionUnit) -> float:
+    s1, e1 = int(a.start_frame), int(a.end_frame)
+    s2, e2 = int(b.start_frame), int(b.end_frame)
+    inter = max(0, min(e1, e2) - max(s1, s2) + 1)
+    dur = max(1, min(e1 - s1 + 1, e2 - s2 + 1))
+    return inter / dur
+
+
+def _build_locomotion_turn_events(submotions: list[SubMotionUnit]) -> list[dict[str, Any]]:
+    locos = [
+        u for u in submotions
+        if u.name == 'whole_body_locomotion_active' or (u.metadata or {}).get('direction') == 'locomotion_active'
+    ]
+    yaw_units = [
+        u for u in submotions
+        if u.name in {'whole_body_turn_left', 'whole_body_turn_right'} or (u.metadata or {}).get('observable') == 'root_yaw_proxy_deg'
+    ]
+    out: list[dict[str, Any]] = []
+    for loco in locos:
+        meta = loco.metadata or {}
+        path_length = float(meta.get('path_length', meta.get('delta_value', 0.0)) or 0.0)
+        mean_speed = float(meta.get('mean_speed', 0.0) or 0.0)
+        if path_length < 1.0:
+            continue
+        matched: list[SubMotionUnit] = []
+        signed_sum = 0.0
+        left_sum = 0.0
+        right_sum = 0.0
+        abs_sum = 0.0
+        for yaw in yaw_units:
+            if _unit_overlap_ratio(yaw, loco) < 0.10:
+                continue
+            ymeta = yaw.metadata or {}
+            delta = float(ymeta.get('delta_value', 0.0) or 0.0)
+            if abs(delta) < 5.0:
+                continue
+            matched.append(yaw)
+            signed_sum += delta
+            abs_sum += abs(delta)
+            if delta >= 0:
+                left_sum += abs(delta)
+            else:
+                right_sum += abs(delta)
+        if not matched:
+            continue
+        dominance_margin = abs(left_sum - right_sum)
+        if abs(signed_sum) < 40.0 and dominance_margin < 45.0:
+            continue
+        direction = 'left' if signed_sum >= 0 else 'right'
+        mag_class = _rotation_magnitude_class(abs(signed_sum))
+        side = 'LEFT' if direction == 'left' else 'RIGHT'
+        cluster = f'LOCO_TURN_{side}_{mag_class.upper()}'
+        start = min(int(u.start_frame) for u in matched)
+        end = max(int(u.end_frame) for u in matched)
+        out.append(_event(
+            'whole_body', 'WHOLE_BODY_LOCOMOTION', cluster, start, end,
+            direction=direction, role='state', optional_semantic_name='locomotion_turn',
+            magnitude=abs(signed_sum), signed_delta=signed_sum, unit='deg', confidence=0.68,
+            source='aggregate_micro_event',
+            supporting_units=[f'{u.name}[{int(u.start_frame)}-{int(u.end_frame)}]' for u in matched],
+            motion_signature=_sig('yaw_xz_path', 'state', f'locomotion_turn_{direction}_{mag_class}', 'grounded', support_mode='feet', bilateral_symmetry='axial', tempo_bucket=_tempo_bucket(start, end)),
+            metadata={
+                'submotion': 'whole_body_locomotion_turn',
+                'source_locomotion_span': [int(loco.start_frame), int(loco.end_frame)],
+                'path_length': path_length,
+                'mean_speed': mean_speed,
+                'yaw_signed_sum': signed_sum,
+                'yaw_abs_sum': abs_sum,
+                'yaw_left_sum': left_sum,
+                'yaw_right_sum': right_sum,
+                'yaw_dominance_margin': dominance_margin,
+                'yaw_unit_spans': [[int(u.start_frame), int(u.end_frame)] for u in matched],
+                'rule': 'path_length>=1m and cumulative yaw evidence within locomotion state',
+            },
+        ))
+    return out
+
 def build_layer3_atomic_program(submotions: list[SubMotionUnit], phase_patterns: list[PhasePattern]) -> dict[str, Any]:
     events: list[dict[str, Any]] = []
     for unit in submotions:
         evt = _submotion_to_event(unit)
         if evt is not None:
             events.append(evt)
+    events.extend(_build_locomotion_turn_events(submotions))
     for phase in phase_patterns:
         evt = _phase_to_event(phase)
         if evt is not None:

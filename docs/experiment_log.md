@@ -449,3 +449,358 @@ Interpretation:
 - this reduces a known full-corpus failure mode where ordinary walking arm swing looked like intentional arm action
 - torso and bimanual context coupling should not be hard-split yet; those families need representative-case inspection because coupled torso/arm motion can be either locomotion byproduct or intended action
 
+## AML rotation recovery and template language v1 - 2026-06-07
+
+Issue:
+
+- case `000183` visibly contains a mid-motion spin, but the AML visualization showed no active event during the spin interval
+- diagnosis showed `root_yaw_proxy_deg` was all zeros because HumanML3D AML extraction used joints but passed zero pose rotations, while the yaw proxy was still pose-derived
+
+Fix:
+
+- `pseudoedit3d/edit/frame_observables.py`: recompute `root_yaw_proxy_deg` from joints using hips + shoulders projected to the xz plane
+- `pseudoedit3d/edit/aml_atomic_program.py`: map turn micro-events into a new `WHOLE_BODY_ROTATION` family with `WB_ROT_LEFT` / `WB_ROT_RIGHT` clusters
+- `pseudoedit3d/edit/aml_language.py`: add deterministic template-language rendering for AML events
+- `scripts/extract_aml_layers.py` and `scripts/visualize_aml_atomic_program.py`: attach compact and detailed AML template strings to exported outputs
+
+Verification:
+
+- `000183` now has `WHOLE_BODY_ROTATION/WB_ROT_LEFT` at frames `8-28`
+- estimated signed yaw delta is about `383deg`, matching the HumanML3D caption phrase `spins completely around`
+- updated visualization: `outputs/aml_vis_000183_turn_lang_v1/case_000183.gif`
+- debug dump: `outputs/debug_aml_000183_with_turn_lang.json`
+
+Template example:
+
+- `frames 8-28 | whole_body.rotation | turn left | angle=383deg, signed_delta=383deg | context=body_driver`
+
+Interpretation:
+
+- this confirms AML should include a template language layer for inspection before free natural-language rendering
+- rotation is kept as a motion family with numeric angle retained, not prematurely converted into an action phrase such as `spin around`
+
+## AML rotation salience gate v1 - 2026-06-07
+
+Goal:
+
+- prevent small or noisy heading changes from being promoted into Layer 3 atomic rotation events
+- keep precise signed yaw delta for numeric control while using coarse rotation clusters for inspection
+
+Code change:
+
+- `pseudoedit3d/edit/aml_atomic_program.py`: Layer 3 rotation now requires `abs_angle >= 45deg` and `duration >= 4`
+- rotation clusters are split by angle family:
+  - `SMALL`: 45-75deg
+  - `QTR`: 75-135deg
+  - `HALF`: 135-225deg
+  - `THREE_QTR`: 225-315deg
+  - `FULL`: 315-450deg
+  - `MULTI`: over 450deg
+- `pseudoedit3d/edit/aml_language.py`: template language now verbalizes these coarse angle families, while retaining exact `signed_delta`
+
+Verification on `000183`:
+
+- `WHOLE_BODY_ROTATION/WB_ROT_LEFT_FULL` at frames `8-28`
+- compact template: `frames 8-28 | whole_body.rotation | turn left about a full turn | angle=383deg, signed_delta=383deg | context=body_driver`
+- debug dump: `outputs/debug_aml_000183_rotation_gated_lang.json`
+
+1000-case taxonomy result:
+
+- report: `outputs/aml_family_taxonomy_hml3d1000_rotation_gated_lang_v1.json`
+- `WHOLE_BODY_ROTATION`: 1153 events, 814 supporting cases
+- full-turn clusters are rare and stable:
+  - `WB_ROT_LEFT_FULL`: 14 events, 14 cases
+  - `WB_ROT_RIGHT_FULL`: 13 events, 13 cases
+- half-turn clusters dominate:
+  - `WB_ROT_LEFT_HALF`: 359 events, 334 cases
+  - `WB_ROT_RIGHT_HALF`: 364 events, 340 cases
+
+Interpretation:
+
+- the gate removes very small yaw fragments, but rotation support is still broad
+- next diagnostic step is representative visualization for `SMALL / HALF / FULL / MULTI` rotation clusters to decide whether broad half-turn support reflects true turning or heading-estimation flips during ordinary motion
+
+## AML locomotion state coverage v1 - 2026-06-07
+
+Issue:
+
+- M004289 has a long middle walking interval, but the AML visualization had no active event during most of that interval
+- root-speed change events existed, but AML lacked a sustained state event for ongoing locomotion
+- this exposed a coverage gap: Layer3 represented many changes and repeated phases, but not stable whole-body states
+
+Fix:
+
+- `pseudoedit3d/edit/micro_events.py`: added state-event extraction for sustained `root_xz_speed_proxy` activity
+- `pseudoedit3d/edit/submotion_lexicon.py`: fallback submotion units now preserve state-event metadata
+- `pseudoedit3d/edit/aml_atomic_program.py`: added `WHOLE_BODY_LOCOMOTION/LOCO_ACTIVE_{SLOW,MEDIUM,FAST}` Layer3 events
+- context coupling now considers both `WHOLE_BODY_VERTICAL` and `WHOLE_BODY_LOCOMOTION` as body-driver events
+- `pseudoedit3d/edit/aml_language.py`: added template labels for locomotion state events
+
+Verification on M004289:
+
+- debug dump: `outputs/debug_aml_M004289_locomotion_state_v1.json`
+- visualization: `outputs/aml_vis_M004289_locomotion_state_v1/case_M004289.gif`
+- recovered event: `WHOLE_BODY_LOCOMOTION/LOCO_ACTIVE_MEDIUM` at frames `18-138`
+- compact template: `frames 18-138 | whole_body.locomotion | move through space | amplitude=4.05m, signed_delta=4.05m | context=body_driver`
+- arm periodic events in the same span now become locomotion-coupled variants
+
+1000-case coverage result:
+
+- report: `outputs/aml_family_taxonomy_hml3d1000_locomotion_state_v1.json`
+- `num_cases = 1000`
+- `total_layer3_events = 13329`
+- `avg_layer3_count = 13.329`
+- no zero-event cases remain
+- only 2 cases have `layer3_count <= 2`
+- `WHOLE_BODY_LOCOMOTION`: 1936 events, 955 supporting cases
+- locomotion state cluster support:
+  - `LOCO_ACTIVE_SLOW`: 323 events, 216 cases
+  - `LOCO_ACTIVE_MEDIUM`: 1249 events, 729 cases
+  - `LOCO_ACTIVE_FAST`: 364 events, 246 cases
+
+Interpretation:
+
+- AML now covers both change-like events and sustained state-like intervals
+- current `LOCO_ACTIVE_*` is intentionally broad; it fixes coverage but is not yet a complete locomotion taxonomy
+- next required refinement is to split locomotion by trajectory and gait semantics, such as forward/backward/sideways, walk/run, turn-in-place, stop/pause, and path length / step count
+
+## AML architecture coverage and numeric design docs - 2026-06-07
+
+Goal:
+
+- consolidate the current AML architecture before deeper LLM/VLM-inspired refinement
+- separate active AML mainline from older auto-prompt pattern-repair mechanisms
+- define how quantity, repetition, angle, and continuous numeric residue should be represented
+
+New documents:
+
+- `docs/design/aml_architecture_coverage.md`
+- `docs/design/aml_numeric_repetition_angle_design.md`
+- `docs/legacy_migration_plan.md`
+- `legacy/README.md`
+
+Key architecture status:
+
+- change events: Layer 1 micro-events and Layer 3 atomic events
+- sustained states: initial `WHOLE_BODY_LOCOMOTION/LOCO_ACTIVE_*`
+- repeated phases: Layer 2.5 phase patterns
+- numeric residue: `magnitude`, `signed_delta`, `unit`, `path_length`, `mean_speed`, `count`, frame spans
+- template language: `pseudoedit3d/edit/aml_language.py`
+
+Legacy cleanup:
+
+- moved backup files only:
+  - `scripts/run_momask_case_study.py.bak` -> `legacy/auto_prompt_pattern_batches/scripts/run_momask_case_study.py.bak`
+  - `scripts/visualize_momask_case_study.py.bak` -> `legacy/auto_prompt_pattern_batches/scripts/visualize_momask_case_study.py.bak`
+- did not move active probe scripts or training scaffold yet
+
+Next design targets:
+
+- explicit repetition evidence: `phase_spans`, `period_frames`, `count_confidence`
+- rotation geometry metadata: `axis`, `reference_frame`, `sign_convention`, `unwrap_policy`, `angle_bin`
+- locomotion direction split: forward/backward/sideways/mixed/turning/stationary
+- deterministic AML-Lang grouped rendering
+- targeted numeric evaluation: count accuracy, signed-angle error, locomotion-direction accuracy, round-trip consistency
+
+### AML MoMask prompt probe v2 - 2026-06-07
+
+Goal:
+
+- quickly test motion-derived AML auto prompts through the existing MoMask T2M generator.
+- keep auto prompts motion-only: the renderer uses Layer3 AML events, not the same-case HumanML3D captions.
+
+What changed:
+
+- added `pseudoedit3d/edit/aml_prompt_renderer.py` for shared AML-to-natural-prompt rendering.
+- added salience filtering so short bimanual/noisy movement and tiny locomotion do not dominate full-body spin cases.
+- added Layer3 aggregate `LOCO_TURN_*` events from cumulative yaw evidence inside locomotion states, recovering turn-while-walking cases.
+- added `--ext-prefix` to `scripts/run_momask_aml_prompt_probe.py` to avoid overwriting prior MoMask generations.
+
+Probe cases:
+
+- `000183`: selected HML3D prompt=`a person jumps, spins completely around in a circle an lands.`; AML auto prompt=`a person jumps and spins left around once`.
+- `M004289`: selected HML3D prompt=`a person walks forward then turns while using their arms to press against the wall`; AML auto prompt=`a person moves through space for about 4.0 meters, then turns right while moving, then moves both hands outward, then raises both arms, then makes a small up-and-down body motion`.
+
+Outputs:
+
+- summary: `outputs/momask_aml_prompt_probe_v2/summary.json`
+- visualization: `outputs/momask_aml_prompt_probe_v2_vis/case_000183.gif`
+- visualization: `outputs/momask_aml_prompt_probe_v2_vis/case_M004289.gif`
+
+Known gaps:
+
+- locomotion is still generic `moves through space`; forward/backward/sideways direction is not yet inferred.
+- wall/support semantics are not yet recoverable without a hand-contact/support proxy.
+- M004289 still includes coarse arm clauses and a small vertical clause; a second renderer pass should merge this into a cleaner support-like phrase once support detection exists.
+- MoMask rounds generation length to unit length multiples, so `154` requested frames becomes `152` generated frames for M004289.
+
+### AML locomotion direction v1 - 2026-06-07
+
+Goal:
+
+- recover motion-only locomotion direction instead of rendering every state as `moves through space`.
+
+What changed:
+
+- added body-frame root velocity at Layer0 using HumanML3D joints-derived heading.
+- attached `root_forward_velocity` and `root_lateral_velocity` to `root_xz_speed_proxy` metadata.
+- summarized locomotion states with `trajectory_direction`, `forward_displacement`, `lateral_displacement`, and absolute displacement diagnostics.
+- mapped locomotion states to `LOCO_FORWARD/BACKWARD/LEFT/RIGHT/MIXED_*` Layer3 clusters.
+- calibrated the HumanML3D heading sign using a small set of clearly forward/backward captioned clips; the raw geometry sign was reversed, so the forward vector is negated in `frame_observables.py`. This calibration fixes the coordinate convention only and is not used as per-case prompt supervision.
+
+Smoke result:
+
+- `M004289` auto prompt changed from generic movement to `a person walks forward for about 4.0 meters, then turns right while moving, then moves both hands outward, then raises both arms, then makes a small up-and-down body motion`.
+- `000183` remains `a person jumps and spins left around once`; its small locomotion state keeps `trajectory_direction=unknown`, so spin cases are not mislabeled as walking.
+
+Known gaps:
+
+- direction is single-state coarse direction; multi-segment forward/backward sequences still need temporal splitting.
+- support/wall semantics are still missing.
+- step count is not yet estimated.
+
+### MoMask case-study visualization prompt-wide update - 2026-06-07
+
+Goal:
+
+- make selected HML3D prompt, AML auto prompt, and all HML3D captions readable in case-study GIFs.
+
+What changed:
+
+- increased canvas from `1600x460` to `1900x560`.
+- widened the prompt/program panel from `380px` to `520px`.
+- reduced prompt font from `16` to `14` and raw-caption font from `13` to `11`.
+- removed fixed selected/auto prompt truncation; text now fills the prompt panel until the panel bottom.
+- raw captions now include all `raw_prompt_segments` rather than only the first three, subject to available panel space.
+
+Outputs:
+
+- `outputs/momask_aml_prompt_probe_v3_vis_promptwide/case_000183.gif`
+- `outputs/momask_aml_prompt_probe_v3_vis_promptwide/case_M004289.gif`
+
+### AML full HumanML3D cluster scan v1 - 2026-06-07
+
+Goal:
+
+- move AML mechanism validation from 600/1000-case slices to full HumanML3D coverage.
+- inspect current `super_family` / `cluster_id` distribution before further mechanism changes.
+- verify whether Layer 2.5 phase detection should be part of the mainline full-scan regression.
+
+Outputs:
+
+- full manifest: `outputs/aml_mining_corpus_full/hml3d_mining_30000.jsonl` (`29048` cases).
+- no-phase scan: `outputs/aml_full_cluster_scan_no_phase_v1.json`.
+- with-phase scan: `outputs/aml_full_cluster_scan_with_phase_v1.json`.
+- readable report: `outputs/aml_full_cluster_scan_with_phase_v1_report.md`.
+- report generator: `scripts/summarize_aml_cluster_scan.py`.
+
+Key results:
+
+- no-phase full scan: `elapsed=117.35s`, `avg_layer3=7.030`, `low_event_case_count_le2=6726`.
+- with-phase full scan: `elapsed=133.02s`, `avg_layer25=6.195`, `avg_layer3=10.125`, `low_event_case_count_le2=4515`.
+- phase detection reduces low-event cases and adds stable repeated arm / torso / vertical structures, so it should stay in the AML mainline.
+
+Mechanism readout:
+
+- full HumanML3D AML scan is now fast enough to use as a regular regression check after mechanism changes.
+- high-support `WHOLE_BODY_VERTICAL` clusters are the first salience-control target; ordinary walking root oscillation can otherwise become false jump/squat wording.
+- high-support bimanual and arm-repeat clusters should be treated as family candidates, not direct action names; walking arm swing, support-like poses, hand-object actions, clapping, and waving need subclustering.
+- support/contact and scene-dependent language should stay conservative: motion-only AML can infer hand anchoring or support-like extension, but should not directly say wall/rail/surface without scene evidence.
+- low-event examples concentrate around stairs/rail, object/hold, sit/lie/kneel, jump/hop, and step-count cases, which are the next observables/rendering targets.
+
+
+### AML sustained low-body state v2 - 2026-06-08
+
+Goal:
+
+- address a full-scan coverage gap where static low poses can produce no Layer3 event because the earlier AML mainline focused on changes rather than sustained states.
+- add a conservative motion-only posture state without naming it as squat/kneel/crawl/lie too early.
+
+What changed:
+
+- `pseudoedit3d/edit/micro_events.py`: added `SUSTAINED_STATE_CHANNEL_CONFIG` and `segment_low_body_state` on `pelvis_to_ankle_height`.
+- `pseudoedit3d/edit/aml_atomic_program.py`: maps sustained low body state to `WHOLE_BODY_POSTURE/WB_LOW_BODY_HOLD`.
+- `pseudoedit3d/edit/aml_prompt_renderer.py`: renders this conservatively as `keeps the body low`.
+
+Smoke result:
+
+- `013356` and `M013356` changed from `a person moves naturally` to `a person keeps the body low`.
+- `002469`, `004775`, `000183`, and `M004289` were not falsely assigned `WB_LOW_BODY_HOLD`.
+
+Full-scan result:
+
+- v1 with-phase scan: `outputs/aml_full_cluster_scan_with_phase_v1.json`.
+- v2 low-body scan: `outputs/aml_full_cluster_scan_with_phase_lowbody_v2.json`.
+- v2 report: `outputs/aml_full_cluster_scan_with_phase_lowbody_v2_report.md`.
+- new `WHOLE_BODY_POSTURE/WB_LOW_BODY_HOLD` support: `1848` cases.
+- `avg_layer3` changed from `10.125` to `10.196`.
+- `low_event_case_count_le2` changed from `4515` to `4460`.
+
+Interpretation:
+
+- this is not mainly a low-event-count optimization; it fixes a representation hole where sustained postures are invisible to a pure change-event tokenizer.
+- next steps should split low-body posture into squat/kneel/crawl/lie only after adding more observables such as torso orientation, hand/foot support, and body-horizontal extent.
+
+
+### AML vertical salience gate v2 - 2026-06-08
+
+Goal:
+
+- reduce false `jumps upward`, `lowers the body`, `hop-like`, and tiny `up-and-down` wording caused by ordinary locomotion root oscillation.
+- keep vertical Layer3 events searchable; only gate natural prompt rendering.
+
+What changed:
+
+- `pseudoedit3d/edit/aml_prompt_renderer.py`: added locomotion-overlap-aware vertical salience filtering.
+- high-overlap `WB_VERT_CYCLE`, `WB_VERT_REP`, and `WB_VERT_REP_ALT` are suppressed from prompt rendering.
+- high-overlap small `WB_VERT_UP/DOWN` is suppressed; larger high-overlap `UP/DOWN` is rendered neutrally as `changes body height while moving`.
+- `WB_VERT_UP` closely following `WB_VERT_DOWN` is rendered as `rises back up` instead of `jumps upward`.
+- tiny `WB_VERT_CYCLE` with magnitude below `0.04` is suppressed as body-bounce/noise.
+
+Smoke result:
+
+- `004775`: now renders only walking, removing false small up/down wording.
+- `008939`: false `jumps upward` changed to neutral `changes body height while moving`.
+- `011473`: bend-knee recovery changed from false `jumps upward` to `rises back up`.
+- `006761` and `000183` still preserve isolated jump / jump-spin wording.
+- `013356` still renders `keeps the body low`.
+
+Regression outputs:
+
+- 5k before gate: `outputs/aml_vertical_salience_5k_v1.json`, problematic vertical wording `4548/5000`.
+- 5k after gate: `outputs/aml_vertical_salience_5k_v2.json`, problematic vertical wording `1692/5000`.
+- full after gate: `outputs/aml_vertical_salience_full_v2.json`, problematic vertical wording `6965/29048`.
+- readable report: `outputs/aml_vertical_salience_v2_report.md`.
+
+Interpretation:
+
+- this gate fixes a renderer-level failure mode, not a Layer3 event deletion; numeric vertical evidence remains available for later retrieval/control.
+- remaining stair/upstairs/downstairs and obstacle cases need step-height, foot-clearance/airborne, and support/contact proxies rather than more threshold-only suppression.
+- arm repeat noise is now a more visible next bottleneck and should be handled by family abstraction next.
+
+
+### AML arm family abstraction v2 - 2026-06-08
+
+Goal:
+
+- reduce technical prompt wording such as `repeats a left arm cycle`.
+- introduce a family-level renderer for locomotion-coupled arm repeats.
+
+What changed:
+
+- `pseudoedit3d/edit/aml_prompt_renderer.py`: locomotion-coupled arm repeats now render as `swings the left/right arm while walking`.
+- left and right walking arm swing clauses merge into `swings both arms while walking`.
+- remaining non-locomotion arm repeats render as `moves the left/right arm repeatedly N times` instead of `repeats arm cycle`.
+- added prompt phrase regression script: `scripts/analyze_aml_prompt_phrases.py`.
+
+Regression outputs:
+
+- 5k before wording cleanup: `outputs/aml_prompt_phrase_counts_5k_arm_v1.json`, raw arm-cycle prompts `1472/5000`.
+- 5k after cleanup: `outputs/aml_prompt_phrase_counts_5k_arm_v2.json`, raw arm-cycle prompts `0/5000`.
+- full after cleanup: `outputs/aml_prompt_phrase_counts_full_arm_v2.json`, raw arm-cycle prompts `0/29048`, arm-swing family prompts `9826/29048`, bimanual coarse prompts `13103/29048`.
+- readable report: `outputs/aml_arm_family_abstraction_v2_report.md`.
+
+Interpretation:
+
+- this is a prompt-layer family abstraction: Layer3 still stores the repeat/count evidence, but the natural language no longer exposes technical `cycle` names.
+- the next major bottleneck is `BIMANUAL_PERIODIC/BI_OUT` and `BI_UP`; these need support-like, object-like, clap-like, and free-raise subfamilies rather than direct `moves both hands outward` / `raises both arms` wording.

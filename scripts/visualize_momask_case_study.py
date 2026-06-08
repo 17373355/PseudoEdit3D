@@ -109,16 +109,16 @@ def render_case(case: dict, output_path: Path, fps: int = 12) -> None:
 
     gt_proj, gtpred_proj, autopred_proj = _normalize_panel([gt_joints, gt_pred, auto_pred])
 
-    canvas_w = 1600
-    canvas_h = 460
-    left_box = (20, 40, 380, 400)
-    mid_box = (410, 40, 790, 400)
-    gtpred_box = (820, 40, 1180, 400)
-    auto_box = (1210, 40, 1570, 400)
-    font_title = _load_font(24)
-    font_body = _load_font(15)
-    font_prompt = _load_font(16)
-    font_small = _load_font(13)
+    canvas_w = 1900
+    canvas_h = 560
+    left_box = (20, 50, 380, 410)
+    mid_box = (410, 50, 930, 520)
+    gtpred_box = (960, 50, 1320, 410)
+    auto_box = (1350, 50, 1710, 410)
+    font_title = _load_font(23)
+    font_body = _load_font(13)
+    font_prompt = _load_font(14)
+    font_small = _load_font(11)
 
     highlight_joints = set()
     highlight_edges = set()
@@ -148,34 +148,39 @@ def render_case(case: dict, output_path: Path, fps: int = 12) -> None:
         for box in [left_box, mid_box, gtpred_box, auto_box]:
             draw.rounded_rectangle(box, radius=16, outline=(210, 210, 220), width=2, fill=(255, 255, 255))
 
-        draw.text((40, 10), "GT Motion", fill=(20, 20, 20), font=font_title)
-        draw.text((450, 10), "Prompts / Program", fill=(20, 20, 20), font=font_title)
-        draw.text((850, 10), "MoMask from Selected HML3D Prompt", fill=(20, 20, 20), font=font_title)
-        draw.text((1230, 10), "MoMask from Auto Prompt", fill=(20, 20, 20), font=font_title)
+        draw.text((40, 16), "GT Motion", fill=(20, 20, 20), font=font_title)
+        draw.text((450, 16), "Prompts / Program", fill=(20, 20, 20), font=font_title)
+        draw.text((990, 16), "MoMask from Selected HML3D", fill=(20, 20, 20), font=font_title)
+        draw.text((1380, 16), "MoMask from Auto", fill=(20, 20, 20), font=font_title)
 
         place(draw, gt_proj, frame_idx, left_box, (180, 184, 195), (80, 170, 80))
         place(draw, gtpred_proj, frame_idx, gtpred_box, (180, 184, 195), (70, 120, 220))
         place(draw, autopred_proj, frame_idx, auto_box, (180, 184, 195), (190, 120, 40))
 
-        y = mid_box[1] + 20
-        for line in program_lines[:11]:
-            draw.text((mid_box[0] + 20, y), line, fill=(55, 55, 65), font=font_body)
-            y += 18
-        y += 10
-        gt_prompt_lines = _wrap_text(draw, f"selected_hml3d_prompt: {gt_prompt}", font_prompt, max_width=(mid_box[2] - mid_box[0] - 40))
-        auto_prompt_lines = _wrap_text(draw, f"auto_prompt: {auto_prompt}", font_prompt, max_width=(mid_box[2] - mid_box[0] - 40))
-        for line in gt_prompt_lines[:3]:
-            draw.text((mid_box[0] + 20, y), line, fill=(70, 120, 220), font=font_prompt)
-            y += 18
-        for line in auto_prompt_lines[:4]:
-            draw.text((mid_box[0] + 20, y), line, fill=(190, 120, 40), font=font_prompt)
-            y += 18
+        y = mid_box[1] + 14
+        for line in program_lines[:8]:
+            draw.text((mid_box[0] + 18, y), line, fill=(55, 55, 65), font=font_body)
+            y += 15
+        y += 6
+        max_text_w = mid_box[2] - mid_box[0] - 36
+        bottom = mid_box[3] - 12
+        sections = [
+            ("selected_hml3d_prompt: " + gt_prompt, (70, 120, 220), font_prompt, 14),
+            ("auto_prompt: " + auto_prompt, (190, 120, 40), font_prompt, 14),
+        ]
         if raw_prompt_segments:
-            raw_text = "raw_prompts: " + " | ".join(seg[0] for seg in raw_prompt_segments[:3])
-            raw_lines = _wrap_text(draw, raw_text, font_small, max_width=(mid_box[2] - mid_box[0] - 40))
-            for line in raw_lines[:4]:
-                draw.text((mid_box[0] + 20, y), line, fill=(120, 120, 130), font=font_small)
-                y += 16
+            raw_text = "all_hml3d_prompts: " + " | ".join(seg[0] for seg in raw_prompt_segments)
+            sections.append((raw_text, (120, 120, 130), font_small, 12))
+        for text, color, font, line_h in sections:
+            lines = _wrap_text(draw, text, font, max_width=max_text_w)
+            for line in lines:
+                if y + line_h > bottom:
+                    break
+                draw.text((mid_box[0] + 18, y), line, fill=color, font=font)
+                y += line_h
+            y += 5
+            if y >= bottom:
+                break
         draw.text((left_box[0] + 20, left_box[3] - 48), f"frame {frame_idx + 1}/ {len(gt_joints)}".replace(" ", ""), fill=(80, 80, 90), font=font_body)
         draw.text((left_box[0] + 20, left_box[3] - 24), f"case {case_id}", fill=(80, 80, 90), font=font_body)
         frames.append(img)

@@ -14,6 +14,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from pseudoedit3d.edit import (
+    attach_aml_language,
     extract_layer0_frame_observables,
     extract_layer1_micro_events,
     merge_micro_events,
@@ -161,7 +162,7 @@ def main():
                 unit_names=list(p['unit_names']),
                 metadata=dict(p.get('metadata', {})),
             ))
-        layer3 = build_layer3_atomic_program(layer2, phase_for_layer3)
+        layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phase_for_layer3))
         result.append({
             'case_id': case_id,
             'selected_hml3d_prompt': mod.read_first_prompt(case_id),

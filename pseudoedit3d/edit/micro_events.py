@@ -29,6 +29,33 @@ class MicroEvent:
         return f"{part}_{direction}_{mag}"
 
 
+STATE_CHANNEL_CONFIG: dict[str, dict[str, Any]] = {
+    'root_xz_speed_proxy': {
+        'part': 'whole_body',
+        'direction': 'locomotion_active',
+        'speed_threshold': 0.015,
+        'min_duration': 10,
+        'merge_gap': 4,
+        'min_path_length': 0.20,
+        'small': 0.35,
+        'medium': 0.90,
+    },
+}
+
+
+SUSTAINED_STATE_CHANNEL_CONFIG: dict[str, dict[str, Any]] = {
+    'pelvis_to_ankle_height': {
+        'part': 'whole_body',
+        'direction': 'low_body_hold',
+        'max_height': 0.45,
+        'min_duration': 12,
+        'merge_gap': 6,
+        'small': 0.08,
+        'medium': 0.18,
+    },
+}
+
+
 CHANNEL_CONFIG: dict[str, dict[str, Any]] = {
     'root_yaw_proxy_deg': {
         'part': 'whole_body',
@@ -212,6 +239,142 @@ def segment_observable(sequence: ObservableSequence, cfg: dict[str, Any]) -> lis
     return events
 
 
+def _boolean_segments(active: np.ndarray) -> list[tuple[int, int]]:
+    segments: list[tuple[int, int]] = []
+    start: int | None = None
+    for idx, flag in enumerate(active):
+        if bool(flag) and start is None:
+            start = idx
+        if (not bool(flag) or idx == len(active) - 1) and start is not None:
+            end = idx if bool(flag) and idx == len(active) - 1 else idx - 1
+            if end >= start:
+                segments.append((start, end))
+            start = None
+    return segments
+
+
+def _merge_short_gaps(segments: list[tuple[int, int]], max_gap: int) -> list[tuple[int, int]]:
+    if not segments:
+        return []
+    merged = [segments[0]]
+    for start, end in segments[1:]:
+        prev_start, prev_end = merged[-1]
+        if start - prev_end - 1 <= max_gap:
+            merged[-1] = (prev_start, end)
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def segment_locomotion_state(sequence: ObservableSequence, cfg: dict[str, Any]) -> list[MicroEvent]:
+    speeds = np.asarray(sequence.values, dtype=np.float32)
+    if len(speeds) < int(cfg['min_duration']):
+        return []
+    active = speeds >= float(cfg['speed_threshold'])
+    segments = _merge_short_gaps(_boolean_segments(active), int(cfg['merge_gap']))
+    events: list[MicroEvent] = []
+    for start, end in segments:
+        duration = end - start + 1
+        if duration < int(cfg['min_duration']):
+            continue
+        path_length = float(np.sum(np.maximum(speeds[start:end + 1], 0.0)))
+        if path_length < float(cfg['min_path_length']):
+            continue
+        mean_speed = float(np.mean(speeds[start:end + 1]))
+        active_ratio = float(np.mean(active[start:end + 1]))
+        forward_values = sequence.metadata.get('root_forward_velocity')
+        lateral_values = sequence.metadata.get('root_lateral_velocity')
+        forward_displacement = 0.0
+        lateral_displacement = 0.0
+        abs_forward_displacement = 0.0
+        abs_lateral_displacement = 0.0
+        trajectory_direction = 'unknown'
+        if forward_values is not None and lateral_values is not None:
+            forward_arr = np.asarray(forward_values, dtype=np.float32)
+            lateral_arr = np.asarray(lateral_values, dtype=np.float32)
+            forward_displacement = float(np.sum(forward_arr[start:end + 1]))
+            lateral_displacement = float(np.sum(lateral_arr[start:end + 1]))
+            abs_forward_displacement = float(np.sum(np.abs(forward_arr[start:end + 1])))
+            abs_lateral_displacement = float(np.sum(np.abs(lateral_arr[start:end + 1])))
+            net_mag = max(1e-6, float(np.hypot(forward_displacement, lateral_displacement)))
+            forward_ratio = abs(forward_displacement) / net_mag
+            lateral_ratio = abs(lateral_displacement) / net_mag
+            if forward_ratio >= 0.65 and abs(forward_displacement) >= 0.25:
+                trajectory_direction = 'forward' if forward_displacement >= 0 else 'backward'
+            elif lateral_ratio >= 0.65 and abs(lateral_displacement) >= 0.25:
+                trajectory_direction = 'right' if lateral_displacement >= 0 else 'left'
+            elif net_mag >= 0.25:
+                trajectory_direction = 'mixed'
+        confidence = float(round(min(1.0, 0.45 + 0.35 * active_ratio + 0.20 * min(duration / 30.0, 1.0)), 3))
+        events.append(MicroEvent(
+            observable=sequence.name,
+            part=str(cfg['part']),
+            direction=str(cfg['direction']),
+            magnitude_bin=_magnitude_bin(path_length, float(cfg['small']), float(cfg['medium'])),
+            duration_bin=_duration_bin(duration, max(1, int(cfg['min_duration']) // 2)),
+            start_frame=int(start),
+            end_frame=int(end),
+            delta_value=path_length,
+            unit='m',
+            confidence=confidence,
+            metadata={
+                'source': sequence.source,
+                'state_event': True,
+                'mean_speed': mean_speed,
+                'path_length': path_length,
+                'active_ratio': active_ratio,
+                'speed_threshold': float(cfg['speed_threshold']),
+                'trajectory_direction': trajectory_direction,
+                'forward_displacement': forward_displacement,
+                'lateral_displacement': lateral_displacement,
+                'abs_forward_displacement': abs_forward_displacement,
+                'abs_lateral_displacement': abs_lateral_displacement,
+            },
+        ))
+    return events
+
+
+def segment_low_body_state(sequence: ObservableSequence, cfg: dict[str, Any]) -> list[MicroEvent]:
+    values = np.asarray(sequence.values, dtype=np.float32)
+    if len(values) < int(cfg['min_duration']):
+        return []
+    active = values <= float(cfg['max_height'])
+    segments = _merge_short_gaps(_boolean_segments(active), int(cfg['merge_gap']))
+    events: list[MicroEvent] = []
+    for start, end in segments:
+        duration = end - start + 1
+        if duration < int(cfg['min_duration']):
+            continue
+        segment_values = values[start:end + 1]
+        active_ratio = float(np.mean(active[start:end + 1]))
+        mean_height = float(np.mean(segment_values))
+        low_depth = max(0.0, float(cfg['max_height']) - mean_height)
+        confidence = float(round(min(1.0, 0.48 + 0.30 * active_ratio + 0.22 * min(duration / 40.0, 1.0)), 3))
+        events.append(MicroEvent(
+            observable=sequence.name,
+            part=str(cfg['part']),
+            direction=str(cfg['direction']),
+            magnitude_bin=_magnitude_bin(low_depth, float(cfg['small']), float(cfg['medium'])),
+            duration_bin=_duration_bin(duration, max(1, int(cfg['min_duration']) // 2)),
+            start_frame=int(start),
+            end_frame=int(end),
+            delta_value=low_depth,
+            unit=sequence.unit,
+            confidence=confidence,
+            metadata={
+                'source': sequence.source,
+                'state_event': True,
+                'state_type': 'sustained_low_body',
+                'mean_height': mean_height,
+                'min_height': float(np.min(segment_values)),
+                'max_height_observed': float(np.max(segment_values)),
+                'low_height_threshold': float(cfg['max_height']),
+                'active_ratio': active_ratio,
+            },
+        ))
+    return events
+
+
 def extract_layer1_micro_events(frame_observables: FrameObservables, channels: Iterable[str] | None = None) -> list[MicroEvent]:
     selected = list(channels) if channels is not None else list(CHANNEL_CONFIG.keys())
     events: list[MicroEvent] = []
@@ -220,5 +383,9 @@ def extract_layer1_micro_events(frame_observables: FrameObservables, channels: I
             continue
         seq = frame_observables.get(name)
         events.extend(segment_observable(seq, CHANNEL_CONFIG[name]))
-    events.sort(key=lambda e: (e.start_frame, e.end_frame, e.observable))
+        if name in STATE_CHANNEL_CONFIG:
+            events.extend(segment_locomotion_state(seq, STATE_CHANNEL_CONFIG[name]))
+        if name in SUSTAINED_STATE_CHANNEL_CONFIG:
+            events.extend(segment_low_body_state(seq, SUSTAINED_STATE_CHANNEL_CONFIG[name]))
+    events.sort(key=lambda e: (e.start_frame, e.end_frame, e.observable, e.direction))
     return events

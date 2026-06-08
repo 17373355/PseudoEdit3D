@@ -16,6 +16,9 @@ if str(ROOT_DIR) not in sys.path:
 
 from pseudoedit3d.constants import BODY_PART_TO_JOINTS
 from pseudoedit3d.edit import (
+    aml_event_to_template,
+    aml_program_to_templates,
+    attach_aml_language,
     PhasePattern,
     build_layer3_atomic_program,
     dedupe_phase_patterns,
@@ -118,7 +121,7 @@ def extract_layer3(joints: np.ndarray) -> dict[str, Any]:
     for category in ('whole_body', 'torso', 'left_arm', 'right_arm'):
         phases.extend(detect_repeated_phases(project_units_by_category(layer2, category)))
     phases = dedupe_phase_objects(phases)
-    layer3 = build_layer3_atomic_program(layer2, phases)
+    layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phases))
     return {
         'layer1_count': len(layer1),
         'layer2_count': len(layer2),
@@ -132,13 +135,7 @@ def active_events(events: list[dict[str, Any]], frame_idx: int) -> list[dict[str
 
 
 def event_label(evt: dict[str, Any]) -> str:
-    sig = evt.get('motion_signature') or {}
-    context = sig.get('context_mode', 'unknown')
-    count = f" x{evt['count']}" if 'count' in evt else ''
-    return (
-        f"{evt.get('super_family')}/{evt.get('cluster_id')}{count} "
-        f"{evt.get('direction')} [{int(evt.get('start_frame', -1))}-{int(evt.get('end_frame', -1))}] {context}"
-    )
+    return aml_event_to_template(evt, detail=False)
 
 
 def event_sort_key(evt: dict[str, Any]) -> tuple[int, int, str, str]:
@@ -311,6 +308,8 @@ def render_case(case_id: str, joints: np.ndarray, output_path: Path, fps: int, m
         'layer25_count': int(extracted['layer25_count']),
         'layer3_count': len(events),
         'events': events,
+        'aml_language_compact': aml_program_to_templates({'events': events}, detail=False),
+        'aml_language_detailed': aml_program_to_templates({'events': events}, detail=True),
     }
 
 

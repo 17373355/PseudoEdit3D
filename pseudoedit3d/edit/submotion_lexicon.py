@@ -350,6 +350,7 @@ def merge_micro_events(events: list[MicroEvent], lexicon: Iterable[SubMotionPatt
                     'unit': e.unit,
                     'magnitude_bin': e.magnitude_bin,
                     'duration_bin': e.duration_bin,
+                    **dict(e.metadata or {}),
                 },
             ))
             i += 1
