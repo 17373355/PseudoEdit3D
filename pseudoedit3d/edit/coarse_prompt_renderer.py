@@ -158,6 +158,8 @@ def _action_clause(signature: dict[str, Any], action: dict[str, Any]) -> str | N
         if name_hint == 'jog_in_place':
             return 'jogs in place'
         return 'walks in place'
+    if pid == 'IN_PLACE_GAIT_PROXY':
+        return 'makes a small in-place bouncing motion'
     if pid == 'CELEBRATORY_DANCE_GESTURE':
         count = int(action.get('raise_spread_count') or 0)
         if count >= 3:
@@ -182,6 +184,15 @@ def _action_clause(signature: dict[str, Any], action: dict[str, Any]) -> str | N
         return _hands_close_clause(action)
     if pid == 'BIMANUAL_ACTION':
         return _bimanual_clause(signature)
+    if pid == 'BIMANUAL_ARM_MIME_CANDIDATE':
+        return 'makes a bimanual upper-body gesture'
+    if pid == 'UNILATERAL_ARM_MIME_CANDIDATE':
+        side = str(action.get('dominant_side') or '')
+        if side in {'left', 'right'}:
+            return f'makes repeated {side} arm gestures'
+        return 'makes repeated one-arm gestures'
+    if pid == 'STATIC_OR_SUBTLE_STATE_PROXY':
+        return 'holds a mostly still subtle pose'
     if pid == 'TORSO_HUNCHED_FORWARD':
         return 'keeps the torso hunched forward'
     if pid == 'LEFT_HAND_RAISED_HIGH':
@@ -233,6 +244,16 @@ def _probe_sort_key(action: dict[str, Any]) -> tuple[int, int, int]:
     return (start, int(span[1]) if len(span) > 1 else start, 0)
 
 
+def _semantic_status(action: dict[str, Any]) -> str:
+    family = action.get('semantic_family') or {}
+    if isinstance(family, dict):
+        status = str(family.get('status') or '')
+        if status:
+            return status
+    slots = action.get('slots') or {}
+    return str(slots.get('semantic_family_status') or 'stable')
+
+
 def _action_salience(action: dict[str, Any]) -> float:
     pid = str(action.get('prototype_id', ''))
     score = {
@@ -256,6 +277,7 @@ def _action_salience(action: dict[str, Any]) -> float:
         'LEFT_HAND_RAISED_HIGH': 0.80,
         'RIGHT_HAND_RAISED_HIGH': 0.80,
         'IN_PLACE_GAIT': 0.90,
+        'IN_PLACE_GAIT_PROXY': 0.56,
         'TRANSLATING_GAIT': 0.90,
         'TRANSLATING_GAIT_SEGMENT': 0.74,
         'BALLISTIC_TRANSLATION_SEGMENT': 0.82,
@@ -265,9 +287,19 @@ def _action_salience(action: dict[str, Any]) -> float:
         'TERMINAL_STILL': 0.70,
         'BIMANUAL_HANDS_CLOSE': 0.45,
         'BIMANUAL_ACTION': 0.42,
+        'BIMANUAL_ARM_MIME_CANDIDATE': 0.62,
+        'UNILATERAL_ARM_MIME_CANDIDATE': 0.58,
+        'STATIC_OR_SUBTLE_STATE_PROXY': 0.44,
     }.get(pid, 0.25)
     if action.get('probe_visible') is False:
         score -= 1.0
+    status = _semantic_status(action)
+    if status == 'unknown':
+        score -= 2.0
+    elif status == 'candidate':
+        score -= 0.08
+    elif status == 'proxy':
+        score -= 0.12
     try:
         confidence = float(action.get('confidence') or 0.0)
     except (TypeError, ValueError):
@@ -359,6 +391,8 @@ def render_coarse_aml_prompt(
     action_rows: list[tuple[dict[str, Any], str, float]] = []
     for action in sorted(coarse.get('coarse_actions') or [], key=_probe_sort_key):
         if action.get('probe_visible') is False:
+            continue
+        if _semantic_status(action) == 'unknown':
             continue
         clause = _action_clause(signature, action)
         if clause:

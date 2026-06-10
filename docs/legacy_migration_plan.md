@@ -12,6 +12,8 @@ Keep these as active components:
 - `pseudoedit3d/edit/phase_patterns.py`
 - `pseudoedit3d/edit/aml_atomic_program.py`
 - `pseudoedit3d/edit/aml_language.py`
+- `pseudoedit3d/edit/coarse_signature.py`
+- `pseudoedit3d/edit/coarse_prompt_renderer.py`
 - `scripts/build_aml_mining_corpus.py`
 - `scripts/extract_aml_layers.py`
 - `scripts/summarize_aml_family_taxonomy.py`
@@ -27,6 +29,8 @@ Layer 0 frame observables
 -> Layer 2 sub-motion units
 -> Layer 2.5 phase/repetition patterns
 -> Layer 3 atomic program
+-> Layer 3.5 coarse signature, semantic family, approximate slots
+-> Layer 4 canonical action program
 -> AML template language
 ```
 
@@ -62,23 +66,36 @@ Reason:
 - these belong to the earlier batch-wise auto-prompt correction workflow
 - useful historical evidence, but no longer the core architecture
 
-## Candidate Legacy: Demo-Only Layer Dumps / Visualizers
+## Moved Legacy: Demo-Only Layer Dumps / Visualizers
 
-Move to `legacy/aml_demos/` after confirming they are superseded by `extract_aml_layers.py` and `visualize_aml_atomic_program.py`:
+Moved to `legacy/aml_demos/` on 2026-06-10 after confirming they are superseded by `extract_aml_layers.py` and `visualize_aml_atomic_program.py`:
 
-- `scripts/dump_micro_events_demo.py`
-- `scripts/visualize_micro_events.py`
-- `scripts/detect_phase_patterns_demo.py`
-- `scripts/visualize_phase_patterns.py`
-- `scripts/merge_submotion_demo.py`
-- `scripts/visualize_submotions.py`
-- `scripts/summarize_phase_hierarchy.py`
-- `scripts/summarize_aml_hierarchy.py`
+- `legacy/aml_demos/scripts/dump_micro_events_demo.py`
+- `legacy/aml_demos/scripts/visualize_micro_events.py`
+- `legacy/aml_demos/scripts/detect_phase_patterns_demo.py`
+- `legacy/aml_demos/scripts/visualize_phase_patterns.py`
+- `legacy/aml_demos/scripts/merge_submotion_demo.py`
+- `legacy/aml_demos/scripts/visualize_submotions.py`
+- `legacy/aml_demos/scripts/summarize_phase_hierarchy.py`
+- `legacy/aml_demos/scripts/summarize_aml_hierarchy.py`
 
 Reason:
 
 - still useful for debugging individual layers
 - but should be marked as demo/legacy if the unified AML export/visualization scripts cover the same use cases
+
+## Moved Legacy: Old Mined-Pair Iterative Refinement
+
+Moved to `legacy/old_stage1_iterative_refinement/` on 2026-06-10:
+
+- `legacy/old_stage1_iterative_refinement/pseudoedit3d/edit/iterative.py`
+- `legacy/old_stage1_iterative_refinement/scripts/iterate_mined_pairs.py`
+
+Reason:
+
+- `pseudoedit3d/edit/iterative.py` was only imported by `scripts/iterate_mined_pairs.py`
+- the loop belongs to the old mined-pair Stage 1 scaffold, not the current AML coarse action path
+- current unknown-family / approximate-slot work lives in `pseudoedit3d/edit/coarse_signature.py` and `scripts/analyze_aml_semantic_family_status.py`
 
 ## Candidate Legacy: Old Hierarchical Atomic Training Scaffold
 
@@ -104,6 +121,7 @@ legacy/
   README.md
   auto_prompt_pattern_batches/
   aml_demos/
+  old_stage1_iterative_refinement/
   old_stage1_atomic_scaffold/
 ```
 
@@ -113,6 +131,8 @@ For each moved file:
 - record why it moved
 - record which active AML file supersedes it
 - do not move files imported by active scripts
+
+Current call graph and file decisions are documented in `docs/design/aml_edit_call_graph.md`.
 
 ## Current Architecture Coverage Status
 

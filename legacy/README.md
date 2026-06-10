@@ -18,6 +18,7 @@ Current AML mainline is documented in:
 
 - `docs/design/aml_architecture_coverage.md`
 - `docs/design/motion_subword_design.md`
+- `docs/design/aml_edit_call_graph.md`
 - `docs/experiment_log.md`
 
 No active file should import from this folder.
@@ -33,3 +34,35 @@ No active file should import from this folder.
   - reason: backup copy of old MoMask case-study visualizer
   - replacement: active probe remains `scripts/visualize_momask_case_study.py`; AML mainline uses `scripts/visualize_aml_atomic_program.py`
 
+### 2026-06-10
+
+- `scripts/dump_micro_events_demo.py` -> `legacy/aml_demos/scripts/dump_micro_events_demo.py`
+  - reason: layer-specific demo script superseded by unified AML extraction
+  - replacement: `scripts/extract_aml_layers.py`
+- `scripts/visualize_micro_events.py` -> `legacy/aml_demos/scripts/visualize_micro_events.py`
+  - reason: layer-specific visualizer superseded by unified AML visualization
+  - replacement: `scripts/visualize_aml_atomic_program.py`
+- `scripts/detect_phase_patterns_demo.py` -> `legacy/aml_demos/scripts/detect_phase_patterns_demo.py`
+  - reason: layer-specific phase demo superseded by unified AML extraction
+  - replacement: `scripts/extract_aml_layers.py`
+- `scripts/visualize_phase_patterns.py` -> `legacy/aml_demos/scripts/visualize_phase_patterns.py`
+  - reason: layer-specific visualizer superseded by unified AML visualization
+  - replacement: `scripts/visualize_aml_atomic_program.py`
+- `scripts/merge_submotion_demo.py` -> `legacy/aml_demos/scripts/merge_submotion_demo.py`
+  - reason: layer-specific submotion demo superseded by unified AML extraction
+  - replacement: `scripts/extract_aml_layers.py`
+- `scripts/visualize_submotions.py` -> `legacy/aml_demos/scripts/visualize_submotions.py`
+  - reason: layer-specific visualizer superseded by unified AML visualization
+  - replacement: `scripts/visualize_aml_atomic_program.py`
+- `scripts/summarize_phase_hierarchy.py` -> `legacy/aml_demos/scripts/summarize_phase_hierarchy.py`
+  - reason: layer-specific hierarchy summary superseded by current AML taxonomy/visualization scripts
+  - replacement: `scripts/summarize_aml_family_taxonomy.py` and `scripts/extract_aml_layers.py`
+- `scripts/summarize_aml_hierarchy.py` -> `legacy/aml_demos/scripts/summarize_aml_hierarchy.py`
+  - reason: older hierarchy summary superseded by current AML taxonomy/visualization scripts
+  - replacement: `scripts/summarize_aml_family_taxonomy.py` and `scripts/extract_aml_layers.py`
+- `pseudoedit3d/edit/iterative.py` -> `legacy/old_stage1_iterative_refinement/pseudoedit3d/edit/iterative.py`
+  - reason: old mined-pair iterative refinement loop; not imported by active AML coarse action path
+  - replacement: current AML mainline uses `pseudoedit3d/edit/coarse_signature.py` and `scripts/analyze_aml_semantic_family_status.py`
+- `scripts/iterate_mined_pairs.py` -> `legacy/old_stage1_iterative_refinement/scripts/iterate_mined_pairs.py`
+  - reason: command-line wrapper for the old mined-pair iterative refinement loop
+  - replacement: no active replacement; keep for historical Stage 1 experiments only

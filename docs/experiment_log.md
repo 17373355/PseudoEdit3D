@@ -1136,3 +1136,326 @@ Current conclusion:
   - `M009712` now includes a `dance-like pose with the left leg extended`.
   - `M010447` now includes `repeated inverted acrobatic motions 7 times`.
 - Remaining caveat: these are still candidate semantic families inferred from motion signatures. The MoMask natural-language probe is only a compatibility check; the canonical AML program/slots should remain the target conditioning representation for future training.
+
+## 2026-06-10 - Unknown semantic family and approximate slot metadata v1
+
+- Updated `pseudoedit3d/edit/coarse_signature.py` so every coarse/canonical action now carries:
+  - `semantic_family`: `{family_id, source_family, status, label_confidence, motion_only, source, probe_visible}`.
+  - `approx_slots`: uncertainty-aware slot values with `value`, numeric `range` when available, `unit`, `confidence`, `source`, and `quality`.
+- Semantic family status policy:
+  - `stable`: existing direct AML families such as gait, jump, turn, terminal still.
+  - `candidate`: plausible but not yet frozen semantic families such as `SQUAT_REPETITION`, `ACROBATIC_SEQUENCE_CANDIDATE`, `DANCE_LEG_POSE_CANDIDATE`, and weak ballistic candidates.
+  - `proxy`: conservative observable proxies such as raised hand, squat hold, climb-up-over proxy, and leg kick proxy.
+  - `unknown`: fallback families `UNKNOWN_EVENT_SEQUENCE` and `UNKNOWN_BIMANUAL_FAMILY`, with source event family/cluster counts retained for later subclustering.
+- Kept backwards compatibility:
+  - existing flat `slots` remain present;
+  - `slots.semantic_family_id`, `slots.semantic_family_status`, and `slots.approx_slots` mirror the new fields for downstream code that only reads `slots`.
+- Focused validation:
+  - py-compile: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_signature.py`
+  - preview-only extraction: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 012388,M004684,M010447 --output-dir outputs/aml_regression_testset_v2/semantic_gap3_unknown_slots_preview_v2 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix aml_semantic_slots_v2`
+  - synthetic unknown fallback check confirmed `EVENT_SEQUENCE -> UNKNOWN_EVENT_SEQUENCE` with source family/cluster counts and low-confidence approximate slots.
+- Preview output:
+  - `outputs/aml_regression_testset_v2/semantic_gap3_unknown_slots_preview_v2/summary.json`
+  - per-case metadata under `outputs/aml_regression_testset_v2/semantic_gap3_unknown_slots_preview_v2/{case_id}/aml_meta.json`
+- Interpretation:
+  - this does not promote candidate semantic families into final labels;
+  - it makes uncertainty explicit so future AML-conditioned training can weight or filter `stable`, `candidate`, `proxy`, and `unknown` families differently.
+
+### Semantic-family status diagnostics v1
+
+- Added `scripts/analyze_aml_semantic_family_status.py`.
+- The diagnostic can:
+  - read existing preview/probe `summary.json` files that already contain `canonical_actions`;
+  - or re-extract coarse canonical actions from a case list / manifest using the current code path.
+- Gap8 current-code re-extraction:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/analyze_aml_semantic_family_status.py --case-ids 012388,014448,M000266,M004684,M009712,M010447,004163,007232 --output-json outputs/aml_regression_testset_v2/semantic_gap8_status_slots_v1/semantic_family_status.json --output-md outputs/aml_regression_testset_v2/semantic_gap8_status_slots_v1/semantic_family_status.md --top-n 30 --example-limit 30 --progress-every 4`
+  - result: `58` canonical actions over `8` cases, `stable=29`, `proxy=20`, `candidate=9`, `unknown=0`.
+- Fixed 250-case regression-set diagnostic:
+  - case list source: `outputs/aml_regression_testset_v2/group_01_case_ids.txt` through `group_05_case_ids.txt`.
+  - saved case list: `outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt`.
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/analyze_aml_semantic_family_status.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --output-json outputs/aml_regression_testset_v2/semantic_status_250_v1/semantic_family_status.json --output-md outputs/aml_regression_testset_v2/semantic_status_250_v1/semantic_family_status.md --top-n 40 --example-limit 40 --progress-every 50`
+  - result: `1434` canonical actions over `250` cases.
+  - status distribution: `stable=853` (`59.5%`), `proxy=418` (`29.1%`), `candidate=126` (`8.8%`), `unknown=37` (`2.6%`).
+  - unknown case support: `37/250` cases.
+  - top unknown source clusters: `LEFT_ARM_PERIODIC/LA_REPEAT`, `RIGHT_ARM_PERIODIC/RA_REPEAT`, `BIMANUAL_PERIODIC/BI_SPREAD`, `RIGHT_ARM_POSTURE/RA_HAND_HIGH`, `LEFT_ARM_POSTURE/LA_HAND_HIGH`, `RIGHT_ARM_PERIODIC/RA_NEAR_FAR`, `BIMANUAL_PERIODIC/BI_HANDS_CLOSE`.
+- Diagnostic outputs:
+  - `outputs/aml_regression_testset_v2/semantic_gap8_status_slots_v1/semantic_family_status.md`
+  - `outputs/aml_regression_testset_v2/semantic_status_250_v1/semantic_family_status.md`
+- Interpretation:
+  - the semantic-family layer covers the curated gap8 cases without unknown fallback;
+  - the 250-case regression set still exposes a small but useful unknown bucket, mostly object/tool mime, arm-only gesture, bimanual range-of-motion, and subtle low-motion state patterns;
+  - next mechanism work should target subfamilies for unilateral/bimanual arm mime and object-like interactions before expanding MoMask probes.
+
+### Conservative arm-mime semantic family v2
+
+- Updated `pseudoedit3d/edit/coarse_signature.py` with conservative non-scene semantic families:
+  - `BIMANUAL_ARM_MIME_CANDIDATE`: bimanual/upper-body events dominate without reliable locomotion or a stronger semantic family.
+  - `UNILATERAL_ARM_MIME_CANDIDATE`: repeated or held one-arm upper-body motion without a stable action name.
+  - `STATIC_OR_SUBTLE_STATE_PROXY`: only static/subtle state evidence is available.
+- Updated `pseudoedit3d/edit/coarse_prompt_renderer.py` with conservative probe wording:
+  - `makes a bimanual upper-body gesture`
+  - `makes repeated left/right arm gestures`
+  - `holds a mostly still subtle pose`
+- Kept the rule motion-only:
+  - no same-case HML3D captions are read;
+  - no object/tool/scene words such as dumbbell, drink, dog, discussion, wall, or rail are emitted.
+- 250-case status regression after arm-mime v2:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/analyze_aml_semantic_family_status.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --output-json outputs/aml_regression_testset_v2/semantic_status_250_armmime_v2/semantic_family_status.json --output-md outputs/aml_regression_testset_v2/semantic_status_250_armmime_v2/semantic_family_status.md --top-n 50 --example-limit 50 --progress-every 50`
+  - result: `1433` canonical actions over `250` cases.
+  - status distribution changed from v1 `stable=853`, `proxy=418`, `candidate=126`, `unknown=37` to v2 `stable=853`, `proxy=427`, `candidate=138`, `unknown=15`.
+  - unknown action share dropped from `2.6%` to `1.0%`.
+- Gap8 regression after arm-mime v2:
+  - output: `outputs/aml_regression_testset_v2/semantic_gap8_status_slots_v2/semantic_family_status.md`
+  - result unchanged at `58` canonical actions, `stable=29`, `proxy=20`, `candidate=9`, `unknown=0`.
+- Preview-only prompt check:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 009941,M008179,000055,002795 --output-dir outputs/aml_regression_testset_v2/semantic_armmime_preview_v2 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix aml_armmime_v2`
+  - output: `outputs/aml_regression_testset_v2/semantic_armmime_preview_v2/summary.json`
+  - checks: `009941` and `M008179` use bimanual upper-body gesture wording; `000055` uses repeated right-arm gesture wording; no object/tool labels were introduced.
+- Remaining unknown bucket:
+  - mostly no-event / too-subtle clips, single raised-hand posture, and vertical-only in-place motion not strong enough for the current in-place gait rule.
+  - next useful mechanism is a separate no-event/subtle-motion audit and an object-like arm interaction candidate that still avoids scene/object nouns unless external evidence exists.
+
+### Unknown-family closure and required-slot audit v3
+
+- Step 1 audit:
+  - 250-case output: `outputs/aml_regression_testset_v2/semantic_unknown_audit_250_v1/semantic_family_status.md`.
+  - gap8 output: `outputs/aml_regression_testset_v2/semantic_unknown_audit_gap8_v1/semantic_family_status.md`.
+  - 250-case status before closure: `1433` canonical actions, `stable=853`, `proxy=427`, `candidate=138`, `unknown=15`.
+  - gap8 remained `unknown=0`.
+- Step 2 semantic-family closure:
+  - no-event / zero-span fallback actions now become hidden `STATIC_OR_SUBTLE_STATE_PROXY` rather than `UNKNOWN_EVENT_SEQUENCE`.
+  - low repeated vertical in-place bounce with bimanual/torso evidence now becomes `IN_PLACE_GAIT_PROXY` rather than `UNKNOWN_BIMANUAL_FAMILY`.
+  - fallback `EVENT_SEQUENCE` / `BIMANUAL_ACTION` actions are dropped when all source events are already explained by later semantic/proxy actions.
+  - 250-case status after closure: `1427` canonical actions, `stable=853`, `proxy=436`, `candidate=138`, `unknown=0`.
+  - output: `outputs/aml_regression_testset_v2/semantic_status_250_after_step2_v1/semantic_family_status.md`.
+- Step 3 approximate-slot audit:
+  - `scripts/analyze_aml_semantic_family_status.py` now reports required per-family `approx_slots` coverage and examples.
+  - `ROTATION_DOMINANT` now copies `angle_deg` and `angle_bin` from the rotation signature into canonical action slots.
+  - squat candidate requirements allow `magnitude|vertical_amplitude_m`, because some squat candidates are posture-depth estimates while others are vertical-cycle estimates.
+  - required-slot missing count is `0` on the 250-case audit.
+  - output: `outputs/aml_regression_testset_v2/semantic_slot_audit_250_v3/semantic_family_status.md`.
+- Step 4 renderer policy:
+  - `coarse_prompt_renderer` now reads `semantic_family.status`.
+  - `unknown` actions are excluded from probe text.
+  - `candidate` and `proxy` actions are salience-penalized and rendered with conservative observable wording.
+  - `probe_visible=false` actions remain structural only; no-evidence clips render as `moves naturally`.
+  - preview output: `outputs/aml_regression_testset_v2/semantic_renderer_step4_preview_v1/summary.json`.
+- Representative preview checks:
+  - `M000239`: `a person raises the left hand high`.
+  - `002795`: `a person makes a small in-place bouncing motion`.
+  - `M006210`: `a person moves naturally`.
+
+### AML condition manifest v1
+
+- Added `pseudoedit3d/edit/aml_condition_schema.py` as the shared required-slot and condition-weight schema.
+- Updated `scripts/analyze_aml_semantic_family_status.py` to reuse the shared schema rather than owning a duplicate required-slot table.
+- Added `scripts/export_aml_condition_manifest.py`.
+- Manifest record contract:
+  - one JSONL row per case;
+  - `conditions` stores one item per canonical action;
+  - each condition stores `family_id`, `source_family`, `status`, `condition_weight`, `slot_values`, `slot_confidences`, `slot_qualities`, full `approx_slots`, and `missing_required_slots`;
+  - HML3D text is kept only as `selected_hml3d_prompt_for_reference_only`, not as the AML condition.
+- Default weights:
+  - `stable=1.0`
+  - `candidate=0.7`
+  - `proxy=0.5`
+  - `unknown`, missing required slots, or `probe_visible=false` -> `0.0`
+- 250-case export:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --output-jsonl outputs/aml_regression_testset_v2/aml_condition_manifest_250_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/aml_condition_manifest_250_v1/summary.json --output-md outputs/aml_regression_testset_v2/aml_condition_manifest_250_v1/summary.md --top-n 80 --progress-every 50`
+  - result: `250` cases, `1427` conditions, `missing_required_condition_count=0`, `zero_weight_condition_count=55`.
+  - status distribution: `stable=853`, `proxy=436`, `candidate=138`.
+- Gap8 export:
+  - output: `outputs/aml_regression_testset_v2/aml_condition_manifest_gap8_v1/summary.md`
+  - result: `8` cases, `58` conditions, `missing_required_condition_count=0`, `zero_weight_condition_count=8`.
+
+### AML condition screening v1
+
+- Added `scripts/screen_aml_conditions.py`.
+- Scope:
+  - replace the complex HTML evolution view with simple Markdown/JSON/JSONL screening records;
+  - keep every original condition in `screened_conditions.jsonl`;
+  - attach `screen_score`, `screen_decision`, and `screen_reason`;
+  - export a compact `selected_conditions.jsonl` for downstream dataset/training wiring.
+- Scoring rule:
+  - combines `condition_weight`, label confidence, slot confidence, slot quality, and required-slot coverage;
+  - `condition_weight=0`, `probe_visible=false`, or missing required slots score `0`;
+  - default selected threshold is `0.42`;
+  - default deferred threshold is `0.315`.
+- Gap8 run:
+  - command: `python scripts/screen_aml_conditions.py --manifest outputs/aml_regression_testset_v2/aml_condition_manifest_gap8_v1/conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_condition_screening_gap8_v1 --threshold 0.42 --defer-ratio 0.75 --max-selected-per-case 8 --min-selected-per-case 1 --example-cases 8`
+  - result: `8` cases, `58` conditions, final decisions `selected=30`, `deferred=20`, `dropped=8`.
+- 250-case run:
+  - command: `python scripts/screen_aml_conditions.py --manifest outputs/aml_regression_testset_v2/aml_condition_manifest_250_v1/conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_condition_screening_250_v1 --threshold 0.42 --defer-ratio 0.75 --max-selected-per-case 8 --min-selected-per-case 1 --example-cases 25`
+  - result: `250` cases, `1427` conditions, final decisions `selected=905`, `deferred=458`, `dropped=64`.
+- Outputs:
+  - gap8 report: `outputs/aml_regression_testset_v2/aml_condition_screening_gap8_v1/screening_report.md`
+  - 250-case report: `outputs/aml_regression_testset_v2/aml_condition_screening_250_v1/screening_report.md`
+  - compact selected/deferred records: `selected_conditions.jsonl` under each output directory.
+- Verification:
+  - `python -m py_compile scripts/screen_aml_conditions.py`
+  - `git diff --check`
+  - JSONL row/condition counts match `summary.json` for both gap8 and 250-case outputs.
+
+### AML selected-condition dataset contract audit v1
+
+- Added `scripts/audit_aml_condition_contract.py`.
+- Scope:
+  - audit `selected_conditions.jsonl` without introducing a training dataset adapter yet;
+  - verify required record fields and condition fields;
+  - verify slot type stability for numeric/string/span slots;
+  - split train-ready records from empty-selected audit records.
+- Gap8 run:
+  - command: `python scripts/audit_aml_condition_contract.py --selected-jsonl outputs/aml_regression_testset_v2/aml_condition_screening_gap8_v1/selected_conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_condition_contract_gap8_v1`
+  - result: `8` records, `8` train-ready, `0` empty-selected, `30` selected conditions, `20` deferred conditions, contract status `pass`.
+- 250-case run:
+  - command: `python scripts/audit_aml_condition_contract.py --selected-jsonl outputs/aml_regression_testset_v2/aml_condition_screening_250_v1/selected_conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_condition_contract_250_v1`
+  - result: `250` records, `242` train-ready, `8` empty-selected, `905` selected conditions, `458` deferred conditions, contract status `pass`.
+  - empty-selected cases: `M006210`, `006351`, `006357`, `007359`, `008449`, `008740`, `010895`, `M011255`.
+- Outputs:
+  - gap8 contract report: `outputs/aml_regression_testset_v2/aml_condition_contract_gap8_v1/dataset_contract.md`
+  - 250-case contract report: `outputs/aml_regression_testset_v2/aml_condition_contract_250_v1/dataset_contract.md`
+  - first downstream input: `outputs/aml_regression_testset_v2/aml_condition_contract_250_v1/train_ready_selected_conditions.jsonl`
+  - audit-only empty records: `outputs/aml_regression_testset_v2/aml_condition_contract_250_v1/empty_selected_cases.jsonl`
+- Verification:
+  - `python -m py_compile scripts/audit_aml_condition_contract.py scripts/screen_aml_conditions.py`
+  - `git diff --check`
+  - slot type issues are `{}` on both gap8 and 250-case audits.
+
+### AML condition batch schema v1
+
+- Added `scripts/export_aml_condition_batch_schema.py`.
+- Scope:
+  - convert train-ready selected AML conditions into fixed-shape arrays;
+  - do not include source/target motion tensors yet;
+  - keep this as the first model-facing condition contract before wiring a training dataset.
+- Input:
+  - `outputs/aml_regression_testset_v2/aml_condition_contract_250_v1/train_ready_selected_conditions.jsonl`
+  - records: `242`
+  - selected conditions: `905`
+- Command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_batch_schema.py --input-jsonl outputs/aml_regression_testset_v2/aml_condition_contract_250_v1/train_ready_selected_conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1 --max-conditions 8`
+- Output:
+  - `outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1/condition_batch.npz`
+  - `outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1/condition_batch_schema.json`
+  - `outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1/condition_batch_index.jsonl`
+  - `outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1/condition_batch_summary.json`
+  - `outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1/condition_batch_report.md`
+- Fixed array shapes:
+  - `condition_mask`: `[242, 8]`
+  - `family_id`: `[242, 8]`
+  - `status_id`: `[242, 8]`
+  - `score`: `[242, 8]`
+  - `condition_weight`: `[242, 8]`
+  - `span`: `[242, 8, 2]`
+  - `span_norm`: `[242, 8, 4]`
+  - `numeric_slots`: `[242, 8, 18]`
+  - `categorical_slots`: `[242, 8, 4]`
+- Smoke result:
+  - real selected conditions from `condition_mask`: `905`
+  - `num_selected.sum()`: `905`
+  - truncated cases: `0`
+  - span coverage: `1.0`
+  - padding ids and padded spans are consistent.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/export_aml_condition_batch_schema.py scripts/audit_aml_condition_contract.py scripts/screen_aml_conditions.py`
+  - `git diff --check`
+  - note: the default `python` on this machine lacks `numpy`; use the `h2char` environment for this exporter.
+
+### AML condition + motion batch smoke v1
+
+- Added `scripts/export_aml_condition_motion_batch.py`.
+- Scope:
+  - align the fixed AML condition batch with HumanML3D `joints3d.pth`;
+  - export padded joints and frame masks for the 250-case train-ready subset;
+  - do not train a model and do not alter the condition schema.
+- Input:
+  - condition batch dir: `outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1`
+  - HumanML3D joints: `/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D/joints3d.pth`
+- Command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_motion_batch.py --condition-batch-dir outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1 --output-dir outputs/aml_regression_testset_v2/aml_condition_motion_batch_250_v1`
+- Output:
+  - `outputs/aml_regression_testset_v2/aml_condition_motion_batch_250_v1/condition_motion_batch.npz`
+  - `outputs/aml_regression_testset_v2/aml_condition_motion_batch_250_v1/condition_motion_alignment.json`
+  - `outputs/aml_regression_testset_v2/aml_condition_motion_batch_250_v1/condition_motion_alignment.jsonl`
+  - `outputs/aml_regression_testset_v2/aml_condition_motion_batch_250_v1/condition_motion_report.md`
+- Smoke result:
+  - cases: `242`
+  - joints shape: `[242, 282, 22, 3]`
+  - frame mask shape: `[242, 282]`
+  - valid frames: `43500`
+  - source frame range: min `55`, mean `179.7521`, max `282`
+  - condition real count: `905`
+  - mismatched frame count: `0`
+  - truncated count: `0`
+  - alignment status: `pass`.
+- Independent check:
+  - `case_index` matches `condition_batch.npz`;
+  - `source_num_frames` matches condition `num_frames`;
+  - padded frames are zero and masked out.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/export_aml_condition_motion_batch.py scripts/export_aml_condition_batch_schema.py scripts/audit_aml_condition_contract.py scripts/screen_aml_conditions.py`
+  - `git diff --check`
+
+### AML condition + motion DataLoader smoke v1
+
+- Added `pseudoedit3d/data/aml_condition_motion_dataset.py`.
+- Added `scripts/smoke_aml_condition_motion_loader.py`.
+- Dataset scope:
+  - read `condition_batch.npz` and `condition_motion_batch.npz`;
+  - expose padded HumanML3D joints, frame masks, selected-condition tensors, slot tensors, and case metadata;
+  - do not instantiate a model and do not train.
+- Important contract note:
+  - the first default PyTorch collate attempt failed because `selected_families` is variable-length metadata;
+  - added `collate_aml_condition_motion_samples` to stack tensors and keep metadata as Python lists.
+- Command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/smoke_aml_condition_motion_loader.py --condition-batch-dir outputs/aml_regression_testset_v2/aml_condition_batch_schema_250_v1 --motion-batch-dir outputs/aml_regression_testset_v2/aml_condition_motion_batch_250_v1 --output-dir outputs/aml_regression_testset_v2/aml_condition_motion_loader_smoke_250_v1 --batch-size 16 --num-workers 0 --example-cases 10`
+- Output:
+  - `outputs/aml_regression_testset_v2/aml_condition_motion_loader_smoke_250_v1/loader_smoke.json`
+  - `outputs/aml_regression_testset_v2/aml_condition_motion_loader_smoke_250_v1/loader_smoke.md`
+- Smoke result:
+  - status: `pass`
+  - dataset length: `242`
+  - checked batches: `16`
+  - checked samples: `242`
+  - batch size: `16`
+  - condition count from masks: `905`
+  - valid frame count from masks: `43500`
+  - mask mismatches: `[]`
+- First batch tensor shapes:
+  - `joints`: `[16, 282, 22, 3]`
+  - `frame_mask`: `[16, 282]`
+  - `condition_mask`: `[16, 8]`
+  - `condition_family_id`: `[16, 8]`
+  - `condition_status_id`: `[16, 8]`
+  - `condition_score`: `[16, 8]`
+  - `condition_span_norm`: `[16, 8, 4]`
+  - `condition_numeric_slots`: `[16, 8, 18]`
+  - `condition_categorical_slots`: `[16, 8, 4]`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/data/aml_condition_motion_dataset.py scripts/smoke_aml_condition_motion_loader.py`
+  - `git diff --check`
+
+### AML MoMask review-pack orchestration v1
+
+- Decision:
+  - pause the AML condition encoder work;
+  - before model-facing conditioning, run more `AML -> AutoPrompt -> MoMask` semantic review on HumanML3D;
+  - prioritize manual GT-vs-generated GIF inspection for the fixed 250-case regression set.
+- Added `scripts/run_aml_momask_review_pack.py`.
+- Purpose:
+  - orchestrate the existing `scripts/run_momask_aml_autoprompt_probe.py`, `scripts/visualize_momask_auto_gt.py`, and `scripts/analyze_momask_probe_kinematics.py`;
+  - run the 250-case set in five groups of 50;
+  - support `--reuse-existing` for interrupted runs;
+  - generate per-group `index.md` files and a master `review_manifest.json`.
+- Dry run:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_aml_momask_review_pack.py --case-list outputs/aml_regression_testset_v2/group_01_case_ids.txt --output-root outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1_dryrun --review-name aml_review250_semantic_v1_dryrun --ext-prefix aml_review250_semantic_v1_dryrun --skip-generation --skip-visualization --skip-kinematic`
+  - result: `group_01` probe summary and index generated for `50` cases without MoMask generation.
+  - dry-run index: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1_dryrun/group_01/index.md`
+  - dry-run master index: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1_dryrun/index.md`
+- Full review command to run after confirmation:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_aml_momask_review_pack.py --case-list-glob 'outputs/aml_regression_testset_v2/group_[0-9][0-9]_case_ids.txt' --output-root outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1 --review-name aml_review250_semantic_v1 --ext-prefix aml_review250_semantic_v1 --prompt-mode coarse --max-events 8 --time-steps 10 --cond-scale 4 --gpu-id 0 --reuse-existing --frame-stride 4`
+- Notes from dry-run prompt table:
+  - the current semantic renderer is improved enough to justify a systematic review bundle;
+  - remaining language-coverage watchpoints are still visible, e.g. arm/object-like actions, throw/catch, drink/wave, and some walking-like clips with extra leg-kick clauses.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/run_aml_momask_review_pack.py scripts/run_momask_aml_autoprompt_probe.py scripts/visualize_momask_auto_gt.py scripts/analyze_momask_probe_kinematics.py`

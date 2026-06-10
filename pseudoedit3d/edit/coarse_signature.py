@@ -361,6 +361,14 @@ def _in_place_gait_name(vertical: dict[str, Any], limbs: dict[str, Any]) -> tupl
     return "walk_in_place", 0.50, "low in-place gait intensity"
 
 
+def _event_indices_for_families(events: list[dict[str, Any]], families: set[str]) -> list[int]:
+    return [
+        int(evt["event_index"])
+        for evt in events
+        if str(evt.get("super_family", "")) in families
+    ]
+
+
 def _state_axis(events: list[dict[str, Any]]) -> dict[str, Any]:
     terminal = [
         evt
@@ -449,6 +457,18 @@ def build_event_coarse_signature(
 
 
 def assign_seeded_prototype(signature: dict[str, Any], events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    if not events:
+        return {
+            "prototype_id": "STATIC_OR_SUBTLE_STATE_PROXY",
+            "name_hint": "no_salient_layer3_event",
+            "confidence": 0.20,
+            "primary_direction": "unknown",
+            "source_event_count": 0,
+            "source_event_indices": [],
+            "probe_visible": False,
+            "rationale": "no salient Layer-3 event was extracted, so preserve a conservative no-evidence proxy instead of an unknown action family",
+        }
+
     locomotion = signature.get("locomotion") or {}
     vertical = signature.get("vertical") or {}
     rotation = signature.get("rotation") or {}
@@ -594,7 +614,6 @@ def assign_seeded_prototype(signature: dict[str, Any], events: list[dict[str, An
     if support_state == "in_place_gait_proxy" or (
         vertical_kind == "low_gait_bounce" and int(limbs.get("left_locomotion_coupled_count") or 0) + int(limbs.get("right_locomotion_coupled_count") or 0)
     ):
-        del repeat_count
         in_place_name, confidence, intensity_rationale = _in_place_gait_name(vertical, limbs)
         return {
             "prototype_id": "IN_PLACE_GAIT",
@@ -604,6 +623,29 @@ def assign_seeded_prototype(signature: dict[str, Any], events: list[dict[str, An
             "rationale": f"arm swing and low vertical cycles indicate a gait-like in-place motion; {intensity_rationale}",
         }
 
+    if (
+        bimanual_pattern != "none"
+        and vertical_kind in {"low_gait_bounce", "minor_height_change", "crouch_release_or_hop"}
+        and repeat_count >= 2
+        and loco_distance < 0.45
+    ):
+        vertical_indices = set(_event_indices_for_families(events or [], {"WHOLE_BODY_VERTICAL"}))
+        bimanual_indices = set(_event_indices_for_families(events or [], {"BIMANUAL_PERIODIC"}))
+        torso_indices = set(_event_indices_for_families(events or [], {"TORSO_PERIODIC"}))
+        source_indices = sorted(vertical_indices | bimanual_indices | torso_indices)
+        return {
+            "prototype_id": "IN_PLACE_GAIT_PROXY",
+            "name_hint": "in_place_bounce_gait_proxy",
+            "confidence": 0.46,
+            "primary_direction": "in_place",
+            "count": repeat_count,
+            "vertical_amplitude_m": vertical_amp,
+            "mean_vertical_amplitude_m": vertical.get("mean_amplitude_m"),
+            "source_event_count": len(source_indices),
+            "source_event_indices": source_indices,
+            "rationale": "low repeated vertical cycles with bimanual/torso motion and little translation are safer as an in-place gait proxy than an unknown bimanual family",
+        }
+
     if rotation.get("state") == "turn":
         return {
             "prototype_id": "ROTATION_DOMINANT",
@@ -611,6 +653,81 @@ def assign_seeded_prototype(signature: dict[str, Any], events: list[dict[str, An
             "confidence": 0.58,
             "primary_direction": str(rotation.get("direction", "unknown")),
             "rationale": "rotation is the strongest whole-body event",
+        }
+
+    arm_mime_families = {
+        "LEFT_ARM_PERIODIC",
+        "RIGHT_ARM_PERIODIC",
+        "LEFT_ARM_POSTURE",
+        "RIGHT_ARM_POSTURE",
+        "BIMANUAL_PERIODIC",
+        "TORSO_POSTURE",
+        "TORSO_PERIODIC",
+        "WHOLE_BODY_POSTURE",
+    }
+    arm_mime_indices = _event_indices_for_families(events or [], arm_mime_families)
+    bimanual_count = int(limbs.get("bimanual_count") or 0)
+    left_arm_count = int(limbs.get("left_arm_count") or 0)
+    right_arm_count = int(limbs.get("right_arm_count") or 0)
+    left_posture_count = sum(1 for evt in (events or []) if evt.get("super_family") == "LEFT_ARM_POSTURE")
+    right_posture_count = sum(1 for evt in (events or []) if evt.get("super_family") == "RIGHT_ARM_POSTURE")
+    torso_posture_count = sum(1 for evt in (events or []) if evt.get("super_family") == "TORSO_POSTURE")
+    state_count = sum(1 for evt in (events or []) if evt.get("super_family") == "WHOLE_BODY_STATE")
+    total_arm_signal = left_arm_count + right_arm_count + left_posture_count + right_posture_count
+    if (
+        bimanual_count >= 4
+        and loco_distance < 0.50
+        and vertical_kind in {"none", "minor_height_change", "low_gait_bounce", "crouch_release_or_hop"}
+        and arm_mime_indices
+    ):
+        return {
+            "prototype_id": "BIMANUAL_ARM_MIME_CANDIDATE",
+            "name_hint": "bimanual_arm_mime",
+            "confidence": 0.54 + min(0.12, 0.01 * bimanual_count),
+            "primary_direction": "upper_body",
+            "source_event_count": len(arm_mime_indices),
+            "bimanual_count": bimanual_count,
+            "left_arm_count": left_arm_count,
+            "right_arm_count": right_arm_count,
+            "source_event_indices": arm_mime_indices,
+            "rationale": "upper-body and bimanual events dominate without reliable locomotion or a named object/action cue",
+        }
+    if (
+        total_arm_signal >= 3
+        and bimanual_pattern == "none"
+        and loco_distance < 0.50
+        and vertical_kind in {"none", "minor_height_change", "low_gait_bounce", "crouch_release_or_hop"}
+    ):
+        dominant_side = "left" if (left_arm_count + left_posture_count) >= (right_arm_count + right_posture_count) else "right"
+        return {
+            "prototype_id": "UNILATERAL_ARM_MIME_CANDIDATE",
+            "name_hint": f"{dominant_side}_arm_mime",
+            "confidence": 0.50 + min(0.12, 0.015 * total_arm_signal),
+            "primary_direction": "upper_body",
+            "dominant_side": dominant_side,
+            "source_event_count": len(arm_mime_indices),
+            "left_arm_count": left_arm_count,
+            "right_arm_count": right_arm_count,
+            "source_event_indices": arm_mime_indices,
+            "rationale": "one arm has repeated or held upper-body motion but no stable semantic action name",
+        }
+    if (
+        total_arm_signal == 0
+        and bimanual_count == 0
+        and loco_state == "none"
+        and rotation.get("state") == "none"
+        and vertical_kind in {"none", "minor_height_change"}
+        and (torso_posture_count or state_count)
+    ):
+        subtle_indices = _event_indices_for_families(events or [], {"TORSO_POSTURE", "WHOLE_BODY_STATE"})
+        return {
+            "prototype_id": "STATIC_OR_SUBTLE_STATE_PROXY",
+            "name_hint": "subtle_state",
+            "confidence": 0.48,
+            "primary_direction": "still",
+            "source_event_count": len(subtle_indices),
+            "source_event_indices": subtle_indices,
+            "rationale": "only static or subtle state evidence is available, so keep the family conservative",
         }
 
     if bimanual_pattern != "none":
@@ -705,6 +822,8 @@ def _cover_primary_events(events: list[dict[str, Any]], signature: dict[str, Any
         covered.update(_indices_by_family(events, "RIGHT_ARM_PERIODIC"))
         covered.update(_indices_by_family(events, "BIMANUAL_PERIODIC"))
         covered.update(_indices_by_family(events, "TORSO_PERIODIC"))
+    elif pid == "IN_PLACE_GAIT_PROXY":
+        covered.update(int(x) for x in prototype.get("source_event_indices") or [])
     elif pid == "CELEBRATORY_DANCE_GESTURE":
         covered.update(_indices_by_family(events, "BIMANUAL_PERIODIC"))
         covered.update(_indices_by_family(events, "WHOLE_BODY_ROTATION"))
@@ -718,6 +837,8 @@ def _cover_primary_events(events: list[dict[str, Any]], signature: dict[str, Any
         covered.update(locomotion.get("turn_event_indices") or [])
     elif pid == "BIMANUAL_ACTION":
         covered.update(limbs.get("bimanual_event_indices") or [])
+    elif pid in {"BIMANUAL_ARM_MIME_CANDIDATE", "UNILATERAL_ARM_MIME_CANDIDATE", "STATIC_OR_SUBTLE_STATE_PROXY"}:
+        covered.update(int(x) for x in prototype.get("source_event_indices") or [])
     elif pid in {"SQUAT_REPETITION", "SQUAT_ARM_LIFT"}:
         covered.update(
             int(evt["event_index"])
@@ -749,9 +870,36 @@ def _event_ref(evt: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _event_family_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for evt in events:
+        key = str(evt.get("super_family", ""))
+        if not key:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _event_cluster_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for evt in events:
+        family = str(evt.get("super_family", ""))
+        cluster = str(evt.get("cluster_id", ""))
+        if not family or not cluster:
+            continue
+        key = f"{family}/{cluster}"
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
 def _probe_alias(action: dict[str, Any]) -> str:
     pid = str(action.get("prototype_id", ""))
     name = str(action.get("name_hint", ""))
+    if pid == "EVENT_SEQUENCE":
+        return "unknown motion pattern"
+    if pid == "WEAK_BALLISTIC_CANDIDATE":
+        direction = str(action.get("primary_direction", "in_place"))
+        return f"weak jump-like {direction} motion candidate" if direction != "in_place" else "weak jump-like motion candidate"
     if pid in {"TRANSLATING_GAIT", "TRANSLATING_GAIT_SEGMENT"}:
         if name == "run":
             return "run"
@@ -762,6 +910,8 @@ def _probe_alias(action: dict[str, Any]) -> str:
         if name == "jog_in_place":
             return "jog in place"
         return "walk in place"
+    if pid == "IN_PLACE_GAIT_PROXY":
+        return "in-place gait proxy"
     if pid == "CELEBRATORY_DANCE_GESTURE":
         return "cheer-like dance gesture"
     if pid == "JUMPING_JACK":
@@ -779,6 +929,13 @@ def _probe_alias(action: dict[str, Any]) -> str:
         return "bring hands together"
     if pid == "BIMANUAL_ACTION":
         return str(action.get("name_hint", "bimanual action")).replace("_", " ")
+    if pid == "BIMANUAL_ARM_MIME_CANDIDATE":
+        return "bimanual upper-body gesture"
+    if pid == "UNILATERAL_ARM_MIME_CANDIDATE":
+        side = str(action.get("dominant_side") or "")
+        return f"{side} arm gesture" if side in {"left", "right"} else "one-arm gesture"
+    if pid == "STATIC_OR_SUBTLE_STATE_PROXY":
+        return "subtle mostly still pose"
     if pid == "SQUAT_REPETITION":
         return "repeated squat"
     if pid == "SQUAT_ARM_LIFT":
@@ -792,12 +949,220 @@ def _probe_alias(action: dict[str, Any]) -> str:
     return str(action.get("name_hint", "motion")).replace("_", " ")
 
 
+_UNKNOWN_SEMANTIC_FAMILIES = {
+    "EVENT_SEQUENCE": "UNKNOWN_EVENT_SEQUENCE",
+    "BIMANUAL_ACTION": "UNKNOWN_BIMANUAL_FAMILY",
+}
+
+_CANDIDATE_SEMANTIC_FAMILIES = {
+    "WEAK_BALLISTIC_CANDIDATE",
+    "CELEBRATORY_DANCE_GESTURE",
+    "SQUAT_REPETITION",
+    "SQUAT_ARM_LIFT",
+    "CIRCULAR_WALK_PATH",
+    "CARTWHEEL_CANDIDATE",
+    "INVERTED_ACROBATICS_CANDIDATE",
+    "ACROBATIC_SEQUENCE_CANDIDATE",
+    "LEG_FORWARD_POSE_CANDIDATE",
+    "DANCE_LEG_POSE_CANDIDATE",
+    "BIMANUAL_ARM_MIME_CANDIDATE",
+    "UNILATERAL_ARM_MIME_CANDIDATE",
+}
+
+_PROXY_SEMANTIC_FAMILIES = {
+    "CLIMB_UP_OVER_PROXY",
+    "TORSO_HUNCHED_FORWARD",
+    "LEFT_HAND_RAISED_HIGH",
+    "RIGHT_HAND_RAISED_HIGH",
+    "SQUAT_HOLD",
+    "LEFT_LEG_KICK_FORWARD",
+    "RIGHT_LEG_KICK_FORWARD",
+    "IN_PLACE_GAIT_PROXY",
+    "STATIC_OR_SUBTLE_STATE_PROXY",
+}
+
+
+def _semantic_family_descriptor(action: dict[str, Any]) -> dict[str, Any]:
+    pid = str(action.get("prototype_id", "EVENT_SEQUENCE"))
+    confidence = float(action.get("confidence") or 0.0)
+    if pid in _UNKNOWN_SEMANTIC_FAMILIES:
+        status = "unknown"
+        family_id = _UNKNOWN_SEMANTIC_FAMILIES[pid]
+        label = "unknown semantic family"
+    elif pid in _PROXY_SEMANTIC_FAMILIES or pid.endswith("_PROXY"):
+        status = "proxy"
+        family_id = pid
+        label = str(action.get("name_hint") or pid).replace("_", " ")
+    elif pid in _CANDIDATE_SEMANTIC_FAMILIES or pid.endswith("_CANDIDATE") or action.get("semantic_proxy"):
+        status = "candidate"
+        family_id = pid
+        label = str(action.get("name_hint") or pid).replace("_", " ")
+    else:
+        status = "stable"
+        family_id = pid
+        label = str(action.get("name_hint") or pid).replace("_", " ")
+
+    if action.get("semantic_proxy"):
+        source = "semantic_joint_proxy"
+    elif pid in _UNKNOWN_SEMANTIC_FAMILIES:
+        source = "fallback_event_signature"
+    else:
+        source = "layer3_event_signature"
+    return {
+        "family_id": family_id,
+        "source_family": pid,
+        "status": status,
+        "label": label,
+        "label_confidence": round(confidence, 4),
+        "motion_only": True,
+        "source": source,
+        "probe_visible": action.get("probe_visible", True) is not False,
+    }
+
+
+def _numeric_range(value: float, unit: str, status: str) -> list[float]:
+    if unit == "frame":
+        margin = 2.0 if status == "stable" else 4.0
+    elif unit == "count":
+        margin = 0.0 if status == "stable" else 1.0
+    elif unit == "deg":
+        margin = max(5.0, abs(value) * (0.06 if status == "stable" else 0.12))
+    elif unit == "rad":
+        margin = max(0.05, abs(value) * (0.06 if status == "stable" else 0.12))
+    elif unit == "score":
+        margin = 0.05 if status == "stable" else 0.10
+    else:
+        margin = max(0.03, abs(value) * (0.08 if status == "stable" else 0.15))
+    lo = max(0.0, value - margin) if unit in {"m", "count", "frame", "score"} else value - margin
+    hi = value + margin
+    return [round(lo, 4), round(hi, 4)]
+
+
+def _slot_confidence(action: dict[str, Any], semantic_family: dict[str, Any]) -> float:
+    confidence = float(action.get("confidence") or semantic_family.get("label_confidence") or 0.0)
+    status = str(semantic_family.get("status", "stable"))
+    if status == "candidate":
+        confidence *= 0.90
+    elif status == "proxy":
+        confidence *= 0.82
+    elif status == "unknown":
+        confidence *= 0.60
+    return round(max(0.0, min(1.0, confidence)), 4)
+
+
+def _approx_slot(
+    action: dict[str, Any],
+    semantic_family: dict[str, Any],
+    key: str,
+    *,
+    unit: str | None = None,
+    source: str | None = None,
+) -> dict[str, Any] | None:
+    value = action.get(key)
+    if value is None:
+        return None
+    status = str(semantic_family.get("status", "stable"))
+    slot_source = source or ("semantic_joint_proxy" if action.get("semantic_proxy") else "layer3_event_signature")
+    confidence = _slot_confidence(action, semantic_family)
+    if isinstance(value, bool):
+        return {
+            "value": bool(value),
+            "confidence": confidence,
+            "source": slot_source,
+            "quality": "boolean_observation",
+        }
+    if isinstance(value, int) and unit == "count":
+        numeric = float(value)
+        return {
+            "value": int(value),
+            "range": [int(x) for x in _numeric_range(numeric, "count", status)],
+            "unit": "count",
+            "confidence": confidence,
+            "source": slot_source,
+            "quality": "approximate_event_count" if status != "stable" else "event_count",
+        }
+    if isinstance(value, (int, float)) and unit is not None:
+        numeric = float(value)
+        return {
+            "value": round(numeric, 4),
+            "range": _numeric_range(numeric, unit, status),
+            "unit": unit,
+            "confidence": confidence,
+            "source": slot_source,
+            "quality": "motion_estimate" if status == "stable" else f"{status}_motion_estimate",
+        }
+    return {
+        "value": value,
+        "confidence": confidence,
+        "source": slot_source,
+        "quality": "categorical_estimate",
+    }
+
+
+def _approx_slots(action: dict[str, Any], semantic_family: dict[str, Any]) -> dict[str, Any]:
+    slots: dict[str, Any] = {}
+    span = action.get("span")
+    if isinstance(span, list) and len(span) == 2:
+        status = str(semantic_family.get("status", "stable"))
+        margin = 2 if status == "stable" else 4
+        slots["span"] = {
+            "value": [int(span[0]), int(span[1])],
+            "unit": "frame",
+            "frame_margin": margin,
+            "confidence": _slot_confidence(action, semantic_family),
+            "source": "union_of_covered_event_spans",
+            "quality": "temporal_span_estimate",
+        }
+    numeric_units = {
+        "count": "count",
+        "segment_count": "count",
+        "source_event_count": "count",
+        "turn_count": "count",
+        "locomotion_segment_count": "count",
+        "raise_spread_count": "count",
+        "bimanual_count": "count",
+        "left_arm_count": "count",
+        "right_arm_count": "count",
+        "distance_m": "m",
+        "path_length_m": "m",
+        "root_height_gain_m": "m",
+        "vertical_amplitude_m": "m",
+        "mean_vertical_amplitude_m": "m",
+        "angle_deg": "deg",
+        "curvature_rad": "rad",
+        "circle_score": "score",
+    }
+    for key, unit in numeric_units.items():
+        slot = _approx_slot(action, semantic_family, key, unit=unit)
+        if slot is not None:
+            slots[key] = slot
+    raw_unit = action.get("unit")
+    if action.get("magnitude") is not None and raw_unit in {"m", "deg", "rad", "ratio", "score"}:
+        slot_unit = "score" if raw_unit == "ratio" else str(raw_unit)
+        slot = _approx_slot(action, semantic_family, "magnitude", unit=slot_unit)
+        if slot is not None:
+            slots["magnitude"] = slot
+    for key in ("primary_direction", "speed", "angle_bin", "dominant_side"):
+        value = action.get(key)
+        if value is not None and str(value) not in {"", "none", "unknown"}:
+            slot = _approx_slot(action, semantic_family, key)
+            if slot is not None:
+                alias = "direction" if key == "primary_direction" else key
+                slots[alias] = slot
+    return slots
+
+
 def _canonical_action(action: dict[str, Any]) -> dict[str, Any]:
+    semantic_family = _semantic_family_descriptor(action)
+    approx_slots = _approx_slots(action, semantic_family)
     slots: dict[str, Any] = {
         "span": action.get("span"),
         "direction": action.get("primary_direction"),
         "confidence": action.get("confidence"),
         "covered_event_indices": list(action.get("covered_event_indices") or []),
+        "semantic_family_id": semantic_family["family_id"],
+        "semantic_family_status": semantic_family["status"],
+        "approx_slots": approx_slots,
     }
     for key in (
         "count",
@@ -813,8 +1178,11 @@ def _canonical_action(action: dict[str, Any]) -> dict[str, Any]:
         "locomotion_segment_count",
         "raise_spread_count",
         "bimanual_count",
+        "left_arm_count",
+        "right_arm_count",
         "source_event_cluster",
         "source_event_family",
+        "source_event_indices",
         "semantic_proxy",
         "path_length_m",
         "circle_score",
@@ -825,6 +1193,12 @@ def _canonical_action(action: dict[str, Any]) -> dict[str, Any]:
         "source_event_spans",
         "dominant_side",
         "hidden_by_semantic_family",
+        "magnitude",
+        "unit",
+        "source_event_family_counts",
+        "source_event_cluster_counts",
+        "covered_event_family_counts",
+        "covered_event_cluster_counts",
     ):
         if action.get(key) is not None:
             slots[key] = action.get(key)
@@ -833,6 +1207,8 @@ def _canonical_action(action: dict[str, Any]) -> dict[str, Any]:
         "family": str(action.get("prototype_id", "EVENT_SEQUENCE")),
         "probe_alias": _probe_alias(action),
         "surface_name_hint": action.get("name_hint"),
+        "semantic_family": semantic_family,
+        "approx_slots": approx_slots,
         "slots": slots,
     }
 
@@ -842,6 +1218,8 @@ def _attach_action_metadata(actions: list[dict[str, Any]]) -> list[dict[str, Any
     for action in actions:
         item = dict(action)
         item["probe_alias"] = _probe_alias(item)
+        item["semantic_family"] = _semantic_family_descriptor(item)
+        item["approx_slots"] = _approx_slots(item, item["semantic_family"])
         item["canonical"] = _canonical_action(item)
         out.append(item)
     return out
@@ -1086,6 +1464,7 @@ def _semantic_candidate_actions(events: list[dict[str, Any]], covered: set[int])
         magnitude = max((_magnitude(evt) for evt in group), default=0.0)
         if magnitude > 0.0:
             action["magnitude"] = round(magnitude, 4)
+            action["unit"] = group[0].get("unit")
         if str(group[0].get("cluster_id", "")) == "ROOT_CIRCULAR_PATH":
             action["path_length_m"] = round(float(metadata.get("path_length", magnitude) or 0.0), 4)
             action["circle_score"] = round(float(metadata.get("circle_score", 0.0) or 0.0), 4)
@@ -1341,6 +1720,26 @@ def _apply_semantic_dominance(actions: list[dict[str, Any]]) -> list[dict[str, A
     return out
 
 
+def _drop_redundant_fallback_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    explanatory_indices: set[int] = set()
+    for action in actions:
+        if action.get("prototype_id") in {"EVENT_SEQUENCE", "BIMANUAL_ACTION"}:
+            continue
+        explanatory_indices.update(int(x) for x in action.get("covered_event_indices") or [])
+
+    out: list[dict[str, Any]] = []
+    for action in actions:
+        pid = str(action.get("prototype_id", ""))
+        if pid not in {"EVENT_SEQUENCE", "BIMANUAL_ACTION"}:
+            out.append(action)
+            continue
+        source_indices = set(int(x) for x in action.get("source_event_indices") or action.get("covered_event_indices") or [])
+        if source_indices and source_indices.issubset(explanatory_indices):
+            continue
+        out.append(action)
+    return out
+
+
 def build_coarse_action_program(
     program_or_events: dict[str, Any] | list[dict[str, Any]] | None,
     *,
@@ -1378,6 +1777,24 @@ def build_coarse_action_program(
         "span": primary_span,
         "covered_event_indices": sorted(covered),
     }
+    covered_event_list = [evt for evt in events if int(evt["event_index"]) in covered]
+    if covered_event_list:
+        primary_action["covered_event_family_counts"] = _event_family_counts(covered_event_list)
+        primary_action["covered_event_cluster_counts"] = _event_cluster_counts(covered_event_list)
+    if prototype.get("prototype_id") in {
+        "EVENT_SEQUENCE",
+        "BIMANUAL_ACTION",
+        "BIMANUAL_ARM_MIME_CANDIDATE",
+        "UNILATERAL_ARM_MIME_CANDIDATE",
+        "IN_PLACE_GAIT_PROXY",
+        "STATIC_OR_SUBTLE_STATE_PROXY",
+    }:
+        source_indices = set(int(x) for x in prototype.get("source_event_indices") or [])
+        source_events = [evt for evt in events if int(evt["event_index"]) in source_indices] if source_indices else list(events)
+        primary_action["source_event_count"] = len(source_events)
+        primary_action["source_event_indices"] = [int(evt["event_index"]) for evt in source_events]
+        primary_action["source_event_family_counts"] = _event_family_counts(source_events)
+        primary_action["source_event_cluster_counts"] = _event_cluster_counts(source_events)
     if prototype.get("prototype_id") == "TRANSLATING_GAIT":
         primary_action["speed"] = signature.get("locomotion", {}).get("speed")
         primary_action["distance_m"] = signature.get("locomotion", {}).get("distance_m")
@@ -1386,7 +1803,10 @@ def build_coarse_action_program(
         primary_action["speed"] = prototype.get("primary_locomotion_speed")
         primary_action["vertical_amplitude_m"] = signature.get("vertical", {}).get("max_amplitude_m")
         primary_action["mean_vertical_amplitude_m"] = signature.get("vertical", {}).get("mean_amplitude_m")
-    if prototype.get("prototype_id") in {"JUMPING_JACK", "VERTICAL_JUMP", "IN_PLACE_GAIT"}:
+    if prototype.get("prototype_id") == "ROTATION_DOMINANT":
+        primary_action["angle_deg"] = signature.get("rotation", {}).get("angle_deg")
+        primary_action["angle_bin"] = signature.get("rotation", {}).get("angle_bin")
+    if prototype.get("prototype_id") in {"JUMPING_JACK", "VERTICAL_JUMP", "IN_PLACE_GAIT", "IN_PLACE_GAIT_PROXY"}:
         primary_action["count"] = prototype.get("count") or signature.get("vertical", {}).get("repeat_count")
         primary_action["vertical_amplitude_m"] = signature.get("vertical", {}).get("max_amplitude_m")
         primary_action["mean_vertical_amplitude_m"] = signature.get("vertical", {}).get("mean_amplitude_m")
@@ -1401,7 +1821,10 @@ def build_coarse_action_program(
         primary_action["bimanual_count"] = prototype.get("bimanual_count")
         primary_action["global_alias_evidence"] = prototype.get("global_alias_evidence")
     actions = [primary_action]
-    actions.extend(_semantic_candidate_actions(events, covered))
+    semantic_actions = _semantic_candidate_actions(events, covered)
+    for action in semantic_actions:
+        covered.update(int(x) for x in action.get("covered_event_indices") or [])
+    actions.extend(semantic_actions)
     for action in _recovery_step_segments(events, covered):
         covered.update(int(x) for x in action.get("covered_event_indices") or [])
         actions.append(action)
@@ -1428,6 +1851,7 @@ def build_coarse_action_program(
                 }
             )
     actions = _apply_semantic_dominance(actions)
+    actions = _drop_redundant_fallback_actions(actions)
     actions = sorted(actions, key=lambda item: (int(item.get("span", [0, 0])[0]), int(item.get("span", [0, 0])[1])))
     actions = _attach_action_metadata(actions)
     residual = [evt for evt in events if int(evt["event_index"]) not in covered]
