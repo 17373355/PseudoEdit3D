@@ -1,3 +1,11 @@
+"""Legacy selected-HML3D-vs-event-stream MoMask probe.
+
+Current motion-only AutoPrompt probing uses
+``scripts/run_momask_aml_autoprompt_probe.py --prompt-mode coarse``.
+This script is kept to reproduce earlier selected prompt vs old event-stream
+comparisons.
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -114,7 +122,7 @@ def extract_aml_program(joints: np.ndarray) -> dict[str, Any]:
     for category in ('whole_body', 'torso', 'left_arm', 'right_arm'):
         phases.extend(detect_repeated_phases(project_units_by_category(layer2, category)))
     phases = dedupe_phase_objects(phases)
-    layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phases))
+    layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phases, joints=joints))
     return {
         'layer1_count': len(layer1),
         'layer2_count': len(layer2),

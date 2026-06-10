@@ -55,8 +55,12 @@ WORD_FAMILY_PATTERNS: dict[str, list[str]] = {
     ],
     'object_hold_or_manipulate': [
         r'\bhold(?:s|ing)?\b', r'\bcarry(?:ing|ies)?\b', r'\bgrab(?:s|bing)?\b', r'\bpick(?:s|ing)? up\b',
-        r'\bput(?:s|ting)?\b', r'\bthrow(?:s|ing)?\b', r'\bcatch(?:es|ing)?\b', r'\bobject\b', r'\bsomething\b',
+        r'\bput(?:s|ting)?\b', r'\bobject\b', r'\bsomething\b',
         r'\bitem\b', r'\bbox\b', r'\bball\b', r'\bcup\b', r'\bdoor\b', r'\bknock(?:s|ing)?\b',
+    ],
+    'throw_catch': [
+        r'\bthrow(?:s|ing)?\b', r'\btoss(?:es|ing)?\b', r'\bcatch(?:es|ing)?\b', r'\bshoot(?:s|ing)?\b',
+        r'\bball\b',
     ],
     'arm_raise_lift': [
         r'\braise(?:s|d|ing)? .*arm', r'\blift(?:s|ed|ing)? .*arm', r'\barm[s]? up\b', r'\bhands? up\b',
@@ -75,23 +79,94 @@ WORD_FAMILY_PATTERNS: dict[str, list[str]] = {
     'clap_or_hands_together': [
         r'\bclap(?:s|ped|ping)?\b', r'\bhands? together\b', r'\bpalms?\b', r'\bprayer\b',
     ],
+    'overhead_clap_or_cheer': [
+        r'\bclap(?:s|ped|ping)? .*over (?:his |her |their |the )?head\b',
+        r'\bhands? .*over (?:his |her |their |the )?head\b',
+        r'\barms? .*over (?:his |her |their |the )?head\b',
+        r'\bcheer(?:s|ed|ing)?\b',
+        r'\bcelebrat(?:es|ed|ing|ion)?\b',
+        r'\breach(?:es|ed|ing)? for (?:the )?sky\b',
+    ],
     'touch_body': [
         r'\btouch(?:es|ing)?\b', r'\bhand[s]? .*\b(?:face|head|chest|knee|waist|mouth|hip|shoulder)\b',
         r'\b(?:face|head|chest|knee|waist|mouth|hip|shoulder) .*hand',
     ],
     'punch_boxing': [r'\bpunch(?:es|ing)?\b', r'\bbox(?:es|ing)?\b', r'\bfight(?:s|ing)?\b'],
-    'dance_or_circular_gesture': [r'\bdance(?:s|d|ing)?\b', r'\bcircular\b', r'\bcircle(?:s|ing)? .*hand', r'\bflap(?:s|ping)?\b'],
+    'martial_strike': [
+        r'\bkarate\b', r'\bmartial\b', r'\bstrike(?:s|ing)?\b', r'\bjab(?:s|bing)?\b',
+        r'\bpunch(?:es|ing)?\b', r'\bbox(?:es|ing)?\b', r'\bfight(?:s|ing)?\b',
+    ],
+    'push_shove': [
+        r'\bpush(?:es|ed|ing)?\b', r'\bshove(?:s|d|ing)?\b', r'\bthrust(?:s|ing)?\b',
+        r'\bpress(?:es|ed|ing)? forward\b', r'\bpress(?:es|ed|ing)? .*arm',
+    ],
+    'dance_or_rhythm': [
+        r'\bdance(?:s|d|ing)?\b', r'\brumba\b', r'\bshuffle(?:s|d|ing)?\b', r'\bsway(?:s|ed|ing)?\b',
+        r'\brhythm(?:ic|ically)?\b',
+    ],
+    'circular_or_sweep_gesture': [
+        r'\bcircular\b', r'\bcircle(?:s|ing)? .*hand', r'\bflap(?:s|ping)?\b',
+        r'\bsweep(?:s|ing)?\b', r'\bwind(?:s|ing)? .*arm',
+    ],
+    'instrument_or_tool_mime': [
+        r'\bdrum(?:s|ming)?\b', r'\bviolin\b', r'\bguitar\b', r'\bpiano\b', r'\bflute\b',
+        r'\bplay(?:s|ing)? (?:air )?(?:guitar|violin|piano|drums?)\b',
+    ],
+    'jumping_jack': [
+        r'\bjumping jack(?:s)?\b', r'\bjump(?:s|ing)? jack(?:s)?\b',
+        r'\balternate(?:s|ing)? between .*arms? up\b',
+    ],
     'generic_upper_body': [r'\barm[s]?\b', r'\bhand[s]?\b', r'\bshoulder[s]?\b', r'\belbow[s]?\b', r'\bwrist[s]?\b'],
 }
 
+GLOBAL_ALIAS_SIGNAL_FAMILIES = {
+    'support_contact',
+    'throw_catch',
+    'arm_raise_lift',
+    'arm_extend_spread',
+    'arm_swing_walk',
+    'wave_or_gesture',
+    'clap_or_hands_together',
+    'overhead_clap_or_cheer',
+    'touch_body',
+    'punch_boxing',
+    'martial_strike',
+    'push_shove',
+    'dance_or_rhythm',
+    'circular_or_sweep_gesture',
+    'instrument_or_tool_mime',
+    'jumping_jack',
+}
 
-def load_case_ids(path: Path, max_cases: int | None) -> list[str]:
+FOCUS_WORD_FAMILIES = {
+    'overhead_clap_or_cheer',
+    'martial_strike',
+    'push_shove',
+    'dance_or_rhythm',
+    'instrument_or_tool_mime',
+    'jumping_jack',
+    'support_contact',
+    'clap_or_hands_together',
+}
+
+
+def load_case_ids(path: Path | None, max_cases: int | None) -> list[str]:
     out: list[str] = []
+    if path is None:
+        for text_path in sorted((HML_ROOT / 'texts').glob('*.txt')):
+            out.append(text_path.stem)
+            if max_cases is not None and len(out) >= max_cases:
+                break
+        return out
     with path.open('r', encoding='utf-8') as f:
         for line in f:
             if not line.strip():
                 continue
-            out.append(str(json.loads(line)['case_id']))
+            stripped = line.strip()
+            if stripped.startswith('{'):
+                out.append(str(json.loads(stripped)['case_id']))
+            else:
+                out.append(stripped)
             if max_cases is not None and len(out) >= max_cases:
                 break
     return out
@@ -122,32 +197,64 @@ def tokens(text: str) -> list[str]:
     return normalize(text).split()
 
 
+PHRASE_PATTERNS: list[str] = [
+    r'\b(?:raise|raises|raised|raising|lift|lifts|lifted|lifting|lower|lowers|lowered|lowering|move|moves|moved|moving|bring|brings|brought|put|puts|putting) (?:[a-z0-9]+ ){0,4}(?:arm|arms|hand|hands|elbow|elbows|shoulder|shoulders)\b',
+    r'\b(?:arm|arms|hand|hands|elbow|elbows|shoulder|shoulders) (?:[a-z0-9]+ ){0,4}(?:up|down|out|wide|forward|backward|side|sides|together|apart|around|circular|circle|swing|swinging)\b',
+    r'\b(?:swing|swings|swinging) (?:[a-z0-9]+ ){0,3}(?:arm|arms|hand|hands|shoulder|shoulders)\b',
+    r'\b(?:wave|waves|waved|waving|salute|salutes|saluted|saluting|gesture|gestures|gestured|gesturing) (?:[a-z0-9]+ ){0,3}(?:arm|arms|hand|hands)?\b',
+    r'\b(?:clap|claps|clapped|clapping) (?:[a-z0-9]+ ){0,3}(?:hand|hands)?\b',
+    r'\b(?:clap|claps|clapped|clapping) (?:[a-z0-9]+ ){0,6}(?:over|above) (?:[a-z0-9]+ ){0,2}head\b',
+    r'\b(?:hand|hands|arm|arms) (?:[a-z0-9]+ ){0,5}(?:over|above) (?:[a-z0-9]+ ){0,2}head\b',
+    r'\b(?:cheer|cheers|cheered|cheering|celebrate|celebrates|celebrated|celebrating) (?:[a-z0-9]+ ){0,4}(?:arm|arms|hand|hands|overhead|head)?\b',
+    r'\breach(?:es|ed|ing)? for (?:the )?sky\b',
+    r'\bhands? together\b',
+    r'\barms? out wide\b',
+    r'\barms? out\b',
+    r'\bhands? out\b',
+    r'\b(?:hold|holds|held|holding|use|uses|using|lean|leans|leaning) (?:[a-z0-9]+ ){0,5}(?:rail|railing|wall|support|balance)\b',
+    r'\b(?:press|presses|pressed|pressing) (?:[a-z0-9]+ ){0,5}(?:wall|surface|against)\b',
+    r'\b(?:reach|reaches|reached|reaching|grab|grabs|grabbed|grabbing) (?:[a-z0-9]+ ){0,5}(?:object|something|item|ball|box|cup|door|handle)?\b',
+    r'\b(?:pick|picks|picked|picking) up (?:[a-z0-9]+ ){0,4}(?:object|something|item|ball|box)?\b',
+    r'\b(?:throw|throws|threw|throwing|catch|catches|caught|catching|carry|carries|carried|carrying) (?:[a-z0-9]+ ){0,4}(?:object|something|item|ball|box|cup)?\b',
+    r'\b(?:touch|touches|touched|touching|place|places|placed|placing) (?:[a-z0-9]+ ){0,5}(?:face|head|chest|knee|waist|mouth|hip|shoulder|arm|hand)\b',
+    r'\b(?:punch|punches|punched|punching|box|boxes|boxing) (?:[a-z0-9]+ ){0,3}(?:arm|arms|hand|hands)?\b',
+    r'\b(?:karate|martial art|martial arts|fight|fights|fighting|strike|strikes|striking|jab|jabs|jabbing) (?:[a-z0-9]+ ){0,4}(?:arm|arms|hand|hands)?\b',
+    r'\b(?:push|pushes|pushed|pushing|shove|shoves|shoved|shoving|thrust|thrusts|thrusting) (?:[a-z0-9]+ ){0,5}(?:arm|arms|hand|hands|forward|away|out)?\b',
+    r'\b(?:dance|dances|danced|dancing|rumba|shuffle|shuffles|shuffled|shuffling|sway|sways|swaying) (?:[a-z0-9]+ ){0,5}(?:arm|arms|hand|hands)?\b',
+    r'\b(?:drum|drums|drumming|violin|guitar|piano|flute) (?:[a-z0-9]+ ){0,5}(?:arm|arms|hand|hands)?\b',
+    r'\b(?:jumping jack|jumping jacks|jump jack|jump jacks)\b',
+]
+
+BAD_PHRASE_TOKENS = {
+    'down', 'up', 'out', 'something', 'object', 'hand', 'hands', 'arm', 'arms', 'head', 'holding',
+    'left hand', 'right hand', 'their arms', 'his arms', 'her arms', 'their hands', 'his hands', 'her hands',
+}
+
+
+def clean_phrase(text: str) -> str | None:
+    phrase = normalize(text)
+    phrase = re.sub(r'^(?:a|an|the|person|man|woman|figure|his|her|their|both|left|right) ', '', phrase)
+    phrase = re.sub(r'\s+', ' ', phrase).strip()
+    if not phrase or phrase in BAD_PHRASE_TOKENS:
+        return None
+    toks = phrase.split()
+    if len(toks) < 2 or len(toks) > 8:
+        return None
+    if all(tok in STOPWORDS or tok in {'up', 'down', 'out'} for tok in toks):
+        return None
+    return phrase
+
+
 def phrase_candidates(captions: Iterable[str], max_ngram: int = 5) -> set[str]:
+    del max_ngram
     phrases: set[str] = set()
     for caption in captions:
-        toks = tokens(caption)
-        if not toks:
-            continue
-        upper_positions = [i for i, tok in enumerate(toks) if tok in UPPER_KEYWORDS]
-        windows: list[tuple[int, int]] = []
-        for pos in upper_positions:
-            windows.append((max(0, pos - 3), min(len(toks), pos + 5)))
-        if not windows and any(tok in UPPER_KEYWORDS for tok in toks):
-            windows.append((0, len(toks)))
-        for start, end in windows:
-            window = toks[start:end]
-            for n in range(1, max_ngram + 1):
-                for i in range(0, max(0, len(window) - n + 1)):
-                    ng = window[i:i + n]
-                    if not any(t in UPPER_KEYWORDS for t in ng):
-                        continue
-                    if all(t in STOPWORDS for t in ng):
-                        continue
-                    if len(ng) == 1 and ng[0] in {'arm', 'arms', 'hand', 'hands'}:
-                        continue
-                    phrase = ' '.join(ng)
-                    if len(phrase) >= 3:
-                        phrases.add(phrase)
+        norm = normalize(caption)
+        for pattern in PHRASE_PATTERNS:
+            for match in re.finditer(pattern, norm):
+                phrase = clean_phrase(match.group(0))
+                if phrase:
+                    phrases.add(phrase)
     return phrases
 
 
@@ -240,7 +347,7 @@ def extract_program(case_id: str, packed: dict[str, Any]) -> dict[str, Any] | No
     phases.extend(detect_repeated_phases(layer2))
     for category in ('whole_body', 'torso', 'left_arm', 'right_arm'):
         phases.extend(detect_repeated_phases(project_units_by_category(layer2, category)))
-    return build_layer3_atomic_program(layer2, dedupe_phase_objects(phases))
+    return build_layer3_atomic_program(layer2, dedupe_phase_objects(phases), joints=joints)
 
 
 def score_entry(support: int, motion_support: int, phrase_support: int, total_cases: int) -> dict[str, float | int]:
@@ -273,9 +380,85 @@ def entropy(counter: Counter[str]) -> float:
     return out
 
 
+def alias_candidates(
+    phrase_rows: list[dict[str, Any]],
+    family_rows: list[dict[str, Any]],
+    *,
+    top_k: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in family_rows:
+        family = str(row['word_family'])
+        if family not in GLOBAL_ALIAS_SIGNAL_FAMILIES:
+            continue
+        support = int(row['support'])
+        precision = float(row['precision'])
+        lift = float(row['lift'])
+        score = float(row['score'])
+        if support < 10 or (precision < 0.15 and lift < 1.25):
+            continue
+        rows.append({
+            'type': 'word_family',
+            'alias': family,
+            'support': support,
+            'precision': precision,
+            'coverage': float(row['coverage']),
+            'lift': lift,
+            'score': score,
+            'use': 'global_alias_candidate_only',
+        })
+    for row in phrase_rows:
+        phrase = str(row['phrase'])
+        support = int(row['support'])
+        precision = float(row['precision'])
+        lift = float(row['lift'])
+        score = float(row['score'])
+        if support < 10 or precision < 0.30 or lift < 1.25:
+            continue
+        rows.append({
+            'type': 'surface_phrase',
+            'alias': phrase,
+            'support': support,
+            'precision': precision,
+            'coverage': float(row['coverage']),
+            'lift': lift,
+            'score': score,
+            'use': 'global_alias_candidate_only',
+        })
+    rows.sort(key=lambda x: (-float(x['score']), -int(x['support']), str(x['alias'])))
+    return rows[:top_k]
+
+
+def build_focus_index(motion_reports: dict[str, Any], *, top_k: int) -> dict[str, list[dict[str, Any]]]:
+    focus: dict[str, list[dict[str, Any]]] = {family: [] for family in sorted(FOCUS_WORD_FAMILIES)}
+    for key, rep in motion_reports.items():
+        for row in rep.get('top_word_families', []):
+            family = str(row['word_family'])
+            if family not in focus:
+                continue
+            if int(row['support']) < 10:
+                continue
+            if float(row['precision']) < 0.10 and float(row['lift']) < 1.2:
+                continue
+            focus[family].append({
+                'motion_key': key,
+                'motion_support': int(rep['motion_support']),
+                'support': int(row['support']),
+                'coverage': float(row['coverage']),
+                'precision': float(row['precision']),
+                'lift': float(row['lift']),
+                'score': float(row['score']),
+                'top_phrases': [p['phrase'] for p in rep.get('top_phrases', [])[:5]],
+            })
+    for family in focus:
+        focus[family].sort(key=lambda x: (-float(x['score']), -int(x['support']), str(x['motion_key'])))
+        focus[family] = focus[family][:top_k]
+    return focus
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument('--manifest', required=True)
+    parser.add_argument('--manifest', default=None, help='Optional JSONL/list of case ids. If omitted, scan all HumanML3D text files.')
     parser.add_argument('--output', required=True)
     parser.add_argument('--report', required=True)
     parser.add_argument('--max-cases', type=int, default=None)
@@ -285,7 +468,7 @@ def main() -> None:
     args = parser.parse_args()
 
     t0 = time.time()
-    case_ids = load_case_ids(Path(args.manifest), args.max_cases)
+    case_ids = load_case_ids(Path(args.manifest) if args.manifest else None, args.max_cases)
     packed = torch.load(HML_ROOT / 'joints3d.pth', map_location='cpu')
 
     motion_cases: dict[str, set[str]] = defaultdict(set)
@@ -357,8 +540,10 @@ def main() -> None:
             'word_family_entropy': entropy(family_counter),
             'top_word_families': family_rows[:args.top_k],
             'top_phrases': phrase_rows[:args.top_k],
+            'alias_candidates': alias_candidates(phrase_rows, family_rows, top_k=min(12, args.top_k)),
             'examples': motion_examples.get(key, []),
         }
+    focus_index = build_focus_index(motion_reports, top_k=args.top_k)
 
     out = {
         'run': {
@@ -369,26 +554,46 @@ def main() -> None:
             'elapsed_sec': time.time() - t0,
             'min_support': args.min_support,
             'top_k': args.top_k,
-            'note': 'HML3D captions are used only as a global wording corpus for cluster naming/reference, not as same-case auto-prompt input.',
+            'note': 'HML3D captions are used only as a global wording corpus for cluster naming/reference; same-case captions must not be used to render a motion-only auto-prompt.',
         },
         'word_family_patterns': WORD_FAMILY_PATTERNS,
+        'global_alias_signal_families': sorted(GLOBAL_ALIAS_SIGNAL_FAMILIES),
+        'focus_word_families': sorted(FOCUS_WORD_FAMILIES),
+        'focus_index': focus_index,
         'motion_reports': motion_reports,
     }
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=True, indent=2), encoding='utf-8')
 
-    report_lines = ['# HML3D Upper-Body Wording Mining v1', '']
+    report_lines = ['# HML3D Upper-Body Wording Mining v2', '']
     report_lines.append('## Scope')
     report_lines.append('')
     report_lines.append('- captions are used as a global wording corpus only; no same-case caption is used to produce auto-prompt text.')
     report_lines.append('- scoring uses motion-cluster support, phrase coverage, phrase precision, and lift.')
+    report_lines.append('- alias candidates are diagnostic naming evidence; final AML condition should use canonical action ids/slots.')
     report_lines.append('')
     report_lines.append('## Run')
     report_lines.append('')
     for k, v in out['run'].items():
         report_lines.append(f'- {k}: `{v}`')
     report_lines.append('')
+    report_lines.append('## Focus Family Index')
+    report_lines.append('')
+    for family, rows in focus_index.items():
+        report_lines.append(f'### {family}')
+        report_lines.append('')
+        if not rows:
+            report_lines.append('- no reliable motion-key association found under current thresholds.')
+            report_lines.append('')
+            continue
+        for row in rows[:12]:
+            report_lines.append(
+                f"- {row['motion_key']}: support={row['support']}, coverage={row['coverage']:.3f}, "
+                f"precision={row['precision']:.3f}, lift={row['lift']:.2f}, score={row['score']:.3f}, "
+                f"top_phrases={row['top_phrases']}"
+            )
+        report_lines.append('')
     report_lines.append('## Top Motion Clusters')
     report_lines.append('')
     for key, rep in list(motion_reports.items())[:40]:
@@ -405,6 +610,11 @@ def main() -> None:
         for row in rep['top_phrases'][:12]:
             report_lines.append(
                 f"  - {row['phrase']}: support={row['support']}, coverage={row['coverage']:.3f}, precision={row['precision']:.3f}, lift={row['lift']:.2f}, score={row['score']:.3f}"
+            )
+        report_lines.append('- alias candidates:')
+        for row in rep['alias_candidates'][:8]:
+            report_lines.append(
+                f"  - {row['type']} `{row['alias']}`: support={row['support']}, precision={row['precision']:.3f}, lift={row['lift']:.2f}, score={row['score']:.3f}"
             )
         report_lines.append('')
     report_path = Path(args.report)

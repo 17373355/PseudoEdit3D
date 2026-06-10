@@ -1,3 +1,11 @@
+"""Legacy event-stream AML naturalizer.
+
+This module directly turns selected Layer-3 events into a natural-language
+stream. It is kept for diagnostics and ablations. The current AutoPrompt path
+uses ``coarse_prompt_renderer.render_coarse_aml_prompt`` and stores structured
+``canonical_actions`` for future AML condition training.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -124,10 +132,20 @@ def event_to_prompt_clause(evt: dict[str, Any], context_events: list[dict[str, A
             return f'repeats a hop-like up-and-down motion{n}'
         return 'makes a small up-and-down body motion'
     if family == 'BIMANUAL_PERIODIC':
-        if cluster == 'BI_UP':
+        if cluster in {'BI_UP', 'BI_RAISE'}:
             return 'raises both arms'
-        if cluster == 'BI_OUT':
+        if cluster == 'BI_RAISE_SPREAD':
+            return 'raises and spreads both arms'
+        if cluster in {'BI_OUT', 'BI_SPREAD'}:
             return 'moves both hands outward'
+        if cluster in {'BI_HANDS_CLOSE', 'BI_HANDS_CLOSE_RAISE'}:
+            return 'brings both hands closer together'
+        if cluster == 'BI_EXTENDED_LOCO_COUPLED':
+            return 'keeps both hands extended while moving'
+        if cluster == 'BI_LOCOMOTION_COUPLED':
+            return 'moves both arms while walking'
+        if cluster == 'BI_VERTICAL_COUPLED':
+            return 'moves both arms with the vertical body motion'
     if family == 'LEFT_ARM_PERIODIC':
         if 'REPEAT' in cluster and ('LOCO' in cluster or loco_overlap >= 0.40):
             return 'swings the left arm while walking'

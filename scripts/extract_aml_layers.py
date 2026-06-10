@@ -162,7 +162,7 @@ def main():
                 unit_names=list(p['unit_names']),
                 metadata=dict(p.get('metadata', {})),
             ))
-        layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phase_for_layer3))
+        layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phase_for_layer3, joints=joints))
         result.append({
             'case_id': case_id,
             'selected_hml3d_prompt': mod.read_first_prompt(case_id),

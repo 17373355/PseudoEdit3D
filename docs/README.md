@@ -4,6 +4,7 @@ This docs tree is organized for paper-driven research iteration.
 
 ## Recommended Entry Points
 
+- `design_brief.md`
 - `design/design_overview.md`
 - `experiments/evaluation_experiments.md`
 - `experiments/hml3d_benchmark_plan.md`
@@ -44,13 +45,10 @@ Older proposal drafts and superseded design documents kept for historical refere
 
 These files remain valid and are linked into the new structure rather than moved immediately:
 
-- `design_brief.md`
 - `experiment_log.md`
 - `planning.md`
 - `hml3d_experiment_pipeline.md`
 - `humanml3d_pattern_iteration_plan.md`
-- `paper_v1_proposal.md`
-- `paper_v2_proposal.md`
 - `paper_v3_proposal.md`
 - `stage1_upgrade_plan.md`
 - `stage_1_goal.md`

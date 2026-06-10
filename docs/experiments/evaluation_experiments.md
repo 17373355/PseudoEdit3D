@@ -10,43 +10,43 @@ The current evaluation is split into three conceptual layers:
 
 The current work mainly focuses on the first two.
 
-## Experiment 1: HumanML3D Re-annotation Benchmark
+## 实验 1：HumanML3D 重标注基准
 
-Compare under the same MoMask architecture (same tokenizer / decoder family, but different text-conditioned transformer supervision):
+在相同的 MoMask 架构下进行比较。这里保持相同的 tokenizer / decoder family，但使用不同的 text-conditioned transformer 监督信号：
 
-- original HumanML3D captions + MoMask text-conditioned model trained on original HumanML3D -> FID
-- AutoPrompt-HumanML3D + MoMask text-conditioned model re-trained on AutoPrompt-HumanML3D -> FID
+- 原始 HumanML3D captions + 使用原始 HumanML3D 训练的 MoMask text-conditioned model -> FID
+- AutoPrompt-HumanML3D + 使用 AutoPrompt-HumanML3D 重新训练的 MoMask text-conditioned model -> FID
 
-### What this can support
+### 该实验可以支持什么结论
 
-- the annotation layer matters
-- AutoPrompt provides a more consistent and lower-noise conditioning space
-- a new AutoPrompt-HumanML3D benchmark can be constructed by replacing the original textual supervision and re-training the text-conditioned transformer under the same MoMask architecture
+- annotation layer 会显著影响 text-to-motion 生成质量。
+- AutoPrompt 提供了一个更一致、噪声更低的 conditioning space。
+- 可以通过替换原始 textual supervision，并在相同 MoMask 架构下重新训练 text-conditioned transformer，构建一个新的 AutoPrompt-HumanML3D benchmark。
 
-### What this cannot prove alone
+### 该实验单独不能证明什么
 
-- exact semantic correctness of each caption
-- full atomic granularity
-- exact number / angle grounding
+- 每一条 caption 的语义都完全正确。
+- AutoPrompt 已经达到完整的 atomic granularity。
+- 数量、角度、幅度等细粒度属性已经被精确 grounding。
 
-## Experiment 2: Cross-Dataset Generalization
+## 实验 2：跨数据集泛化
 
-On unlabeled dataset B:
+在无标签数据集 B 上：
 
 - motion_B -> AutoPrompt
-- AutoPrompt-conditioned model trained on AutoPrompt-HumanML3D -> generation
+- 使用 AutoPrompt-HumanML3D 训练得到的 AutoPrompt-conditioned model -> generation
 - generated motion vs GT_B -> FID
 
-### What this can support
+### 该实验可以支持什么结论
 
-- AutoPrompt is not merely fitting HumanML3D wording
-- the learned condition space transfers better across datasets
-- AutoPrompt can serve as a reusable motion semantic interface for unlabeled data
+- AutoPrompt 并不只是拟合 HumanML3D 的文本表述风格。
+- 学到的 condition space 具有更好的跨数据集迁移能力。
+- AutoPrompt 可以作为一种可复用的 motion semantic interface，用于无标签 motion data 的自动语义标注和条件生成。
 
-### What this cannot prove alone
+### 该实验单独不能证明什么
 
-- universal generalization to all motion distributions
-- equal quality across all atomic categories
+- AutoPrompt 对所有 motion distributions 都具有普适泛化能力。
+- AutoPrompt 在所有 atomic categories 上都具有同等质量。
 
 ## Current Evaluation Split
 

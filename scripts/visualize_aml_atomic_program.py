@@ -27,6 +27,7 @@ from pseudoedit3d.edit import (
     extract_layer1_micro_events,
     merge_micro_events,
     project_units_by_category,
+    render_aml_prompt,
 )
 from pseudoedit3d.visualization.skeleton_gif import (
     _draw_skeleton,
@@ -121,7 +122,7 @@ def extract_layer3(joints: np.ndarray) -> dict[str, Any]:
     for category in ('whole_body', 'torso', 'left_arm', 'right_arm'):
         phases.extend(detect_repeated_phases(project_units_by_category(layer2, category)))
     phases = dedupe_phase_objects(phases)
-    layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phases))
+    layer3 = attach_aml_language(build_layer3_atomic_program(layer2, phases, joints=joints))
     return {
         'layer1_count': len(layer1),
         'layer2_count': len(layer2),
@@ -175,7 +176,8 @@ def draw_timeline(
 def draw_program_panel(
     draw: ImageDraw.ImageDraw,
     case_id: str,
-    prompt: str,
+    selected_prompt: str,
+    auto_prompt: str,
     events: list[dict[str, Any]],
     current: list[dict[str, Any]],
     frame_idx: int,
@@ -185,8 +187,8 @@ def draw_program_panel(
 ) -> None:
     x0, y0, x1, y1 = box
     font_title = _load_font(22)
-    font_body = _load_font(15)
-    font_small = _load_font(12)
+    font_body = _load_font(14)
+    font_small = _load_font(11)
     draw.rounded_rectangle(box, radius=16, outline=(210, 210, 220), width=2, fill=(255, 255, 255))
     y = y0 + 14
     draw.text((x0 + 18, y), 'AML Atomic Program', fill=(20, 20, 20), font=font_title)
@@ -194,10 +196,14 @@ def draw_program_panel(
     draw.text((x0 + 18, y), f'case: {case_id}    frame: {frame_idx + 1}/{num_frames}', fill=(70, 70, 80), font=font_body)
     y += 22
     draw.text((x0 + 18, y), f"L1={counts['layer1_count']}  L2={counts['layer2_count']}  Phase={counts['layer25_count']}  L3={len(events)}", fill=(70, 70, 80), font=font_body)
-    y += 26
-    for line in _wrap_text(draw, f'HML3D prompt: {prompt}', font_small, x1 - x0 - 36)[:4]:
-        draw.text((x0 + 18, y), line, fill=(70, 105, 190), font=font_small)
-        y += 15
+    y += 24
+    for line in _wrap_text(draw, f'HML3D prompt: {selected_prompt}', font_small, x1 - x0 - 36)[:3]:
+        draw.text((x0 + 18, y), line, fill=(55, 95, 205), font=font_small)
+        y += 14
+    y += 4
+    for line in _wrap_text(draw, f'auto_prompt: {auto_prompt}', font_small, x1 - x0 - 36)[:4]:
+        draw.text((x0 + 18, y), line, fill=(205, 115, 25), font=font_small)
+        y += 14
     y += 8
     draw.text((x0 + 18, y), 'Active events', fill=(20, 20, 25), font=font_body)
     y += 20
@@ -229,12 +235,41 @@ def draw_program_panel(
             y += 14
 
 
-def render_case(case_id: str, joints: np.ndarray, output_path: Path, fps: int, max_events: int | None = None) -> dict[str, Any]:
+def frame_indices_for_render(num_frames: int, frame_stride: int = 1, max_render_frames: int | None = None) -> list[int]:
+    if num_frames <= 0:
+        return []
+    if max_render_frames is not None and max_render_frames > 0 and max_render_frames < num_frames:
+        indices = np.linspace(0, num_frames - 1, max_render_frames, dtype=np.int32).tolist()
+    else:
+        stride = max(1, int(frame_stride))
+        indices = list(range(0, num_frames, stride))
+        if indices[-1] != num_frames - 1:
+            indices.append(num_frames - 1)
+    out: list[int] = []
+    seen = set()
+    for idx in indices:
+        idx = int(idx)
+        if idx not in seen:
+            out.append(idx)
+            seen.add(idx)
+    return out
+
+
+def render_case(
+    case_id: str,
+    joints: np.ndarray,
+    output_path: Path,
+    fps: int,
+    max_events: int | None = None,
+    frame_stride: int = 1,
+    max_render_frames: int | None = None,
+) -> dict[str, Any]:
     extracted = extract_layer3(joints)
     events = sorted(extracted['layer3']['events'], key=event_sort_key)
     if max_events is not None:
         events = events[:max_events]
     prompt = read_first_prompt(case_id)
+    auto_prompt = render_aml_prompt(extracted['layer3'])
 
     projected = _normalize_points(_project_points(joints), width=520, height=520)
     num_frames = len(joints)
@@ -245,8 +280,13 @@ def render_case(case_id: str, joints: np.ndarray, output_path: Path, fps: int, m
     font_title = _load_font(24)
     font_body = _load_font(16)
 
+    render_indices = frame_indices_for_render(
+        num_frames,
+        frame_stride=frame_stride,
+        max_render_frames=max_render_frames,
+    )
     frames = []
-    for frame_idx in range(num_frames):
+    for frame_idx in render_indices:
         img = Image.new('RGB', (canvas_w, canvas_h), color=(247, 247, 250))
         draw = ImageDraw.Draw(img)
         draw.text((40, 16), 'GT Full Motion', fill=(20, 20, 20), font=font_title)
@@ -281,7 +321,8 @@ def render_case(case_id: str, joints: np.ndarray, output_path: Path, fps: int, m
         draw_program_panel(
             draw,
             case_id=case_id,
-            prompt=prompt,
+            selected_prompt=prompt,
+            auto_prompt=auto_prompt,
             events=events,
             current=current,
             frame_idx=frame_idx,
@@ -301,8 +342,12 @@ def render_case(case_id: str, joints: np.ndarray, output_path: Path, fps: int, m
     return {
         'case_id': case_id,
         'num_frames': int(num_frames),
+        'rendered_frames': int(len(render_indices)),
+        'frame_stride': int(frame_stride),
+        'max_render_frames': max_render_frames,
         'gif_path': str(output_path),
         'selected_hml3d_prompt': prompt,
+        'auto_prompt': auto_prompt,
         'layer1_count': int(extracted['layer1_count']),
         'layer2_count': int(extracted['layer2_count']),
         'layer25_count': int(extracted['layer25_count']),
@@ -320,6 +365,8 @@ def main() -> None:
     parser.add_argument('--output-dir', required=True)
     parser.add_argument('--fps', type=int, default=12)
     parser.add_argument('--max-events', type=int, default=None)
+    parser.add_argument('--frame-stride', type=int, default=1)
+    parser.add_argument('--max-render-frames', type=int, default=None)
     args = parser.parse_args()
 
     case_ids = load_case_ids(args)
@@ -339,7 +386,15 @@ def main() -> None:
             joints = joints.cpu().numpy()
         joints = np.asarray(joints, dtype=np.float32)
         out_path = out_dir / f'case_{case_id}.gif'
-        item = render_case(case_id, joints, output_path=out_path, fps=args.fps, max_events=args.max_events)
+        item = render_case(
+            case_id,
+            joints,
+            output_path=out_path,
+            fps=args.fps,
+            max_events=args.max_events,
+            frame_stride=args.frame_stride,
+            max_render_frames=args.max_render_frames,
+        )
         summaries.append(item)
         print(f'saved_aml_vis={out_path}')
 

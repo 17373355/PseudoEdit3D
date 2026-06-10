@@ -106,7 +106,7 @@ def extract_case(case_id: str, packed: dict[str, Any]) -> dict[str, Any] | None:
     for category in ('whole_body', 'torso', 'left_arm', 'right_arm'):
         phases.extend(detect_repeated_phases(project_units_by_category(layer2, category)))
     phases = dedupe_phase_objects(phases)
-    layer3 = build_layer3_atomic_program(layer2, phases)
+    layer3 = build_layer3_atomic_program(layer2, phases, joints=joints)
     return layer3
 
 

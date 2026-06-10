@@ -1,600 +1,430 @@
 # Design Brief
 
-This document is the compact working note for the project. Update this file as the data representation, network, and loss design evolve.
+This is the current working design for the Atomic Motion Language (AML) / AutoPrompt-HumanML3D project.
 
-## Project intent
+The previous Stage 1 prefix-completion and Language-Guided Action Regulation brief has been archived at:
 
-The project is moving from plain motion editing toward embodied action understanding.
+- `docs/legacy/design_brief_stage1_action_regulation_legacy_2026-06-08.md`
 
-Current core target phrase:
+## Current Title
 
-- **Language-Guided Action Regulation**
+Working title:
 
-Interpretation:
+- **Learning an Atomic Motion Language for Structured Motion Annotation, Control, and Transfer**
 
-- the repository name `PseudoEdit3D` stays unchanged for engineering stability
-- the research target is no longer framed as third-person motion editing
-- the main goal is to let an embodied agent execute an action once, receive language feedback, and produce a corrected second attempt
-- future visual and scene feedback extensions should still be interpreted under the same action-regulation and revision framing
+Short internal name:
 
-Long-term view:
+- **Atomic Motion Language (AML)**
 
-- learn a body-centric action representation from unlabeled motion
-- map text or video into an internal body program
-- realize or revise motion through structured state change, not only trajectory regression
-- eventually support memory, refinement, and multimodal skill acquisition
+## Current Research Target
 
-## Current data source
+The project is now centered on learning a motion-derived semantic annotation layer.
 
-- dataset root: `/mnt/data/home/guoruoxi/code/CharRet_multi/dataset`
-- current working subset for experiments: `HumanML3D-CMU`
-- base clip format:
-  - `poses`: `(60, 156)` SMPL-H axis-angle
-  - `trans`: `(60, 3)`
-- optional contact masks at vertex level
+The immediate goal is to construct an AutoPrompt-HumanML3D benchmark:
 
-## Current data management
+- input: HumanML3D motion only
+- output: structured AML program plus rendered auto-prompt
+- constraint: the auto-prompt must not copy the same-case HumanML3D caption
+- use of HumanML3D text: allowed only as a global wording inventory / noisy semantic prior / evaluation reference
 
-The current Stage 1 engineering path uses:
+The long-term goal is to make motion controllable in a language-like way:
 
-- one fixed 60-frame clip as the base unit
-- same-clip prefix conditioning
-- on-the-fly `EditProgram` extraction inside the dataset loader
+- decompose motion into atomic and sub-motion units
+- merge repeated units into higher-level phase patterns
+- render the motion program into a stable motion language
+- train condition models on this structured language
+- support future commands such as `move the right hand outward by 30 degrees` or `walk forward 2 steps, then jump right 3 steps without turning`
 
-Important:
+## Why AML Instead of Direct Motion Tokenization Only
 
-- there is **no pre-saved per-clip program file** yet
-- the current `EditProgram`, masks, and prompt are generated at `__getitem__` time
-- this keeps iteration fast, but also means the current supervision logic is defined by code rather than by a frozen annotation artifact
+Direct motion tokenization is still useful, but it is not sufficient as the project claim.
 
-Current loader entry:
+Motion tokenization answers:
 
-- `pseudoedit3d/data/prefix_dataset.py`
+- how to discretize continuous pose or motion trajectories for generation
 
-Current training entry:
+AML answers:
 
-- `pseudoedit3d/training/train_stage1.py`
+- what the motion means structurally
+- which body part changes
+- when it changes
+- in what direction
+- by how much
+- how many times
+- under what support/contact/locomotion context
 
-## Current Stage 1 sample construction
+The dependency is:
 
-Current main setting:
+```text
+pose / motion observables
+-> atomic motion events
+-> sub-motion units
+-> phase patterns
+-> AML program
+-> rendered auto-prompt / condition language
+```
 
-- `prefix-conditioned action completion`
+So AML is a semantic layer over motion-derived tokens, not a replacement for low-level tokenization.
 
-One training sample is built from **one 60-frame clip**:
+## Core Principle
 
-- input:
-  - first 20 frames as prefix motion context
-  - `EditProgram` as structured condition
-- target:
-  - full 60-frame motion
+Use a motion-first pipeline.
 
-Current source construction for this setting:
+```text
+HumanML3D motion
+-> frame observables
+-> micro-events
+-> sub-motion units
+-> repeated phase patterns
+-> AML Layer3 program
+-> motion-only auto-prompt
+-> MoMask generation probe / qualitative audit
+-> full-corpus regression
+```
 
-- `source_pose`
-  - frames `0:19` = real clip prefix
-  - frames `20:59` = zero-masked
-- `source_trans`
-  - frames `0:19` = real prefix translation
-  - frames `20:59` = zero-masked
-- `conditioning_frame_mask`
-  - first 20 frames = `1`
-  - remaining 40 frames = `0`
+HumanML3D captions are not the auto-prompt source. They are used only for:
 
-Current target construction:
+- global wording inventory
+- rough cluster naming reference
+- finding disagreement cases
+- evaluating whether AML is more consistent than raw captions
 
-- `target_pose = poses.copy()`
-- `target_trans = trans.copy()`
+## Current Data Source
 
-So:
+Current active data source:
 
-- source = masked prefix view of the same clip
-- target = original full clip
+- HumanML3D packed joints: `/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D/joints3d.pth`
+- HumanML3D text files: `/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D/texts/`
+- full AML manifest: `outputs/aml_mining_corpus_full/hml3d_mining_30000.jsonl`
 
-## How the current EditProgram is extracted
+Current full-corpus scale:
 
-Current path for the main prefix-completion experiments:
+- manifest cases: `29048`
+- full AML scan with phase and low-body state: `outputs/aml_full_cluster_scan_with_phase_lowbody_v2.json`
+- report: `outputs/aml_full_cluster_scan_with_phase_lowbody_v2_report.md`
 
-- task mode: `atomic_realize`
-- file: `pseudoedit3d/data/prefix_dataset.py`
-- function: `_build_atomic_program(...)`
+## AML Layer Design
 
-Current extraction logic:
+### Layer 0: Frame Observables
 
-1. compute proxy attributes from the clip
-2. use frame `19` as the prefix anchor state
-3. inspect future attribute trajectories from frame `20` onward
-4. choose the attribute with the **largest absolute change** relative to the prefix anchor
-5. convert that chosen proxy attribute into:
-   - `part`
-   - `attribute`
-   - `direction`
-6. derive:
-   - `delta_value_deg`
-   - `delta_bin`
-   - `start_frame`
-   - `end_frame`
-
-Current candidate proxy attributes:
-
-- `left_shoulder_pitch_proxy_deg`
-- `right_shoulder_pitch_proxy_deg`
-- `both_shoulder_pitch_proxy_deg`
-- `left_elbow_flex_proxy_deg`
-- `right_elbow_flex_proxy_deg`
-- `both_elbow_flex_proxy_deg`
-- `torso_pitch_proxy_deg`
-- `torso_roll_proxy_deg`
-
-Current start/end extraction details:
-
-- `start_frame`
-  - first future frame whose attribute change exceeds `0.2 * |delta|`
-- `end_frame`
-  - based on the detected future peak
-- `valid_end_frame`
-  - an extra heuristic stop frame inferred from active-joint motion energy
-
-Important limitation:
-
-- this is still a **single best-attribute heuristic**
-- it is not a clean action-boundary parser
-- it can still pick a local attribute change inside a clip that contains more than one motion phase
-
-## Current EditProgram structure
-
-Current Python structure:
-
-- file: `pseudoedit3d/edit/schema.py`
-- class: `EditProgram`
-
-Main fields:
-
-- `part`
-- `attribute`
-- `delta_bin`
-- `start_frame`
-- `end_frame`
-- `contact_policy`
-- `attribute_key`
-- `direction`
-- `delta_value_deg`
-- `source_type`
-- `schema_version`
-- `input_mode`
-- `operator`
-- `reference`
-- `preserve_parts`
-- `preserve_mode`
-- `skill_label`
-- `skill_phase`
-- `tolerance_deg`
-- `constraints`
-- `metadata`
+Layer 0 converts raw joints into continuous frame-level channels.
 
-## Current EditProgram vector encoding
-
-Current model-side condition is a fixed-length vector:
-
-- file: `pseudoedit3d/edit/schema.py`
-- method: `LabelSchema.encode_program(...)`
+Current examples:
 
-Current dimension:
+- root x/z motion
+- root body-frame forward/lateral velocity
+- root yaw from joints-derived heading
+- root height proxy
+- pelvis-to-ankle height
+- torso bend/drop/forward extent
+- arm raise / elbow lift
+- wrist-to-chest distance
 
-- `part`: 4
-- `attribute`: 8
-- `delta_bin`: 3
-- `contact_policy`: 2
-- `operator`: 2
-- `reference`: 2
-- `preserve_mode`: 3
-- `skill_label`: 6
-- normalized `start_frame`, `end_frame`: 2
+Design target:
 
-Total:
+- keep numeric values recoverable
+- preserve frame alignment
+- avoid early semantic overcommitment
 
-- **32-d `edit_vector`**
+### Layer 1: Micro-Events
 
-Important:
+Layer 1 segments each observable into atomic changes or sustained states.
 
-- most continuous motion semantics are **not** directly encoded into this 32-d condition
-- fields like:
-  - `delta_value_deg`
-  - `valid_end_frame`
-  - `skill_phase`
-  - other metadata
-  are currently used more on the supervision / visualization side than in the main model condition
+Current event types:
 
-## What exactly gets loaded during training
+- directional changes: up/down, near/far, turn left/right, locomotion active
+- sustained states: locomotion state, low-body hold
 
-Each current Stage 1 prefix sample returns:
+Recent important addition:
 
-- `source_pose`
-- `target_pose`
-- `source_trans`
-- `target_trans`
-- `joint_mask`
-- `time_mask`
-- `conditioning_frame_mask`
-- `edit_vector`
-- `prompt_token_ids`
-- `prompt_attention_mask`
-- `prompt_text`
-- `program_json`
-- `source_path`
-- `betas`
-- goal-spec tensors
+- `WHOLE_BODY_POSTURE/WB_LOW_BODY_HOLD`
+- rendered conservatively as `keeps the body low`
+- fixes the failure mode where static low poses produce no event
 
-Current model actually uses:
+### Layer 2: Sub-Motion Units
 
-- `source_pose`
-- `edit_vector`
-- `conditioning_frame_mask`
-
-Text tokens may be present in the batch, but the current default baseline is:
-
-- `condition_mode: program`
-
-so the active condition is the structured program vector, not text.
-
-## Current part mask behavior
-
-Current part supervision is defined by:
-
-- `BODY_PART_TO_JOINTS`
-- `joint_mask`
-
-Current `joint_mask` logic for `atomic_realize`:
-
-- pick active joint ids from `program.part`
-- set mask `= 1` only for:
-  - those active joints
-  - between `program.start_frame` and `valid_end_frame`
-
-So:
-
-- the mask is **part-local**
-- and **time-local**
-
-Current `time_mask` is the same time span collapsed to a frame-only mask.
-
-## Does one clip produce multiple part-mask / program combinations?
-
-**Currently: no.**
-
-Current behavior is:
-
-- one 60-frame clip
-- one sampled `EditProgram`
-- one `joint_mask`
-- one training sample
-
-So a clip is **not yet expanded** into:
-
-- left-arm version
-- right-arm version
-- both-arms version
-- torso version
-
-all at once.
-
-That is an important current limitation.
-
-It means:
-
-- current supervision coverage per clip is sparse
-- and the dataset does not yet explicitly enumerate multiple local action views from the same base clip
-
-## Current anti-mixing status
-
-We are trying to reduce mixed-motion supervision by adding:
-
-- `valid_end_frame`
-
-but this is **not fully solved yet**.
-
-Current reality:
-
-- fixed 60-frame clips can still contain:
-  - one motion phase
-  - then recovery
-  - then another phase
-- the current `valid_end_frame` heuristic is only a first pass
-- it does not yet guarantee “one action only”
-
-So if a held-out visualization looks like:
-
-- one action followed by another fragment
-
-that is currently more likely due to:
-
-- base clip segmentation
-- and weak action-boundary inference
-
-than to source/target file mismatch.
-
-## Task settings
-
-The project now distinguishes three related but different tasks.
-
-### A. Canonical-pose to motion
-
-Form:
-
-- `canonical pose + detailed body program -> target motion`
-
-Use:
-
-- learn atomic body programs
-- study action composition from a stable body reference
-- future skill-library learning
-
-### B. Start-pose to motion
-
-Form:
-
-- `target motion first frame + absolute action description -> target motion`
-
-Use:
-
-- verify that the model can realize a motion from a natural initial body state
-- keep source and target aligned
-
-Important:
-
-- prompts in this setting should not imply ongoing skill continuation
-
-### C. Attempt-motion to revised motion
-
-Form:
-
-- `first-attempt motion + corrective language feedback -> revised motion`
-
-Use:
-
-- best match to the robot-does-it-once, then gets correction, then retries setting
-- supports instructions such as:
-  - "raise the arm a bit higher than before"
-  - "keep the overall action but reduce arm swing"
-  - "do the second attempt with less torso leaning"
-
-Current priority:
-
-- this is now the highest-priority data setting for the project
-- source and target should describe two executions of the same intended task whenever possible
-- the first attempt should provide error context and skill realization better than a single start pose
-- same-clip prefix conditioning can still be used as an engineering scaffold, but it is not the main scientific claim
-
-Scientific question for the current direction:
-
-- Can a feedback-conditioned motion revision model learn atomic body-action factors from unlabeled 3D motion, using a first attempt plus corrective language to produce a better second attempt, while letting whole-body coordination and compensatory reactions emerge implicitly?
-
-Working intuition:
-
-- prompt/program should only specify the active intended correction relative to the previous attempt
-- the first attempt should supply the skill prior, intent context, and visible error pattern
-- support-region behavior such as balance, compensation, and coordination should be learned rather than manually scripted
-
-## Jsonl artifacts
-
-Managed under:
-
-- `artifacts/jsonl/<subset>/<stage>/<purpose>_<split>.jsonl`
+Layer 2 merges local micro-event sequences into interpretable units.
 
 Examples:
 
-- `artifacts/jsonl/HumanML3D-CMU/scan/manifest_full.jsonl`
-- `artifacts/jsonl/HumanML3D-CMU/attributes/attribute_cache_full.jsonl`
-- `artifacts/jsonl/HumanML3D-CMU/mining/mined_pairs_full.jsonl`
+- crouch descent
+- hop ascent
+- leg compress-release cycle
+- torso bend recover
+- hand near/far cycle
+- both arms lift
+- hands move away from chest
 
-Registry:
+Layer 2 is still intentionally conservative. It should not become a collection of one-off hard-coded HumanML3D action names.
 
-- `artifacts/jsonl/registry.jsonl`
+### Layer 2.5: Phase Patterns
 
-## Representation stack
+Layer 2.5 detects repeated sub-motion phases.
 
-### 1. Proxy attributes
+Examples:
 
-Current proxy attributes are upper-body focused:
+- repeated arm swing
+- repeated vertical phases
+- alternating repeated phases
+- torso oscillation
 
-- `left_shoulder_pitch_proxy_deg`
-- `right_shoulder_pitch_proxy_deg`
-- `both_shoulder_pitch_proxy_deg`
-- `left_elbow_flex_proxy_deg`
-- `right_elbow_flex_proxy_deg`
-- `both_elbow_flex_proxy_deg`
-- `torso_pitch_proxy_deg`
-- `torso_roll_proxy_deg`
+Full-scan evidence shows phase detection should remain in the mainline:
 
-These are still kinematic proxies, not full FK/body-space semantics.
+- no-phase full scan: `avg_layer3=7.030`, `low_event_case_count_le2=6726`
+- with-phase full scan: `avg_layer3=10.125`, `low_event_case_count_le2=4515`
 
-### 2. Action program
+### Layer 3: AML Atomic Program
 
-Main structure: `EditProgram`
+Layer 3 exports the structured event program.
 
-Core fields:
+Each event should ideally contain:
 
+- `super_family`
+- `cluster_id`
 - `part`
-- `attribute`
-- `delta_bin`
-- `start_frame`, `end_frame`
-- `operator`
-- `reference`
-- `contact_policy`
-- `preserve_mode`
-- `skill_label`
-- `skill_phase`
-- `tolerance_deg`
+- `direction`
+- `role`
+- `start_frame`
+- `end_frame`
+- `magnitude`
+- `unit`
+- `count`
+- `confidence`
+- `source`
+- `motion_signature`
 - `metadata`
 
-Current intent:
+Current major families:
 
-- `operator=set` means move toward a target value
-- `operator=add` means apply a relative correction with respect to the previous attempt
-- `reference=source_attempt` is the main path toward feedback-conditioned revision modeling
+- `WHOLE_BODY_LOCOMOTION`
+- `WHOLE_BODY_ROTATION`
+- `WHOLE_BODY_VERTICAL`
+- `WHOLE_BODY_POSTURE`
+- `TORSO_PERIODIC`
+- `BIMANUAL_PERIODIC`
+- `LEFT_ARM_PERIODIC`
+- `RIGHT_ARM_PERIODIC`
 
-### 3. Skill context
+## Current Renderer Design
 
-Current lightweight skill labels:
+The renderer turns the AML program into a natural-language auto-prompt.
 
-- `static_pose`
-- `locomotion`
-- `periodic_arm_motion`
-- `torso_leaning`
-- `arm_reaching_or_repositioning`
-- `unknown`
+Important distinction:
 
-Current periodic-arm state approximation:
+- AML program: complete, structured, numeric, searchable
+- auto-prompt: compressed, human-readable, suitable for MoMask probing and qualitative audit
 
-- dominant periodic limb
-- dominant periodic attribute
-- mean value as offset proxy
-- half range as amplitude proxy
-- phase estimated from attribute value + velocity
+The renderer should not expose internal technical names such as `arm cycle`.
 
-Current relative-action interpretation for periodic arm motion:
+Current renderer improvements:
 
-- `operator=add`
-- `reference=source_attempt`
-- `relative_skill_parameter=offset_deg`
-- preserve amplitude when possible
+- full rotation wording uses explicit 360-degree language
+- jump-spin cases merge into `jumps and does one complete 360-degree ... spin`
+- vertical salience gate suppresses walking root oscillation from becoming false jump/squat language
+- recovery from down to up renders as `rises back up`, not `jumps upward`
+- locomotion-coupled arm repeats render as `swings both arms while walking`
+- non-locomotion arm repeats render as `moves the left/right arm repeatedly N times`
 
-This means an instruction like "raise it a bit more than before while keeping the same motion" is currently approximated as:
+Current regression artifacts:
 
-- shift the periodic offset relative to the first attempt
-- keep the periodic amplitude
-- keep the rest of the motion structure as much as possible
+- vertical salience report: `outputs/aml_vertical_salience_v2_report.md`
+- arm family abstraction report: `outputs/aml_arm_family_abstraction_v2_report.md`
+- phrase count full regression: `outputs/aml_prompt_phrase_counts_full_arm_v2.json`
 
-This is only a first approximation for feedback-conditioned relative revision.
+## HumanML3D Wording Inventory Mining
 
-Current implementation direction:
+Upper-body motion is currently ambiguous. We therefore mine HumanML3D captions as a global wording inventory.
 
-- `target_start_pose` is used for the start-pose task and first-attempt baselines
-- `source_attempt_motion` is the next main setting for feedback-conditioned revision
+Important constraint:
 
-### 4. Goal spec
+- same-case captions are not used to generate that case's auto-prompt
+- mined phrases are used only for cluster naming, word-bank construction, and confidence analysis
 
-Programs are converted into compact training-side goal fields:
+Current mining output:
 
-- target attribute index
-- operator index
-- reference index
-- preserve mode index
-- skill label index
-- active span
-- desired delta
-- target absolute value if available
-- target offset if periodic skill editing is active
-- preserve amplitude flag
-- tolerance
-- skill phase
+- full JSON: `outputs/hml3d_upperbody_phrase_mining_full_v2.json`
+- report: `outputs/hml3d_upperbody_phrase_mining_full_v2_report.md`
 
-## Current model
+Current mined word-family groups include:
 
-Main baseline:
+- `support_contact`
+- `object_hold_or_manipulate`
+- `arm_raise_lift`
+- `arm_extend_spread`
+- `arm_swing_walk`
+- `wave_or_gesture`
+- `clap_or_hands_together`
+- `touch_body`
+- `punch_boxing`
+- `dance_or_circular_gesture`
 
-- `pseudoedit3d/models/masked_editor.py`
+These are candidate semantic families. They should guide subclustering, not directly overwrite motion-derived labels.
 
-Conditioning modes:
+## Current Known Bottlenecks
 
-- `program`
-- `text`
-- `hybrid`
+### 1. Bimanual Coarse Events
 
-Current architecture role:
+Current issue:
 
-- encode source pose/motion
-- inject program and/or prompt condition
-- predict edited motion residual
+- `BI_OUT` and `BI_UP` are too broad
+- they may correspond to support/contact, object manipulation, clap-like motion, arm raise, or ordinary walking arm motion
 
-Important limitation:
+Current full regression:
 
-- current model is still an editor/generator, not yet a dedicated revision model with an explicit attempt-level latent state predictor
+- `bimanual_coarse` prompt cases: `13103/29048`
 
-## Current losses
+Next design step:
 
-### Existing motion-space losses
+- add hand-hand distance
+- add hand speed / anchoring
+- add hand-to-root stability
+- add hand extension during locomotion
+- split `BI_OUT/BI_UP` into support-like, object-like, clap-like, free-raise, and unknown bimanual families
 
-- `edit_loss`
-- `keep_loss`
-- `smooth_loss`
+### 2. Stairs / Steps / Obstacles
 
-### Goal-satisfaction losses
+Current issue:
 
-- `goal_delta_loss`
-- `goal_direction_loss`
-- `goal_tolerance_loss`
-- `goal_span_consistency_loss`
-- `goal_offset_loss`
-- `goal_amplitude_preserve_loss`
-- `goal_preserve_attr_loss`
+- vertical motion while moving can mean stairs, stepping, obstacle crossing, hopping, or jumping
+- thresholding alone cannot separate them reliably
 
-Design principle:
+Next design step:
 
-- do not require one exact target trajectory
-- require the motion to satisfy the intended action goal
-- keep non-target content stable when editing an existing motion
+- add foot clearance
+- add alternating foot height
+- add step count estimation
+- add airborne/contact proxy
+- distinguish stair-like repeated low vertical displacement from jump-like airborne events
 
-## Current design philosophy
+### 3. Support / Contact Proxy
 
-The project should gradually move from:
+Current issue:
 
-- `state + prompt -> target trajectory`
+- HumanML3D motion has no explicit scene geometry
+- AML cannot honestly say `wall` or `rail` from motion alone unless a support-like hand signal is detected
 
-toward:
+Next design step:
 
-- `first-attempt motion + corrective feedback -> revised motion`
+- infer support-like hand behavior from hand extension + low hand velocity + root movement + body height change
+- render conservatively as `keeps one hand extended for support`
+- do not directly say `wall` / `rail` / `surface` without scene evidence
 
-and later:
+### 4. Numeric and Repetition Semantics
 
-- `first-attempt motion + feedback -> updated skill state -> revised motion`
+Current issue:
 
-Potential future extension:
+- counts, steps, degrees, and repetition are partially represented but not yet uniformly rendered
 
-- `current skill state + relative action -> desired state transition`
+Existing design note:
 
-This is why `operator`, `reference`, `preserve_mode`, `skill_label`, `skill_phase`, and periodic `offset/amplitude` metadata are being added now.
+- `docs/design/aml_numeric_repetition_angle_design.md`
 
-## Current experiment track
+Next design step:
 
-Active subset:
+- standardize count confidence
+- expose exact angle/step values in AML metadata
+- render natural language with numeric bins only when confidence is high
 
-- `HumanML3D-CMU`
+## Evaluation Design
 
-Baseline completed:
+### Experiment 1: AutoPrompt-HumanML3D Benchmark
 
-- program-conditioned CMU run without goal loss
-- train-split CMU start-pose goal-loss run
+Compare under the same MoMask architecture:
 
-Stage-1 code path now available:
+- original HumanML3D captions + MoMask text-conditioned model -> FID
+- AutoPrompt-HumanML3D captions + MoMask text-conditioned model -> FID
 
-- `configs/stage1_prefix_cmu_train_continue.yaml`
-  - same-clip prefix continuation baseline
-- `configs/stage2_prefix_cmu_train_relative.yaml`
-  - same-clip prefix relative-action baseline, currently a proxy for the later full revision task
+What it can support:
 
-Next focus:
+- annotation layer matters
+- AML auto-prompts produce a more consistent conditioning space
+- motion-derived annotations can reduce noise from incorrect or inconsistent HumanML3D captions
 
-- build a full-attempt feedback-revision setting as the main motion-conditioned task
-- decide how to construct or approximate first-attempt and revised-attempt pairs on CMU clips
-- train a first CMU revision-oriented model or a strong proxy baseline
-- inspect held-out salient visualizations for iterative debugging
+### Experiment 2: Cross-Dataset Generalization
 
-Current refreshed CMU artifacts:
+On unlabeled dataset B:
 
-- `artifacts/jsonl/HumanML3D-CMU/scan/manifest_full.jsonl`
-- `artifacts/jsonl/HumanML3D-CMU/attributes/attribute_cache_full.jsonl`
-- `artifacts/jsonl/HumanML3D-CMU/mining/mined_pairs_full.jsonl`
+```text
+motion_B
+-> AML / AutoPrompt
+-> AutoPrompt-HML3D-trained MoMask
+-> generated motion
+-> compare with GT motion
+```
 
-Current goal-loss experiment config:
+What it can support:
 
-- `configs/stage1_mined_cmu_program_goal_clean.yaml`
+- AML is not just overfitting HumanML3D text style
+- the learned motion language can transfer across motion datasets
+- a model trained on AML supervision learns reusable motion patterns rather than only benchmark caption artifacts
 
-## Open questions
+### Supporting Analyses
 
-- how to better identify true skill structure from short 60-frame clips
-- how to construct reliable `first attempt -> feedback -> revised attempt` supervision from mostly single-clip data
-- how to separate `set absolute target` from `relative correction over a previous attempt`
-- how much of the first attempt the model should see: full clip, compressed summary, or selected salient subsegment
-- how to represent skill memory beyond per-clip metadata
-- when to introduce explicit attempt-level latent state modeling instead of only edited trajectory prediction
+Needed alongside FID:
+
+- caption conflict rate in raw HumanML3D
+- AML prompt consistency for similar motions
+- phrase entropy per motion cluster
+- qualitative GT / selected HML3D / auto-prompt / generated motion comparisons
+- bad-case regression suite
+- round-trip consistency: motion -> AML -> generation -> AML
+
+## Current Active Scripts
+
+Main extraction / scan:
+
+- `scripts/scan_aml_full_clusters.py`
+- `scripts/summarize_aml_cluster_scan.py`
+- `scripts/extract_aml_layers.py`
+
+Prompt and MoMask probe:
+
+- `scripts/run_momask_aml_prompt_probe.py`
+- `scripts/visualize_momask_case_study.py`
+
+Phrase / wording mining:
+
+- `scripts/analyze_aml_prompt_phrases.py`
+- `scripts/analyze_vertical_salience.py`
+- `scripts/mine_hml3d_upperbody_phrases.py`
+
+Report visualization:
+
+- `scripts/visualize_aml_report_artifacts.py`
+
+Note: report visualization currently requires a plotting backend such as `matplotlib` in the active environment.
+
+## Current Report Artifacts
+
+Current key outputs:
+
+- `outputs/aml_full_cluster_scan_with_phase_lowbody_v2.json`
+- `outputs/aml_full_cluster_scan_with_phase_lowbody_v2_report.md`
+- `outputs/aml_vertical_salience_v2_report.md`
+- `outputs/aml_arm_family_abstraction_v2_report.md`
+- `outputs/aml_prompt_phrase_counts_full_arm_v2.json`
+- `outputs/hml3d_upperbody_phrase_mining_full_v2.json`
+- `outputs/hml3d_upperbody_phrase_mining_full_v2_report.md`
+
+Experiment log:
+
+- `docs/experiment_log.md`
+
+## Current Design Invariants
+
+1. Auto-prompt is motion-only at case level.
+2. Captions can be mined globally but cannot be copied into the same case's auto-prompt.
+3. Layer3 should preserve numeric evidence even when renderer suppresses a phrase.
+4. Prompt renderer should be conservative when evidence is ambiguous.
+5. Full HumanML3D regression should be run after mechanism changes.
+6. MoMask generation is a probe, not the definition of AML quality.
+7. The final AML benchmark should be more atomic, more consistent, and less noisy than raw HumanML3D captions.
+
+## Immediate Next Steps
+
+1. Generate report visualizations for extraction layers, cluster distribution, phrase distribution, and upper-body word-family heatmap.
+2. Split `BI_OUT` and `BI_UP` using support/contact/object/clap/free-raise proxies.
+3. Add step/stair/obstacle observables based on foot height, contact, and root vertical trajectory.
+4. Re-run full AML scan and prompt phrase regression.
+5. Regenerate representative qualitative cases and MoMask probe visualizations.
+6. Prepare AutoPrompt-HumanML3D training data export format.

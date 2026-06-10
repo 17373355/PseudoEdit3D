@@ -34,7 +34,13 @@ PHRASE_GROUPS = {
     'neutral_height': ['changes body height while moving', 'rises back up'],
     'arm_cycle_raw': ['repeats a left arm cycle', 'repeats a right arm cycle'],
     'arm_swing_family': ['swings the left arm while walking', 'swings the right arm while walking', 'swings both arms while walking'],
-    'bimanual_coarse': ['moves both hands outward', 'raises both arms'],
+    'bimanual_spread': ['moves both hands outward'],
+    'bimanual_raise': ['raises both arms'],
+    'bimanual_raise_spread': ['raises and spreads both arms'],
+    'bimanual_hands_close': ['brings both hands closer together'],
+    'bimanual_loco_coupled': ['keeps both hands extended while moving', 'moves both arms while walking'],
+    'bimanual_vertical_coupled': ['moves both arms with the vertical body motion'],
+    'bimanual_coarse_legacy': ['moves both hands outward', 'raises both arms'],
     'locomotion': ['walks forward', 'walks backward', 'moves to the left', 'moves to the right'],
 }
 
@@ -106,7 +112,7 @@ def extract_prompt(case_id: str, packed: dict[str, Any]) -> str | None:
     phases.extend(detect_repeated_phases(layer2))
     for category in ('whole_body', 'torso', 'left_arm', 'right_arm'):
         phases.extend(detect_repeated_phases(project_units_by_category(layer2, category)))
-    layer3 = build_layer3_atomic_program(layer2, dedupe_phase_objects(phases))
+    layer3 = build_layer3_atomic_program(layer2, dedupe_phase_objects(phases), joints=joints)
     return render_aml_prompt(layer3)
 
 

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+
+from pseudoedit3d.edit.bimanual_split import split_bimanual_events
 from pseudoedit3d.edit.phase_patterns import PhasePattern
+from pseudoedit3d.edit.semantic_events import build_semantic_joint_events
 from pseudoedit3d.edit.submotion_lexicon import SubMotionUnit
 
 
@@ -531,18 +535,63 @@ def _build_locomotion_turn_events(submotions: list[SubMotionUnit]) -> list[dict[
         ))
     return out
 
-def build_layer3_atomic_program(submotions: list[SubMotionUnit], phase_patterns: list[PhasePattern]) -> dict[str, Any]:
+
+def _build_terminal_state_events(joints: np.ndarray | None) -> list[dict[str, Any]]:
+    if joints is None or len(joints) < 24:
+        return []
+    joints_arr = np.asarray(joints, dtype=np.float32)
+    root_speed = np.linalg.norm(np.diff(joints_arr[:, 0, [0, 2]], axis=0), axis=1)
+    full_speed = np.linalg.norm(np.diff(joints_arr, axis=0), axis=2).mean(axis=1)
+    tail_len = min(16, max(8, len(joints_arr) // 8))
+    tail_root = float(root_speed[-tail_len:].mean())
+    tail_full = float(full_speed[-tail_len:].mean())
+    prev_full = float(full_speed[-2 * tail_len:-tail_len].mean()) if len(full_speed) >= 2 * tail_len else tail_full
+    prev_root = float(root_speed[-2 * tail_len:-tail_len].mean()) if len(root_speed) >= 2 * tail_len else tail_root
+    # Strict gate: this is a motion-derived terminal hold, not a caption prior.
+    is_still = tail_root <= 0.0035 and tail_full <= 0.015 and tail_full <= max(prev_full * 0.75, 1e-6)
+    if not is_still:
+        return []
+    start = len(joints_arr) - tail_len + 1
+    end = len(joints_arr) - 1
+    return [
+        _event(
+            'whole_body', 'WHOLE_BODY_STATE', 'WB_TERMINAL_STILL', start, end,
+            direction='still', role='state', optional_semantic_name='terminal_still',
+            magnitude=tail_full, signed_delta=None, unit='mean_joint_speed', confidence=0.72,
+            source='state_event', supporting_units=['terminal_low_motion_tail'],
+            motion_signature=_sig('motion_energy', 'state', 'terminal_still', 'grounded', support_mode='feet', bilateral_symmetry='axial', tempo_bucket='slow'),
+            metadata={
+                'tail_len': int(tail_len),
+                'tail_root_speed': tail_root,
+                'tail_full_speed': tail_full,
+                'previous_root_speed': prev_root,
+                'previous_full_speed': prev_full,
+                'rule': 'tail_root<=0.0035,tail_full<=0.015,tail_full<=0.75*previous_full',
+            },
+        )
+    ]
+
+
+def build_layer3_atomic_program(
+    submotions: list[SubMotionUnit],
+    phase_patterns: list[PhasePattern],
+    *,
+    joints: np.ndarray | None = None,
+) -> dict[str, Any]:
     events: list[dict[str, Any]] = []
     for unit in submotions:
         evt = _submotion_to_event(unit)
         if evt is not None:
             events.append(evt)
     events.extend(_build_locomotion_turn_events(submotions))
+    events.extend(_build_terminal_state_events(joints))
+    events.extend(build_semantic_joint_events(joints))
     for phase in phase_patterns:
         evt = _phase_to_event(phase)
         if evt is not None:
             events.append(evt)
     events = abstract_atomic_events(events)
+    events = split_bimanual_events(events, joints)
     _annotate_context_coupling(events)
     events.sort(key=lambda x: (int(x['start_frame']), int(x['end_frame']), str(x['super_family']), str(x['cluster_id'])))
     return {'events': events}

@@ -48,3 +48,4 @@ artifacts/jsonl/registry.jsonl
 tmp/
 scratch/
 iter_runs/
+paper_ref/

@@ -38,8 +38,11 @@ Each event should ideally include:
 - missing number / angle awareness
 - too-coarse whole-body descriptions
 
-## Legacy References
+## Current Entry Point
 
 - `../design_brief.md`
+
+## Legacy References
+
 - `../hml3d_experiment_pipeline.md`
 - `../stage1_upgrade_plan.md`

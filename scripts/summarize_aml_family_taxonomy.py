@@ -95,7 +95,7 @@ def extract_case_layer3(case_id: str, packed: dict[str, Any]) -> tuple[dict[str,
         projected = project_units_by_category(layer2, category)
         phases.extend(detect_repeated_phases(projected))
     phases = dedupe_phase_objects(phases)
-    layer3 = build_layer3_atomic_program(layer2, phases)
+    layer3 = build_layer3_atomic_program(layer2, phases, joints=joints)
     return {
         'case_id': case_id,
         'num_frames': int(len(joints)),

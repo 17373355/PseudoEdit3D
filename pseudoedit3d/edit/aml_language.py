@@ -65,6 +65,15 @@ CLUSTER_VERBS = {
     'RA_REPEAT_ALT_LOCO': 'repeat alternating right arm cycle coupled with locomotion',
     'BI_UP': 'raise both arms',
     'BI_OUT': 'move both hands outward',
+    'BI_RAISE': 'raise both arms',
+    'BI_RAISE_SPREAD': 'raise and spread both arms',
+    'BI_SPREAD': 'move both hands outward',
+    'BI_HANDS_CLOSE': 'bring both hands closer together',
+    'BI_HANDS_CLOSE_RAISE': 'bring both hands closer while raising them',
+    'BI_EXTENDED_LOCO_COUPLED': 'keep both hands extended while moving',
+    'BI_LOCOMOTION_COUPLED': 'move both arms while walking',
+    'BI_VERTICAL_COUPLED': 'move both arms with vertical body motion',
+    'BI_UNRESOLVED': 'bimanual motion unresolved',
 }
 
 

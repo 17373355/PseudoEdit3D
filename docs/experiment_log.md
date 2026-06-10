@@ -804,3 +804,335 @@ Interpretation:
 
 - this is a prompt-layer family abstraction: Layer3 still stores the repeat/count evidence, but the natural language no longer exposes technical `cycle` names.
 - the next major bottleneck is `BIMANUAL_PERIODIC/BI_OUT` and `BI_UP`; these need support-like, object-like, clap-like, and free-raise subfamilies rather than direct `moves both hands outward` / `raises both arms` wording.
+
+
+### AML report visualization artifacts v1 - 2026-06-08
+
+Goal:
+
+- create report-ready visualizations and tables for the current AML extraction pipeline, full-corpus cluster distribution, prompt phrase distribution, and upper-body wording mining.
+
+Inputs:
+
+- cluster scan: `outputs/aml_full_cluster_scan_with_phase_lowbody_v2.json`.
+- previous scan for delta: `outputs/aml_full_cluster_scan_with_phase_v1.json`.
+- prompt phrase counts: `outputs/aml_prompt_phrase_counts_full_arm_v2.json`.
+- upper-body phrase mining: `outputs/hml3d_upperbody_phrase_mining_full_v2.json`.
+- vertical salience regression: `outputs/aml_vertical_salience_full_v2.json`.
+
+Outputs:
+
+- artifact root: `outputs/aml_report_artifacts_v1/`.
+- browser index: `outputs/aml_report_artifacts_v1/index.html`.
+- markdown index: `outputs/aml_report_artifacts_v1/README.md`.
+- figures: `outputs/aml_report_artifacts_v1/figures/`.
+- tables: `outputs/aml_report_artifacts_v1/tables/`.
+
+Generated figures:
+
+- `01_layer_average_counts.png`: average Layer1 / Layer2 / Layer2.5 / Layer3 counts per case.
+- `02_super_family_event_vs_support.png`: AML super-family event count vs case support.
+- `03_top_aml_clusters.png`: top AML family/cluster distribution.
+- `05_prompt_phrase_distribution.png`: prompt phrase group distribution after current renderer.
+- `06_upperbody_motion_word_family_heatmap.png`: motion-cluster to HML3D word-family coverage heatmap.
+
+Key readout:
+
+- processed cases: `29048`.
+- avg Layer3 events: `10.196`.
+- low-event cases <=2: `4460`.
+- raw arm-cycle prompt cases: `0`.
+- bimanual coarse prompt cases: `13103`.
+- problematic vertical prompt cases after gate: `6965`.
+
+Note:
+
+- HML3D captions are used as a global wording inventory for cluster naming/reference only, not as same-case auto-prompt input.
+
+
+### AML bimanual split v1 - 2026-06-08
+
+Goal:
+
+- split the coarse `BIMANUAL_PERIODIC/BI_OUT` and `BIMANUAL_PERIODIC/BI_UP` clusters into motion-checkable subclasses.
+- keep the split motion-only at case level; HumanML3D captions are used only for diagnostic examples and global wording analysis.
+
+What changed:
+
+- added `pseudoedit3d/edit/bimanual_split.py` for joints-derived bimanual feature extraction and split classification.
+- `build_layer3_atomic_program(..., joints=...)` can now relabel coarse bimanual events into `BI_SPREAD`, `BI_RAISE_SPREAD`, `BI_RAISE`, `BI_HANDS_CLOSE`, and `BI_HANDS_CLOSE_RAISE`.
+- updated AML renderer/language mappings so auto-prompts can use split-level bimanual wording.
+- updated scan / prompt phrase / AML visualization / MoMask probe scripts to pass `joints` into Layer3 construction.
+- added diagnostic split visualization script: `scripts/visualize_bimanual_split_report.py`.
+
+Regression outputs:
+
+- diagnostic 5k split: `outputs/bimanual_split_candidates_5k_v2.json`.
+- diagnostic 5k split report: `outputs/bimanual_split_candidates_5k_v2_report.md`.
+- diagnostic 5k split figures: `outputs/bimanual_split_candidates_5k_v2_figures/`.
+- full HumanML3D scan after split: `outputs/aml_full_cluster_scan_bimanual_split_v1.json`.
+- bimanual report root: `outputs/bimanual_split_report_v1/`.
+- bimanual report figures: `outputs/bimanual_split_report_v1/figures/`.
+- bimanual report tables: `outputs/bimanual_split_report_v1/tables/`.
+- prompt phrase counts after split: `outputs/aml_prompt_phrase_counts_full_bimanual_split_v2.json`.
+
+Key readout:
+
+- processed cases: `29048`.
+- avg Layer3 events: `10.196`.
+- low-event cases <=2: `4460`.
+- full bimanual event split:
+  - `BI_SPREAD`: events `10898`, cases `7451`.
+  - `BI_RAISE_SPREAD`: events `8497`, cases `3873`.
+  - `BI_RAISE`: events `4822`, cases `3347`.
+  - `BI_HANDS_CLOSE`: events `5148`, cases `2873`.
+  - `BI_HANDS_CLOSE_RAISE`: events `3022`, cases `2059`.
+- 5k prompt phrase counts after split:
+  - `bimanual_spread`: `1457/5000`.
+  - `bimanual_raise`: `738/5000`.
+  - `bimanual_raise_spread`: `703/5000`.
+  - `bimanual_hands_close`: `475/5000`.
+
+Interpretation:
+
+- the old bimanual bottleneck is now structurally split into multiple motion-derived subclasses rather than one `moves both hands outward` / `raises both arms` bucket.
+- object / support / clap labels are intentionally not used yet because joints-only HumanML3D evidence does not prove object contact, wall contact, or palm contact.
+- the next acceptance standard should visually test whether each split cluster is internally coherent, whether split clusters remain overloaded, and whether all high-support bimanual clusters have distinguishable feature distributions.
+
+
+### AML bimanual cluster contact sheets v1 - 2026-06-08
+
+Goal:
+
+- provide a lightweight visual acceptance artifact for checking whether bimanual split clusters are actually separable.
+- avoid generating many large GIFs by using static before/middle/after event frames.
+
+Outputs:
+
+- contact sheet root: `outputs/bimanual_cluster_contact_sheets_v1/`.
+- contact sheet PNGs: `outputs/bimanual_cluster_contact_sheets_v1/contact_sheets/`.
+- index table: `outputs/bimanual_cluster_contact_sheets_v1/bimanual_contact_sheet_index.csv`.
+- acceptance criteria: `outputs/bimanual_cluster_contact_sheets_v1/acceptance_criteria.md`.
+
+Key readout:
+
+- generated `5` contact sheets, one per bimanual split cluster.
+- each sheet contains `6` representative samples from the full scan examples.
+- total PNG size is under `1MB`, much lighter than full GIF visualization.
+- all current split clusters are covered: `BI_SPREAD`, `BI_RAISE_SPREAD`, `BI_RAISE`, `BI_HANDS_CLOSE`, `BI_HANDS_CLOSE_RAISE`.
+
+Interpretation:
+
+- this artifact is intended for human acceptance checks, not for quantitative scoring.
+- the first acceptance standard is intra-cluster visual coherence and inter-cluster separability by hand distance, wrist height, and timing.
+- semantic labels such as clap / support / object-hold remain blocked until stronger contact/object evidence is added.
+
+
+### AML coordination pattern layer v1 - 2026-06-08
+
+Motivation:
+
+- bimanual split clusters are local arm realizations, not final action semantics.
+- semantic actions such as standing long jump require whole-body coordination: leg compression/release, forward root displacement, and bimanual arm timing.
+- different people may realize the arm slot differently: `BI_SPREAD`, `BI_RAISE_SPREAD`, `BI_RAISE`, `BI_HANDS_CLOSE`, or combinations.
+
+What changed:
+
+- added `pseudoedit3d/edit/coordination_patterns.py` as a Layer4 diagnostic above atomic AML events.
+- added `scripts/analyze_coordination_patterns.py` to scan jump/body-arm coordination patterns.
+- Layer4 patterns preserve `coordination_slots.arms.realization_clusters` instead of replacing them with a single action label.
+
+Smoke outputs:
+
+- 1k diagnostic v1: `outputs/coordination_patterns_1k_v1.json` and `outputs/coordination_patterns_1k_v1_report.md`.
+- 1k diagnostic v2: `outputs/coordination_patterns_1k_v2.json` and `outputs/coordination_patterns_1k_v2_report.md`.
+- v2 counts on 1000 cases:
+  - `COORD_FORWARD_JUMP_ARM_COORDINATION`: events `417`, cases `230`.
+  - `COORD_VERTICAL_JUMP_ARM_COORDINATION`: events `129`, cases `85`.
+  - `COORD_STANDING_FORWARD_JUMP_CANDIDATE`: events `30`, cases `29`.
+- top arm realization variants include `BI_SPREAD`, `BI_RAISE`, `BI_RAISE_SPREAD`, `BI_HANDS_CLOSE`, and combinations.
+
+Important correction:
+
+- `COORD_STANDING_FORWARD_JUMP_CANDIDATE` is not yet a reliable semantic label. v2 examples still include pick-up / step-up / crouch-walk cases.
+- the detector was tightened after v2: `WB_VERT_CYCLE` no longer triggers jump coordination, and standing candidate now requires low-body preparation, small pre-path, enough forward displacement, enough vertical magnitude, and arm preparation/takeoff timing.
+- the tightened rule passed a synthetic smoke test but was not full-scanned due a temporary I/O stall; do not report v3 corpus numbers yet.
+
+Current conclusion:
+
+- Layer4 coordination is the right abstraction: action semantics should be built from whole-body slots plus local realization variants.
+- local bimanual splits should remain as implementation details / slots, not final semantic action labels.
+- next step is to build a visual/quantitative acceptance set for coordination patterns before using names like standing long jump, support, object-hold, or clap.
+
+## 2026-06-08 AML regression test set v2
+
+- Built a fixed HumanML3D test-split AML regression set for repeated AutoPrompt visual checks.
+- Command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_aml_regression_testset.py --output-dir outputs/aml_regression_testset_v2 --total-cases 250 --group-size 50 --strategy stratified --progress-every 500`
+- Scanned 4384 test IDs, 4358 valid motions; selected 250 cases in 5 groups of 50.
+- Selection uses per-group buckets: coordination 6, locomotion 8, rotation 7, vertical 7, bimanual 7, unilateral_arm 5, torso_posture 5, simple_other 5.
+- Main artifacts: `outputs/aml_regression_testset_v2/aml_regression_testset_v2.csv`, `outputs/aml_regression_testset_v2/aml_regression_testset_v2.json`, `outputs/aml_regression_testset_v2/group_01_case_ids.txt` ... `group_05_case_ids.txt`.
+- Generated group 01 GIFs with `frame_stride=4`, `fps=10`: `outputs/aml_regression_testset_v2/group_01_aml_gifs_stride4/`.
+- Group 01 validation: 50 GIFs, 50 summary rows, no missing or empty files, total directory size about 85.77 MB.
+- Visualization panel now prints HML3D prompt in blue and motion-only `auto_prompt` in orange.
+
+## 2026-06-09 Group 01 first10 MoMask AutoPrompt-vs-GT probe
+
+- Added auto-only MoMask probe: `scripts/run_momask_aml_autoprompt_probe.py`.
+- Added GT-vs-AutoPrompt generation visualizer: `scripts/visualize_momask_auto_gt.py`.
+- Generated first 10 cases from `outputs/aml_regression_testset_v2/group_01_case_ids.txt` with motion-only AutoPrompt as MoMask text condition.
+- Probe summary: `outputs/aml_regression_testset_v2/group_01_momask_auto_probe_first10/summary.json`.
+- GIF output: `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_first10_gifs_stride4/`.
+- Validation: 10 GIFs produced; directory size about 9.9 MB; visualization has GT motion, AutoPrompt text, and MoMask from AutoPrompt only.
+
+## 2026-06-09 AutoPrompt MoMask probe diagnosis from group 01 first10
+
+- User inspection found that several ordinary motions are over-rendered into complex event-stream AutoPrompts: `000189` and `002755` should mostly read as walking/jogging/running-like motions, but the rendered prompt becomes a long sequence of hops, arm swings, raising/spreading arms, and body-height changes.
+- `001082` shows another failure mode: upper-body details are partially captured, but root motion such as slow leftward movement and turning is lost or drowned by the upper-body phrase stream in MoMask generation.
+- `M000106`, `M010032`, and related cases show that forward jump / jump-ahead should be represented as a whole-body coordinated action family, not just separated arm, vertical, and locomotion events.
+- `M002798`, `M008014`, and `M008235` show that current wording such as `change body height` and broad `spread arms` is not a stable common-sense action phrase for T2M, and it also misses rhythm/amplitude distinctions.
+- Interpretation: the current AutoPrompt captures local details but lacks coarse action-family abstraction and coordination-level semantics; a pure streaming text condition is not adequate for program-like motion labels.
+- Next design direction: build a hierarchical renderer/conditioner where coarse common actions such as walk, run, jog-in-place, jump-forward, jump-up, jumping-jack, and turn are inferred first, then residual atomic details are injected as structured program slots rather than as a long natural-language stream.
+- Visualization update: `scripts/visualize_momask_auto_gt.py` now shows HML3D captions in blue and AutoPrompt in orange; regenerated first10 GIFs at `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_first10_gifs_hml3d_stride4/`.
+
+
+
+## 2026-06-09 - AML coarse signature renderer v2
+
+- Separated MoMask probe aliases from canonical AML condition encoding. Probe text remains natural language; `canonical_actions` stores structured ids and numeric slots.
+- Added conservative Layer-3 terminal-state event `WHOLE_BODY_STATE/WB_TERMINAL_STILL`; coarse signature consumes it rather than rescanning raw motion.
+- Improved repeat counting for jumping-jack-like motions using vertical down/up evidence and bimanual raise-spread evidence; `M008014` now renders `does jumping jacks 8 times`.
+- Tightened `JUMPING_JACK` matching to avoid misclassifying short jump/backward cases; `M008235` is no longer rendered as jumping jacks.
+- Added `WEAK_BALLISTIC_CANDIDATE` canonical actions for low-confidence later jumps; these are kept for future program conditioning but hidden from MoMask text probe by default.
+- Current preview summary: `outputs/aml_regression_testset_v2/group_01_coarse_prompt_first10_preview_v5/summary.json`.
+- Design note: `docs/design/aml_coarse_signature_pipeline.md`.
+
+## 2026-06-09 - Upper-body global alias evidence scan v2
+
+- Updated `scripts/mine_hml3d_upperbody_phrases.py` to scan all HumanML3D text files directly when no manifest is provided, so the current compact `outputs/` layout no longer depends on the removed mining manifest.
+- Added global wording families for `jumping_jack`, `clap_or_hands_together`, `overhead_clap_or_cheer`, `martial_strike`, `push_shove`, `dance_or_rhythm`, `instrument_or_tool_mime`, `throw_catch`, and related upper-body patterns.
+- Full run: `29232` requested cases, `23999` upper-body-valid cases, elapsed `180.65s`.
+- Outputs: `outputs/hml3d_upperbody_phrase_mining_full_v2.json` and `outputs/hml3d_upperbody_phrase_mining_full_v2_report.md`; total size remains small enough to keep as a milestone artifact.
+- Strong evidence: `BIMANUAL_PERIODIC/BI_RAISE_SPREAD|nonloco+vertical -> jumping_jack` has support `329`, coverage `0.333`, precision `0.906`, lift `22.04`.
+- Strong evidence: `BIMANUAL_PERIODIC/BI_HANDS_CLOSE|nonloco -> clap_or_hands_together` has support `290`, coverage `0.249`, precision `0.295`, lift `6.09`.
+- Weak/mixed evidence: `overhead_clap_or_cheer`, `martial_strike`, `push_shove`, `support_contact`, and `instrument_or_tool_mime` produce plausible aliases but are not clean enough to become motion-only action names yet.
+- Interpretation: global HML3D text can be used as an alias-bank / naming-evidence layer, but weak upper-body semantics need finer event signatures before entering AutoPrompt rendering. Same-case HML3D captions remain forbidden for motion-only AutoPrompt generation.
+
+## 2026-06-09 - Conservative hands-close canonical action
+
+- Added `BIMANUAL_HANDS_CLOSE` as a conservative coarse canonical action for `BI_HANDS_CLOSE` and `BI_HANDS_CLOSE_RAISE` events.
+- The action stores `global_alias_evidence=clap_or_hands_together` in slots, but the MoMask probe phrase stays conservative: `brings both hands together`.
+- Nearby hands-close events are merged into one action with `count` and `source_event_clusters`, so canonical actions do not fragment into repeated identical clauses.
+- Refreshed the first-10 coarse preview metadata in `outputs/aml_regression_testset_v2/group_01_coarse_prompt_first10_preview_v5/` without running MoMask generation.
+- `001082` now includes `BIMANUAL_HANDS_CLOSE` in canonical actions; this confirms the global alias evidence is connected to structured AML without using same-case HML3D captions.
+- Regression note: natural-language probe prompts can still become too long when residual events are appended. This should be addressed by a salience/budgeted probe renderer, while keeping the full canonical action program intact for future AML-conditioned training.
+
+## 2026-06-09 - Salience-budgeted MoMask probe renderer
+
+- Updated `pseudoedit3d/edit/coarse_prompt_renderer.py` so MoMask probe text is budgeted separately from the full canonical AML program.
+- Default probe policy: at most `5` coarse clauses, at most `1` residual clause, and about `34` words.
+- The renderer keeps temporal order for selected clauses; it does not reorder actions by salience because that can corrupt motion sequence semantics.
+- Low-value residual phrases such as repeated arm cycles, torso oscillation, and generic height changes are filtered from probe text.
+- Full canonical actions and residual events remain in `coarse_action_program`; only the natural-language `auto_prompt` is shortened.
+- Refreshed `outputs/aml_regression_testset_v2/group_01_coarse_prompt_first10_preview_v5/summary.json` and `index.md`.
+- First-10 prompt lengths after budget: `M008014=7`, `M011732=28`, `M002798=30`, `M010032=32`, `000189=5`, `002755=5`, `009961=34`, `001082=30`, `M008235=11`, `M000106=32` words.
+- Interpretation: this makes MoMask probing less misleading by avoiding long event streams, while preserving the richer AML program for future program-conditioned training.
+
+## 2026-06-09 - Focus5 budgeted MoMask visualization refresh
+
+- Regenerated focus5 MoMask generations with new ext prefix `aml_reg_v2_focus5_budget_v1` so old focus5 generations are not reused.
+- Covered cases: `M008014`, `M008235`, `M010032`, `M000106`, `002755`.
+- Probe summary overwritten at `outputs/aml_regression_testset_v2/group_01_momask_auto_probe_focus5_coarse_v2/summary.json`.
+- GIFs overwritten at `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_focus5_coarse_v2_gifs_hml3d_stride4/`.
+- Index: `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_focus5_coarse_v2_gifs_hml3d_stride4/index.md`.
+- Prompt correction: `M008235` now probes `jumps straight up, then steps backward to regain balance`, not backward jump.
+- Prompt budget check: focus5 word counts are `M008014=7`, `M008235=11`, `M010032=32`, `M000106=32`, `002755=5`.
+
+## 2026-06-09 - Focus5 kinematic sanity check
+
+- Added `scripts/analyze_momask_probe_kinematics.py` for lightweight regression checks on MoMask probe outputs.
+- The script compares GT and generated root XZ path length, root net displacement, root vertical amplitude, mean speed, hand-distance statistics, and length delta.
+- Outputs for focus5:
+  - `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_focus5_coarse_v2_gifs_hml3d_stride4/kinematic_sanity.json`
+  - `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_focus5_coarse_v2_gifs_hml3d_stride4/kinematic_sanity.md`
+- No automatic mismatch flags were triggered under the current loose thresholds.
+- Notable case for manual GIF inspection: `M000106` generated root path is about `1.95x` GT path, suggesting possible over-translation despite no threshold violation.
+- This is a rough per-iteration sanity check, not a perceptual metric and not a replacement for FID or human visual review.
+
+## 2026-06-09 - Group01 first10 budgeted MoMask probe refresh
+
+- Ran the full first10 group with the salience-budgeted coarse renderer, using `scripts/run_momask_aml_autoprompt_probe.py --prompt-mode coarse --time-steps 10 --cond-scale 4 --ext-prefix aml_reg_v2_first10_budget_v1`.
+- Cases: `M008014`, `M011732`, `M002798`, `M010032`, `000189`, `002755`, `009961`, `001082`, `M008235`, `M000106`.
+- Probe summary: `outputs/aml_regression_testset_v2/group_01_momask_auto_probe_first10_budget_v1/summary.json`.
+- GIF/index output: `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_first10_budget_v1_gifs_hml3d_stride4/`.
+- Kinematic sanity output:
+  - `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_first10_budget_v1_gifs_hml3d_stride4/kinematic_sanity.json`
+  - `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_first10_budget_v1_gifs_hml3d_stride4/kinematic_sanity.md`
+- Output check: `10` GIFs produced; directory size about `10.88 MB`; index and sanity report both present.
+- Prompt check: `000189` and `002755` now probe `a person runs in place`, avoiding the previous long local-event stream.
+- Prompt check: `M008014` now probes `a person does jumping jacks 8 times`.
+- Prompt check: `M008235` now probes `a person jumps straight up, then steps backward to regain balance`, not backward jumping.
+- Automatic sanity flag: `000189` has `vertical_amp_mismatch` because generated root vertical amplitude is about `3.25x` GT.
+- Manual watchlist: `M000106` has generated root path about `1.95x` GT; `M008235` generated root path is about `0.46x` GT, which may indicate under-translation / weak recovery-step realization.
+- Interpretation: the budgeted probe is less misleading than the previous long stream, but it still exposes the limitation of pure natural-language MoMask probing. Canonical AML actions and slots should remain the primary future condition representation; the natural prompt is only a compatibility probe.
+
+## 2026-06-09 - Group01 prompt-level correction after user inspection
+
+- User inspection flagged two prompt-level errors before rerunning MoMask:
+  - `000189`: the motion is walking-like, but the AutoPrompt said `runs in place`.
+  - `M002798`: the motion should expose a cheering/dancing-like whole-body arm gesture, but AutoPrompt only listed turns, small walking, and hand movement.
+- Updated `pseudoedit3d/edit/coarse_signature.py`:
+  - `IN_PLACE_GAIT` now separates `walk_in_place`, `jog_in_place`, and `run_in_place` using event-derived intensity: vertical amplitude, phase repeat count, and arm-locomotion proxy count.
+  - Added conservative canonical family `CELEBRATORY_DANCE_GESTURE`, triggered by repeated bimanual raise-spread, low vertical bounce, multiple small turns / side movements, and no jumping-jack evidence.
+- Updated `pseudoedit3d/edit/coarse_prompt_renderer.py`:
+  - `walk_in_place -> walks in place`, `jog_in_place -> jogs in place`, `run_in_place -> runs in place`.
+  - `CELEBRATORY_DANCE_GESTURE -> makes a cheer-like dance gesture with repeated arm raises`.
+- Preview-only refresh, no MoMask generation: `outputs/aml_regression_testset_v2/group_01_coarse_prompt_first10_preview_v6/summary.json`.
+- Preview index: `outputs/aml_regression_testset_v2/group_01_coarse_prompt_first10_preview_v6/index.md`.
+- Corrected prompt checks:
+  - `000189 -> a person walks in place`.
+  - `002755 -> a person jogs in place`.
+  - `M002798 -> a person makes a cheer-like dance gesture with repeated arm raises`.
+- Important caveat: `CELEBRATORY_DANCE_GESTURE` is still a motion-signature candidate family, not a guaranteed action label. It should be validated by full-corpus cluster examples before being used as a stable benchmark label.
+
+## 2026-06-09 - Group01 random10 current-rule MoMask probe v1
+
+- Sampled 10 new cases from group 01 excluding the inspected first10 with seed `20260609`.
+- Case manifest: `outputs/aml_regression_testset_v2/group_01_random10_current_rule_v1_case_ids.txt`.
+- Cases: `007232`, `M000266`, `M009712`, `M010447`, `M013562`, `012388`, `004163`, `014448`, `M004684`, `M001969`.
+- Probe summary: `outputs/aml_regression_testset_v2/group_01_momask_auto_probe_random10_current_rule_v1/summary.json`.
+- GIF/index output: `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_random10_current_rule_v1_gifs_hml3d_stride4/`.
+- Kinematic sanity output:
+  - `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_random10_current_rule_v1_gifs_hml3d_stride4/kinematic_sanity.json`
+  - `outputs/aml_regression_testset_v2/group_01_momask_auto_gt_random10_current_rule_v1_gifs_hml3d_stride4/kinematic_sanity.md`
+- Output check: `10` GIFs produced; GIF/index directory size about `13 MB`; total `outputs/` size about `162 MB`.
+- Automatic sanity flag: `012388` has `vertical_amp_mismatch`; generated path is about `2.47x` GT while generated vertical amplitude is about `0.32x` GT, suggesting the forward-jump / climb-over motion was weakened into translation.
+- Prompt-level watchlist from random sampling:
+  - `M010447`: HML3D says cartwheel then jumping; current AutoPrompt decomposes it into jumps, turns, walking, and low body state, so a cartwheel-like whole-body inverted/side-rotation family is missing.
+  - `M013562`: HML3D says hops left twice then right; current AutoPrompt emphasizes turns and straight jump, so side-hop repetition / lateral hopping family is missing.
+  - `M004684`: HML3D says bends legs and lifts dumbbells; current AutoPrompt says jumps up and down 3 times, so low-body bend + arm-lift / object-lift proxy is missing and vertical cycles are over-interpreted as jumping.
+  - `004163`: HML3D focuses on arm stretching; current AutoPrompt includes large forward walk and spin, so root-motion salience may be too high for arm-dominant motions.
+- Interpretation: random sampling exposes missing coarse action families beyond the first10 fixes. The next productive step is not more MoMask generation, but adding/validating candidate families for lateral hop repetition, cartwheel/inverted rotation, low-body bend + arm lift, and arm-dominant stretch/move before another probe batch.
+
+## 2026-06-10 - Semantic-family AML upgrade and gap8 MoMask probe v8
+
+- Added motion-only semantic event layer `pseudoedit3d/edit/semantic_events.py` for general observables rather than case-specific rules: bounded torso pitch, wrist height, squat/low-body state, leg forward extension, root circular path, root-height climb proxy, and inverted-body acrobatics proxy.
+- Extended `pseudoedit3d/edit/coarse_signature.py` with higher-level candidate families and dominance filtering:
+  - `CLIMB_UP_OVER_PROXY`
+  - `SQUAT_REPETITION`
+  - `SQUAT_ARM_LIFT`
+  - `CIRCULAR_WALK_PATH`
+  - `ACROBATIC_SEQUENCE_CANDIDATE`
+  - `DANCE_LEG_POSE_CANDIDATE`
+- Updated `pseudoedit3d/edit/coarse_prompt_renderer.py` so probe prompts keep high-salience semantic families under the word budget instead of simply truncating later clauses.
+- Preview-only output: `outputs/aml_regression_testset_v2/semantic_gap8_preview_v8/index.md`.
+- MoMask probe output: `outputs/aml_regression_testset_v2/semantic_gap8_momask_v8/summary.json`.
+- GIF/index output: `outputs/aml_regression_testset_v2/semantic_gap8_momask_v8_gifs/index.md`.
+- Output size check: prompt preview about `1.6 MB`; GIF folder about `11 MB`; `outputs/aml_regression_testset_v2` about `135 MB`.
+- Prompt checks:
+  - `012388` now includes `climbs upward and over`.
+  - `014448` now includes kick-like leg actions and no longer starts with false circular walking.
+  - `M000266` now includes `walks in a circular path` without gait-leg false kick.
+  - `M004684` now probes `repeatedly squats low 3 times`, not jumping.
+  - `M009712` now includes a `dance-like pose with the left leg extended`.
+  - `M010447` now includes `repeated inverted acrobatic motions 7 times`.
+- Remaining caveat: these are still candidate semantic families inferred from motion signatures. The MoMask natural-language probe is only a compatibility check; the canonical AML program/slots should remain the target conditioning representation for future training.
