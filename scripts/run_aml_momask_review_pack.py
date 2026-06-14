@@ -40,6 +40,12 @@ def _run(cmd: list[str], cwd: Path = ROOT_DIR) -> None:
 def _canonical_ids(case: dict[str, Any]) -> list[str]:
     out = []
     for action in case.get("canonical_actions") or []:
+        family = action.get("semantic_family") or {}
+        slots = action.get("slots") or {}
+        if isinstance(family, dict) and family.get("probe_visible") is False:
+            continue
+        if isinstance(slots, dict) and slots.get("hidden_by_semantic_family"):
+            continue
         out.append(str(action.get("canonical_id") or action.get("family_id") or "UNKNOWN"))
     return out
 

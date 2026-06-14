@@ -35,8 +35,8 @@ Example:
 
 ```json
 {
-  "canonical_id": "JUMPING_JACK",
-  "probe_alias": "jumping jacks",
+  "canonical_id": "BILATERAL_RHYTHMIC_COORDINATION",
+  "probe_alias": "bilateral rhythmic arm-leg coordination",
   "slots": {
     "span": [1, 185],
     "count": 8,
@@ -94,6 +94,24 @@ The old flat slot fields are preserved for compatibility. New training code shou
 
 Required slot coverage is audited by `scripts/analyze_aml_semantic_family_status.py`. The audit defines per-family required slots, including alternative requirements such as `magnitude|vertical_amplitude_m` for squat candidates, and reports missing examples in the markdown output.
 
+### Pattern Tree Metadata
+
+`pseudoedit3d/edit/aml_pattern_tree.json` is the runtime motion-pattern tree. It is WordNet-like in shape, but it does not import WordNet or query external lexical sources at runtime.
+
+The tree now has three active node roles:
+
+- `primary`: chooses the main seeded prototype from signature-level evidence.
+- `event_proxy`: maps a Layer-3 `super_family/cluster_id` pair to a conservative observable semantic proxy.
+- `composed_candidate`: matches temporal evidence for configured candidates such as lunge and sit/stand, and records the taxonomy path for metadata-only composed candidates such as acrobatic sequence.
+
+Every visible coarse action whose family appears in this tree receives:
+
+- `pattern_node_id`
+- `pattern_path`
+- `pattern_taxonomy_parent_id`
+
+This makes the md/json audit path independent from Python-local proto-id lists while still keeping temporal composition logic explicit in code.
+
 ## Global Alias Evidence
 
 `scripts/mine_hml3d_upperbody_phrases.py` scans all HumanML3D captions as a global wording inventory and associates upper-body Layer-3 motion keys with word families, surface phrases, support, coverage, precision, and lift.
@@ -112,7 +130,7 @@ This layer is not allowed to:
 
 Current readout:
 
-- reliable: `BI_RAISE_SPREAD|nonloco+vertical` strongly maps to `jumping_jack`;
+- reliable: `BI_RAISE_SPREAD|nonloco+vertical` strongly maps to `BILATERAL_RHYTHMIC_COORDINATION`; jumping jack is kept as a lexical alias, not the coarse family;
 - reliable: `BI_HANDS_CLOSE|nonloco` strongly maps to `clap_or_hands_together`;
 - unresolved: `overhead_clap_or_cheer`, `martial_strike`, `push_shove`, `support_contact`, and instrument/tool mime families are still too mixed for direct AutoPrompt naming.
 
@@ -128,7 +146,7 @@ Seeded prototypes in `coarse_v2`:
 - `BALLISTIC_TRANSLATION`: jump with root translation, such as jump forward/backward.
 - `WEAK_BALLISTIC_CANDIDATE`: low-confidence jump-like candidate saved for program inspection, hidden from probe text by default.
 - `VERTICAL_JUMP`: jump in place / upward jump.
-- `JUMPING_JACK`: repeated vertical motion plus repeated bimanual raise-spread.
+- `BILATERAL_RHYTHMIC_COORDINATION`: repeated vertical motion plus repeated bimanual raise-spread.
 - `ROTATION_DOMINANT` and `TURN_SEGMENT`: turn/spin with angle bins and numeric angle.
 - `TERMINAL_STILL`: motion-derived end-state hold.
 - `BIMANUAL_HANDS_CLOSE`: conservative upper-body action for hands moving together. It stores `clap_or_hands_together` as global alias evidence but renders as `brings both hands together`.
@@ -172,6 +190,13 @@ From group-01 first-10 preview v5:
 Main modules:
 
 - `pseudoedit3d/edit/coarse_signature.py`
+- `pseudoedit3d/edit/aml_pattern_tree.json`: WordNet-like parent/child motion-pattern tree consumed by primary matching, event-proxy lookup, and composed-candidate metadata attachment.
+- `pseudoedit3d/edit/aml_pattern_tree.py`: generic tree matcher, output resolver, event-proxy lookup, and family-to-pattern metadata helper.
+- `pseudoedit3d/edit/aml_proto_registry.json`: runtime registry for semantic status groups, cover/suppression groups, emitter templates, probe aliases, renderer clauses/salience, fallback entrypoints, and condition required slots.
+- `pseudoedit3d/edit/aml_proto_registry.py`: shared registry reader used by runtime modules and condition schema.
+- `pseudoedit3d/edit/aml_family_taxonomy.json`: taxonomy and lexical-source metadata; WordNet is an offline cached source, not a runtime detector.
+- `pseudoedit3d/edit/aml_language_coverage_specs.json`: weak-label HML3D caption coverage audit specs used by `scripts/audit_aml_language_coverage.py`.
+- `pseudoedit3d/edit/aml_wordnet_lexicon_config.json`: offline WordNet builder seed/regex config used by `scripts/build_wordnet_action_lexicon.py`.
 - `pseudoedit3d/edit/coarse_prompt_renderer.py`
 - `scripts/run_momask_aml_autoprompt_probe.py --prompt-mode coarse`
 
@@ -189,6 +214,13 @@ Diagnostic / legacy modules:
 - renderer policy preview: `outputs/aml_regression_testset_v2/semantic_renderer_step4_preview_v1/summary.json`
 - AML condition manifest: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_v1/conditions.jsonl`
 - AML condition manifest summary: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_v1/summary.md`
+- pattern-tree event-proxy preview: `outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/summary.json`
+- pattern-tree event-proxy condition summary: `outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/conditions_summary.md`
+- pattern-tree composed preview: `outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/summary.json`
+- pattern-tree composed condition summary: `outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/conditions_summary.md`
+- pattern-tree registry consistency refactor preview: `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/summary.json`
+- pattern-tree registry consistency condition summary: `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/conditions_summary.md`
+- pattern-tree registry consistency language coverage audit: `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/language_coverage_audit/coverage_report.md`
 
 ## Remaining Issues
 

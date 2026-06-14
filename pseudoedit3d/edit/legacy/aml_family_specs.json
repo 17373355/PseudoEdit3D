@@ -1,0 +1,264 @@
+{
+  "version": "aml_family_specs_v1",
+  "description": "LEGACY flat primary seeded-family specs kept for migration reference. Runtime now uses pseudoedit3d/edit/aml_pattern_tree.json.",
+  "primary_seeded_prototypes": [
+    {
+      "id": "low_body_repetition_with_arm_lift",
+      "family_id": "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+      "match": [
+        {"field": "patterns.low_body_repetition.event_count", "op": "gte", "value": 2},
+        {"field": "vertical_kind", "op": "in", "value": ["jump", "repeated_jump", "crouch_release_or_hop"]},
+        {"field": "patterns.low_body_repetition.coverage", "op": "gte", "value": 0.25},
+        {"field": "loco_distance", "op": "lt", "value": 0.6},
+        {"field": "patterns.low_body_repetition.has_bimanual_arm_lift", "op": "truthy"}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "LOW_BODY_REPETITION_WITH_ARM_LIFT"},
+        "name_hint": {"value": "low_body_repetition_with_arm_lift"},
+        "confidence": {"base": 0.7, "add_min": {"path": "patterns.low_body_repetition.event_count", "scale": 0.02, "cap": 0.1}},
+        "primary_direction": {"value": "low"},
+        "count": {"path": "patterns.low_body_repetition.event_count", "cast": "int", "default": 0},
+        "source_event_indices": {"path": "patterns.low_body_repetition.source_event_indices", "cast": "list", "default": []},
+        "bimanual_count": {"len_path": "patterns.low_body_repetition.bimanual_event_indices"},
+        "lexical_alias_candidates": {"value": ["squat"]},
+        "rationale": {"value": "repeated low-body posture dominates vertical motion, so keep this as a low-body repetition pattern instead of a jump family"}
+      }
+    },
+    {
+      "id": "low_body_repetition",
+      "family_id": "LOW_BODY_REPETITION",
+      "match": [
+        {"field": "patterns.low_body_repetition.event_count", "op": "gte", "value": 2},
+        {"field": "vertical_kind", "op": "in", "value": ["jump", "repeated_jump", "crouch_release_or_hop"]},
+        {"field": "patterns.low_body_repetition.coverage", "op": "gte", "value": 0.25},
+        {"field": "loco_distance", "op": "lt", "value": 0.6},
+        {"field": "patterns.low_body_repetition.has_bimanual_arm_lift", "op": "falsy"}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "LOW_BODY_REPETITION"},
+        "name_hint": {"value": "low_body_repetition"},
+        "confidence": {"base": 0.7, "add_min": {"path": "patterns.low_body_repetition.event_count", "scale": 0.02, "cap": 0.1}},
+        "primary_direction": {"value": "low"},
+        "count": {"path": "patterns.low_body_repetition.event_count", "cast": "int", "default": 0},
+        "source_event_indices": {"path": "patterns.low_body_repetition.source_event_indices", "cast": "list", "default": []},
+        "bimanual_count": {"len_path": "patterns.low_body_repetition.bimanual_event_indices"},
+        "lexical_alias_candidates": {"value": ["squat"]},
+        "rationale": {"value": "repeated low-body posture dominates vertical motion, so keep this as a low-body repetition pattern instead of a jump family"}
+      }
+    },
+    {
+      "id": "bilateral_rhythmic_coordination",
+      "family_id": "BILATERAL_RHYTHMIC_COORDINATION",
+      "match": [
+        {"field": "vertical_kind", "op": "eq", "value": "repeated_jump"},
+        {"field": "bimanual_pattern", "op": "in", "value": ["raise_spread", "raise_spread_repeated"]},
+        {"field": "repeat_count", "op": "gte", "value": 4},
+        {"field": "raise_spread_count", "op": "gte", "value": 4},
+        {"field": "vertical_loco_overlap", "op": "lt", "value": 0.35},
+        {"field": "loco_distance", "op": "lt", "value": 0.45}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "BILATERAL_RHYTHMIC_COORDINATION"},
+        "name_hint": {"value": "bilateral_rhythmic_coordination"},
+        "confidence": {
+          "cases": [
+            {"when": {"field": "bimanual_pattern", "op": "eq", "value": "raise_spread_repeated"}, "then": {"value": 0.76}}
+          ],
+          "default": {"value": 0.62}
+        },
+        "primary_direction": {"value": "in_place"},
+        "count": {"path": "patterns.bilateral_rhythmic_coordination.count", "cast": "int", "default": 0},
+        "vertical_amplitude_m": {"path": "patterns.bilateral_rhythmic_coordination.vertical_amplitude_m"},
+        "mean_vertical_amplitude_m": {"path": "patterns.bilateral_rhythmic_coordination.mean_vertical_amplitude_m"},
+        "raise_spread_count": {"path": "patterns.bilateral_rhythmic_coordination.raise_spread_count", "cast": "int", "default": 0},
+        "bimanual_count": {"path": "patterns.bilateral_rhythmic_coordination.bimanual_count", "cast": "int", "default": 0},
+        "source_event_indices": {"path": "patterns.bilateral_rhythmic_coordination.source_event_indices", "cast": "list", "default": []},
+        "lexical_alias_candidates": {"path": "patterns.bilateral_rhythmic_coordination.lexical_alias_candidates", "cast": "list", "default": []},
+        "rationale": {"value": "repeated vertical cycles co-occur with repeated bimanual raise-spread, so keep the primary family as a bilateral rhythmic coordination pattern"}
+      }
+    },
+    {
+      "id": "bilateral_rhythmic_gesture_candidate",
+      "family_id": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+      "match": [
+        {"field": "bimanual_pattern", "op": "eq", "value": "raise_spread_repeated"},
+        {"field": "raise_spread_count", "op": "gte", "value": 3},
+        {"field": "vertical_kind", "op": "in", "value": ["low_gait_bounce", "minor_height_change", "none"]},
+        {"field": "vertical_amp", "op": "lt", "value": 0.12},
+        {
+          "any": [
+            {"field": "rotation_count", "op": "gte", "value": 2},
+            {"field": "locomotion_segment_count", "op": "gte", "value": 3}
+          ]
+        },
+        {"field": "loco_distance", "op": "lt", "value": 0.8}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE"},
+        "name_hint": {"value": "bilateral_rhythmic_gesture"},
+        "confidence": {"base": 0.58, "add_min": {"path": "patterns.bilateral_rhythmic_gesture.raise_spread_count", "scale": 0.02, "cap": 0.12}},
+        "primary_direction": {"value": "in_place"},
+        "turn_count": {"path": "patterns.bilateral_rhythmic_gesture.turn_count", "cast": "int", "default": 0},
+        "locomotion_segment_count": {"path": "patterns.bilateral_rhythmic_gesture.locomotion_segment_count", "cast": "int", "default": 0},
+        "raise_spread_count": {"path": "patterns.bilateral_rhythmic_gesture.raise_spread_count", "cast": "int", "default": 0},
+        "bimanual_count": {"path": "patterns.bilateral_rhythmic_gesture.bimanual_count", "cast": "int", "default": 0},
+        "source_event_indices": {"path": "patterns.bilateral_rhythmic_gesture.source_event_indices", "cast": "list", "default": []},
+        "lexical_alias_candidates": {"path": "patterns.bilateral_rhythmic_gesture.lexical_alias_candidates", "cast": "list", "default": []},
+        "rationale": {"value": "repeated bimanual raise-spread with small turns and low gait bounce is a bilateral rhythmic gesture pattern, not a fixed dance label"}
+      }
+    },
+    {
+      "id": "ballistic_translation",
+      "family_id": "BALLISTIC_TRANSLATION",
+      "match": [
+        {"field": "vertical_kind", "op": "in", "value": ["jump", "repeated_jump"]},
+        {"field": "loco_state", "op": "eq", "value": "translate"},
+        {"field": "patterns.coupled_locomotion.direction", "op": "in", "value": ["forward", "backward", "left", "right", "mixed"]},
+        {
+          "any": [
+            {"field": "vertical_loco_overlap", "op": "gte", "value": 0.3},
+            {"field": "patterns.coupled_locomotion.distance_m", "op": "gte", "value": 0.55}
+          ]
+        },
+        {"field": "vertical_amp", "op": "gte", "value": 0.16},
+        {
+          "not": {
+            "all": [
+              {"field": "patterns.post_vertical_recovery_step.overlap_with_vertical", "op": "lt", "value": 0.2},
+              {"field": "patterns.post_vertical_recovery_step.is_after_vertical", "op": "truthy"},
+              {"field": "patterns.post_vertical_recovery_step.speed", "op": "eq", "value": "slow"},
+              {"field": "patterns.post_vertical_recovery_step.distance_m", "op": "lt", "value": 0.65},
+              {"field": "patterns.post_vertical_recovery_step.vertical_amplitude_m", "op": "gte", "value": 0.24}
+            ]
+          }
+        }
+      ],
+      "outputs": {
+        "prototype_id": {"value": "BALLISTIC_TRANSLATION"},
+        "name_hint": {"template": "jump_{direction}", "args": {"direction": {"path": "patterns.coupled_locomotion.direction", "default": "unknown"}}},
+        "confidence": {"base": 0.68, "add_min": {"path": "vertical_amp", "scale": 1.0, "cap": 0.2}},
+        "primary_direction": {"path": "patterns.coupled_locomotion.direction", "default": "unknown"},
+        "primary_locomotion_event_index": {"path": "patterns.coupled_locomotion.event_index", "cast": "int"},
+        "primary_locomotion_distance_m": {"path": "patterns.coupled_locomotion.distance_m", "cast": "float", "default": 0.0},
+        "primary_locomotion_speed": {"path": "patterns.coupled_locomotion.speed", "default": "unknown"},
+        "rationale": {"value": "salient vertical impulse overlaps or neighbors a translating root event"}
+      }
+    },
+    {
+      "id": "vertical_jump_repeated",
+      "family_id": "VERTICAL_JUMP",
+      "match": [
+        {"field": "vertical_kind", "op": "in", "value": ["jump", "repeated_jump"]},
+        {"field": "loco_distance", "op": "lt", "value": 0.45},
+        {"field": "vertical_amp", "op": "gte", "value": 0.12},
+        {"field": "repeat_count", "op": "gt", "value": 1}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "VERTICAL_JUMP"},
+        "name_hint": {"value": "repeated_jump_in_place"},
+        "confidence": {"base": 0.62, "add_min": {"path": "vertical_amp", "scale": 1.0, "cap": 0.2}},
+        "primary_direction": {"value": "in_place"},
+        "rationale": {"value": "salient vertical impulse without reliable root translation"}
+      }
+    },
+    {
+      "id": "vertical_jump_single",
+      "family_id": "VERTICAL_JUMP",
+      "match": [
+        {"field": "vertical_kind", "op": "in", "value": ["jump", "repeated_jump"]},
+        {"field": "loco_distance", "op": "lt", "value": 0.45},
+        {"field": "vertical_amp", "op": "gte", "value": 0.12},
+        {"field": "repeat_count", "op": "lte", "value": 1}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "VERTICAL_JUMP"},
+        "name_hint": {"value": "jump_in_place"},
+        "confidence": {"base": 0.62, "add_min": {"path": "vertical_amp", "scale": 1.0, "cap": 0.2}},
+        "primary_direction": {"value": "in_place"},
+        "rationale": {"value": "salient vertical impulse without reliable root translation"}
+      }
+    },
+    {
+      "id": "translating_gait_fast",
+      "family_id": "TRANSLATING_GAIT",
+      "match": [
+        {"field": "loco_state", "op": "eq", "value": "translate"},
+        {"field": "loco_speed", "op": "eq", "value": "fast"}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "TRANSLATING_GAIT"},
+        "name_hint": {"value": "run"},
+        "confidence": {
+          "cases": [
+            {"when": {"field": "support_state", "op": "neq", "value": "unknown"}, "then": {"value": 0.62}}
+          ],
+          "default": {"value": 0.5}
+        },
+        "primary_direction": {"path": "loco_direction", "default": "unknown"},
+        "rationale": {"value": "dominant root translation summarized as a gait-level family"}
+      }
+    },
+    {
+      "id": "translating_gait",
+      "family_id": "TRANSLATING_GAIT",
+      "match": [
+        {"field": "loco_state", "op": "eq", "value": "translate"}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "TRANSLATING_GAIT"},
+        "name_hint": {"value": "walk"},
+        "confidence": {
+          "cases": [
+            {"when": {"field": "support_state", "op": "neq", "value": "unknown"}, "then": {"value": 0.62}}
+          ],
+          "default": {"value": 0.5}
+        },
+        "primary_direction": {"path": "loco_direction", "default": "unknown"},
+        "rationale": {"value": "dominant root translation summarized as a gait-level family"}
+      }
+    },
+    {
+      "id": "in_place_gait",
+      "family_id": "IN_PLACE_GAIT",
+      "match": [
+        {
+          "any": [
+            {"field": "support_state", "op": "eq", "value": "in_place_gait_proxy"},
+            {
+              "all": [
+                {"field": "vertical_kind", "op": "eq", "value": "low_gait_bounce"},
+                {"field": "arm_loco_count", "op": "gt", "value": 0}
+              ]
+            }
+          ]
+        }
+      ],
+      "derived_output": "in_place_gait"
+    },
+    {
+      "id": "in_place_gait_proxy",
+      "family_id": "IN_PLACE_GAIT_PROXY",
+      "match": [
+        {"field": "bimanual_pattern", "op": "neq", "value": "none"},
+        {"field": "vertical_kind", "op": "in", "value": ["low_gait_bounce", "minor_height_change", "crouch_release_or_hop"]},
+        {"field": "repeat_count", "op": "gte", "value": 2},
+        {"field": "loco_distance", "op": "lt", "value": 0.45}
+      ],
+      "derived_output": "in_place_gait_proxy"
+    },
+    {
+      "id": "rotation_dominant",
+      "family_id": "ROTATION_DOMINANT",
+      "match": [
+        {"field": "rotation.state", "op": "eq", "value": "turn"}
+      ],
+      "outputs": {
+        "prototype_id": {"value": "ROTATION_DOMINANT"},
+        "name_hint": {"value": "turn"},
+        "confidence": {"value": 0.58},
+        "primary_direction": {"path": "rotation.direction", "default": "unknown"},
+        "rationale": {"value": "rotation is the strongest whole-body event"}
+      }
+    }
+  ]
+}

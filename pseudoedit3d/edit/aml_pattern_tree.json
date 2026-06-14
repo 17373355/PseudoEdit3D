@@ -1,0 +1,2616 @@
+{
+  "version": "aml_pattern_tree_v1",
+  "description": "Tree-structured AML motion-pattern matcher. Nodes follow a WordNet-like hypernym path: broad motion pattern parents first, lexical/activity aliases only as metadata. Runtime matchers consume Layer-3-derived evidence fields and never query WordNet.",
+  "root_id": "MOTION_PATTERN",
+  "nodes": [
+    {
+      "node_id": "MOTION_PATTERN",
+      "parent_id": null,
+      "level": 0,
+      "node_type": "root",
+      "label": "motion pattern",
+      "evidence_axes": []
+    },
+    {
+      "node_id": "WHOLE_BODY_PATTERN",
+      "parent_id": "MOTION_PATTERN",
+      "level": 1,
+      "node_type": "abstract",
+      "label": "whole-body pattern",
+      "evidence_axes": [
+        "root_path",
+        "body_height",
+        "rotation",
+        "support_gait"
+      ]
+    },
+    {
+      "node_id": "LIMB_GESTURE_PATTERN",
+      "parent_id": "MOTION_PATTERN",
+      "level": 1,
+      "node_type": "abstract",
+      "label": "limb gesture pattern",
+      "evidence_axes": [
+        "arm_periodicity",
+        "hand_height",
+        "leg_extension",
+        "bilateral_coordination"
+      ]
+    },
+    {
+      "node_id": "LOCOMOTION_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "locomotion pattern",
+      "evidence_axes": [
+        "root_path",
+        "support_gait",
+        "speed",
+        "direction"
+      ]
+    },
+    {
+      "node_id": "VERTICAL_IMPULSE_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "vertical impulse pattern",
+      "evidence_axes": [
+        "vertical_displacement",
+        "root_translation",
+        "repeat_count"
+      ]
+    },
+    {
+      "node_id": "BODY_LEVEL_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "body-level and posture pattern",
+      "evidence_axes": [
+        "body_height",
+        "torso_angle",
+        "vertical_transition"
+      ]
+    },
+    {
+      "node_id": "ROTATION_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "rotation pattern",
+      "evidence_axes": [
+        "root_yaw",
+        "turn_angle",
+        "turn_count"
+      ]
+    },
+    {
+      "node_id": "BILATERAL_RHYTHMIC_PATTERN",
+      "parent_id": "LIMB_GESTURE_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "bilateral rhythmic coordination pattern",
+      "evidence_axes": [
+        "bilateral_arm_cycle",
+        "vertical_cycle",
+        "repeat_count"
+      ]
+    },
+    {
+      "node_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "parent_id": "LIMB_GESTURE_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "upper-limb gesture pattern",
+      "evidence_axes": [
+        "hand_height",
+        "arm_periodicity",
+        "hand_distance"
+      ]
+    },
+    {
+      "node_id": "LOWER_LIMB_ACTION_PATTERN",
+      "parent_id": "LIMB_GESTURE_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "lower-limb action pattern",
+      "evidence_axes": [
+        "leg_extension",
+        "foot_height",
+        "support_switch"
+      ]
+    },
+    {
+      "node_id": "GROUND_PRONE_KNEEL_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "ground, prone, kneel, and climb pattern",
+      "evidence_axes": [
+        "body_height",
+        "support_mode",
+        "root_height"
+      ]
+    },
+    {
+      "node_id": "ACROBATICS_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "acrobatics and inversion pattern",
+      "evidence_axes": [
+        "inversion_proxy",
+        "root_height",
+        "rotation"
+      ]
+    },
+    {
+      "node_id": "STATE_FALLBACK_PATTERN",
+      "parent_id": "WHOLE_BODY_PATTERN",
+      "level": 2,
+      "node_type": "abstract",
+      "label": "state and fallback pattern",
+      "evidence_axes": [
+        "static_pose",
+        "subtle_motion",
+        "fallback_event_signature"
+      ]
+    },
+    {
+      "node_id": "TRANSLATING_GAIT_PATTERN",
+      "parent_id": "LOCOMOTION_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "TRANSLATING_GAIT",
+      "taxonomy_parent_id": "ROOT_LOCOMOTION",
+      "match": [
+        {
+          "field": "loco_state",
+          "op": "eq",
+          "value": "translate"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "TRANSLATING_GAIT"
+        },
+        "name_hint": {
+          "cases": [
+            {
+              "when": {
+                "field": "loco_speed",
+                "op": "eq",
+                "value": "fast"
+              },
+              "then": {
+                "value": "run"
+              }
+            }
+          ],
+          "default": {
+            "value": "walk"
+          }
+        },
+        "confidence": {
+          "cases": [
+            {
+              "when": {
+                "field": "support_state",
+                "op": "neq",
+                "value": "unknown"
+              },
+              "then": {
+                "value": 0.62
+              }
+            }
+          ],
+          "default": {
+            "value": 0.5
+          }
+        },
+        "primary_direction": {
+          "path": "loco_direction",
+          "default": "unknown"
+        },
+        "rationale": {
+          "value": "dominant root translation summarized as a gait-level family"
+        }
+      }
+    },
+    {
+      "node_id": "IN_PLACE_GAIT_PATTERN",
+      "parent_id": "LOCOMOTION_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "IN_PLACE_GAIT",
+      "taxonomy_parent_id": "ROOT_LOCOMOTION",
+      "match": [
+        {
+          "any": [
+            {
+              "field": "support_state",
+              "op": "eq",
+              "value": "in_place_gait_proxy"
+            },
+            {
+              "all": [
+                {
+                  "field": "vertical_kind",
+                  "op": "eq",
+                  "value": "low_gait_bounce"
+                },
+                {
+                  "field": "arm_loco_count",
+                  "op": "gt",
+                  "value": 0
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "derived_output": "in_place_gait"
+    },
+    {
+      "node_id": "IN_PLACE_GAIT_PROXY_PATTERN",
+      "parent_id": "LOCOMOTION_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "IN_PLACE_GAIT_PROXY",
+      "taxonomy_parent_id": "ROOT_LOCOMOTION",
+      "match": [
+        {
+          "field": "bimanual_pattern",
+          "op": "neq",
+          "value": "none"
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "low_gait_bounce",
+            "minor_height_change",
+            "crouch_release_or_hop"
+          ]
+        },
+        {
+          "field": "repeat_count",
+          "op": "gte",
+          "value": 2
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.45
+        }
+      ],
+      "derived_output": "in_place_gait_proxy"
+    },
+    {
+      "node_id": "BALLISTIC_TRANSLATION_PATTERN",
+      "parent_id": "VERTICAL_IMPULSE_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "BALLISTIC_TRANSLATION",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "match": [
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "jump",
+            "repeated_jump"
+          ]
+        },
+        {
+          "field": "loco_state",
+          "op": "eq",
+          "value": "translate"
+        },
+        {
+          "field": "patterns.coupled_locomotion.direction",
+          "op": "in",
+          "value": [
+            "forward",
+            "backward",
+            "left",
+            "right",
+            "mixed"
+          ]
+        },
+        {
+          "any": [
+            {
+              "field": "vertical_loco_overlap",
+              "op": "gte",
+              "value": 0.3
+            },
+            {
+              "field": "patterns.coupled_locomotion.distance_m",
+              "op": "gte",
+              "value": 0.55
+            }
+          ]
+        },
+        {
+          "field": "vertical_amp",
+          "op": "gte",
+          "value": 0.16
+        },
+        {
+          "not": {
+            "all": [
+              {
+                "field": "patterns.post_vertical_recovery_step.overlap_with_vertical",
+                "op": "lt",
+                "value": 0.2
+              },
+              {
+                "field": "patterns.post_vertical_recovery_step.is_after_vertical",
+                "op": "truthy"
+              },
+              {
+                "field": "patterns.post_vertical_recovery_step.speed",
+                "op": "eq",
+                "value": "slow"
+              },
+              {
+                "field": "patterns.post_vertical_recovery_step.distance_m",
+                "op": "lt",
+                "value": 0.65
+              },
+              {
+                "field": "patterns.post_vertical_recovery_step.vertical_amplitude_m",
+                "op": "gte",
+                "value": 0.24
+              }
+            ]
+          }
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BALLISTIC_TRANSLATION"
+        },
+        "name_hint": {
+          "template": "jump_{direction}",
+          "args": {
+            "direction": {
+              "path": "patterns.coupled_locomotion.direction",
+              "default": "unknown"
+            }
+          }
+        },
+        "confidence": {
+          "base": 0.68,
+          "add_min": {
+            "path": "vertical_amp",
+            "scale": 1.0,
+            "cap": 0.2
+          }
+        },
+        "primary_direction": {
+          "path": "patterns.coupled_locomotion.direction",
+          "default": "unknown"
+        },
+        "primary_locomotion_event_index": {
+          "path": "patterns.coupled_locomotion.event_index",
+          "cast": "int"
+        },
+        "primary_locomotion_distance_m": {
+          "path": "patterns.coupled_locomotion.distance_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "primary_locomotion_speed": {
+          "path": "patterns.coupled_locomotion.speed",
+          "default": "unknown"
+        },
+        "rationale": {
+          "value": "salient vertical impulse overlaps or neighbors a translating root event"
+        }
+      }
+    },
+    {
+      "node_id": "BALLISTIC_TRANSLATION_SEGMENT_PATTERN",
+      "parent_id": "VERTICAL_IMPULSE_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "BALLISTIC_TRANSLATION_SEGMENT",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "vertical_impulse_translation_pair"
+        },
+        {
+          "field": "strength",
+          "op": "eq",
+          "value": "strong"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BALLISTIC_TRANSLATION_SEGMENT"
+        },
+        "name_hint": {
+          "template": "jump_{direction}",
+          "args": {
+            "direction": {
+              "path": "direction",
+              "default": "unknown"
+            }
+          }
+        },
+        "primary_direction": {
+          "path": "direction",
+          "default": "unknown"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.62
+        },
+        "speed": {
+          "path": "speed",
+          "default": "unknown"
+        },
+        "distance_m": {
+          "path": "distance_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "vertical_amplitude_m": {
+          "path": "vertical_amplitude_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "pattern_evidence": {
+          "value": "vertical_impulse+root_translation"
+        }
+      }
+    },
+    {
+      "node_id": "WEAK_BALLISTIC_CANDIDATE_PATTERN",
+      "parent_id": "VERTICAL_IMPULSE_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "WEAK_BALLISTIC_CANDIDATE",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "vertical_impulse_translation_pair"
+        },
+        {
+          "field": "strength",
+          "op": "eq",
+          "value": "weak"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "WEAK_BALLISTIC_CANDIDATE"
+        },
+        "name_hint": {
+          "template": "jump_{direction}",
+          "args": {
+            "direction": {
+              "path": "direction",
+              "default": "unknown"
+            }
+          }
+        },
+        "primary_direction": {
+          "path": "direction",
+          "default": "unknown"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.42
+        },
+        "speed": {
+          "path": "speed",
+          "default": "unknown"
+        },
+        "distance_m": {
+          "path": "distance_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "vertical_amplitude_m": {
+          "path": "vertical_amplitude_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "probe_visible": {
+          "value": false
+        },
+        "pattern_evidence": {
+          "value": "weak_vertical_impulse+root_translation"
+        }
+      }
+    },
+    {
+      "node_id": "POST_VERTICAL_RECOVERY_STEP_PATTERN",
+      "parent_id": "VERTICAL_IMPULSE_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "RECOVERY_STEP_SEGMENT",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "post_vertical_translation_recovery"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "RECOVERY_STEP_SEGMENT"
+        },
+        "name_hint": {
+          "template": "recovery_step_{direction}",
+          "args": {
+            "direction": {
+              "path": "direction",
+              "default": "unknown"
+            }
+          }
+        },
+        "primary_direction": {
+          "path": "direction",
+          "default": "unknown"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.58
+        },
+        "speed": {
+          "path": "speed",
+          "default": "unknown"
+        },
+        "distance_m": {
+          "path": "distance_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "source_jump_event_index": {
+          "path": "source_jump_event_index",
+          "cast": "int"
+        },
+        "pattern_evidence": {
+          "value": "small_slow_translation_after_vertical_impulse"
+        }
+      }
+    },
+    {
+      "node_id": "REPEATED_VERTICAL_JUMP_PATTERN",
+      "parent_id": "VERTICAL_IMPULSE_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "VERTICAL_JUMP",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "match": [
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "jump",
+            "repeated_jump"
+          ]
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.45
+        },
+        {
+          "field": "vertical_amp",
+          "op": "gte",
+          "value": 0.12
+        },
+        {
+          "field": "repeat_count",
+          "op": "gt",
+          "value": 1
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "VERTICAL_JUMP"
+        },
+        "name_hint": {
+          "value": "repeated_jump_in_place"
+        },
+        "confidence": {
+          "base": 0.62,
+          "add_min": {
+            "path": "vertical_amp",
+            "scale": 1.0,
+            "cap": 0.2
+          }
+        },
+        "primary_direction": {
+          "value": "in_place"
+        },
+        "rationale": {
+          "value": "salient vertical impulse without reliable root translation"
+        }
+      }
+    },
+    {
+      "node_id": "SINGLE_VERTICAL_JUMP_PATTERN",
+      "parent_id": "VERTICAL_IMPULSE_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "VERTICAL_JUMP",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "match": [
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "jump",
+            "repeated_jump"
+          ]
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.45
+        },
+        {
+          "field": "vertical_amp",
+          "op": "gte",
+          "value": 0.12
+        },
+        {
+          "field": "repeat_count",
+          "op": "lte",
+          "value": 1
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "VERTICAL_JUMP"
+        },
+        "name_hint": {
+          "value": "jump_in_place"
+        },
+        "confidence": {
+          "base": 0.62,
+          "add_min": {
+            "path": "vertical_amp",
+            "scale": 1.0,
+            "cap": 0.2
+          }
+        },
+        "primary_direction": {
+          "value": "in_place"
+        },
+        "rationale": {
+          "value": "salient vertical impulse without reliable root translation"
+        }
+      }
+    },
+    {
+      "node_id": "LOW_BODY_REPETITION_WITH_ARM_LIFT_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "lexical_aliases": [
+        "squat"
+      ],
+      "match": [
+        {
+          "field": "patterns.low_body_repetition.event_count",
+          "op": "gte",
+          "value": 2
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "jump",
+            "repeated_jump",
+            "crouch_release_or_hop"
+          ]
+        },
+        {
+          "field": "patterns.low_body_repetition.coverage",
+          "op": "gte",
+          "value": 0.25
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.6
+        },
+        {
+          "field": "patterns.low_body_repetition.has_bimanual_arm_lift",
+          "op": "truthy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "LOW_BODY_REPETITION_WITH_ARM_LIFT"
+        },
+        "name_hint": {
+          "value": "low_body_repetition_with_arm_lift"
+        },
+        "confidence": {
+          "base": 0.7,
+          "add_min": {
+            "path": "patterns.low_body_repetition.event_count",
+            "scale": 0.02,
+            "cap": 0.1
+          }
+        },
+        "primary_direction": {
+          "value": "low"
+        },
+        "count": {
+          "path": "patterns.low_body_repetition.event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "patterns.low_body_repetition.source_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "bimanual_count": {
+          "len_path": "patterns.low_body_repetition.bimanual_event_indices"
+        },
+        "lexical_alias_candidates": {
+          "value": [
+            "squat"
+          ]
+        },
+        "rationale": {
+          "value": "repeated low-body posture dominates vertical motion, so keep this as a low-body repetition pattern instead of a jump family"
+        }
+      }
+    },
+    {
+      "node_id": "LOW_BODY_REPETITION_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "LOW_BODY_REPETITION",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "lexical_aliases": [
+        "squat"
+      ],
+      "match": [
+        {
+          "field": "patterns.low_body_repetition.event_count",
+          "op": "gte",
+          "value": 2
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "jump",
+            "repeated_jump",
+            "crouch_release_or_hop"
+          ]
+        },
+        {
+          "field": "patterns.low_body_repetition.coverage",
+          "op": "gte",
+          "value": 0.25
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.6
+        },
+        {
+          "field": "patterns.low_body_repetition.has_bimanual_arm_lift",
+          "op": "falsy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "LOW_BODY_REPETITION"
+        },
+        "name_hint": {
+          "value": "low_body_repetition"
+        },
+        "confidence": {
+          "base": 0.7,
+          "add_min": {
+            "path": "patterns.low_body_repetition.event_count",
+            "scale": 0.02,
+            "cap": 0.1
+          }
+        },
+        "primary_direction": {
+          "value": "low"
+        },
+        "count": {
+          "path": "patterns.low_body_repetition.event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "patterns.low_body_repetition.source_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "bimanual_count": {
+          "len_path": "patterns.low_body_repetition.bimanual_event_indices"
+        },
+        "lexical_alias_candidates": {
+          "value": [
+            "squat"
+          ]
+        },
+        "rationale": {
+          "value": "repeated low-body posture dominates vertical motion, so keep this as a low-body repetition pattern instead of a jump family"
+        }
+      }
+    },
+    {
+      "node_id": "ROTATION_DOMINANT_PATTERN",
+      "parent_id": "ROTATION_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "ROTATION_DOMINANT",
+      "taxonomy_parent_id": "ROTATION_SPIN",
+      "match": [
+        {
+          "field": "rotation.state",
+          "op": "eq",
+          "value": "turn"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "ROTATION_DOMINANT"
+        },
+        "name_hint": {
+          "value": "turn"
+        },
+        "confidence": {
+          "value": 0.58
+        },
+        "primary_direction": {
+          "path": "rotation.direction",
+          "default": "unknown"
+        },
+        "rationale": {
+          "value": "rotation is the strongest whole-body event"
+        }
+      }
+    },
+    {
+      "node_id": "BILATERAL_ARM_LEG_VERTICAL_COORDINATION_PATTERN",
+      "parent_id": "BILATERAL_RHYTHMIC_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "BILATERAL_RHYTHMIC_COORDINATION",
+      "taxonomy_parent_id": "BILATERAL_RHYTHMIC_EXERCISE",
+      "lexical_aliases": [
+        "jumping_jack"
+      ],
+      "match": [
+        {
+          "field": "vertical_kind",
+          "op": "eq",
+          "value": "repeated_jump"
+        },
+        {
+          "field": "bimanual_pattern",
+          "op": "in",
+          "value": [
+            "raise_spread",
+            "raise_spread_repeated"
+          ]
+        },
+        {
+          "field": "repeat_count",
+          "op": "gte",
+          "value": 4
+        },
+        {
+          "field": "raise_spread_count",
+          "op": "gte",
+          "value": 4
+        },
+        {
+          "field": "vertical_loco_overlap",
+          "op": "lt",
+          "value": 0.35
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.45
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BILATERAL_RHYTHMIC_COORDINATION"
+        },
+        "name_hint": {
+          "value": "bilateral_rhythmic_coordination"
+        },
+        "confidence": {
+          "cases": [
+            {
+              "when": {
+                "field": "bimanual_pattern",
+                "op": "eq",
+                "value": "raise_spread_repeated"
+              },
+              "then": {
+                "value": 0.76
+              }
+            }
+          ],
+          "default": {
+            "value": 0.62
+          }
+        },
+        "primary_direction": {
+          "value": "in_place"
+        },
+        "count": {
+          "path": "patterns.bilateral_rhythmic_coordination.count",
+          "cast": "int",
+          "default": 0
+        },
+        "vertical_amplitude_m": {
+          "path": "patterns.bilateral_rhythmic_coordination.vertical_amplitude_m"
+        },
+        "mean_vertical_amplitude_m": {
+          "path": "patterns.bilateral_rhythmic_coordination.mean_vertical_amplitude_m"
+        },
+        "raise_spread_count": {
+          "path": "patterns.bilateral_rhythmic_coordination.raise_spread_count",
+          "cast": "int",
+          "default": 0
+        },
+        "bimanual_count": {
+          "path": "patterns.bilateral_rhythmic_coordination.bimanual_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "patterns.bilateral_rhythmic_coordination.source_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "lexical_alias_candidates": {
+          "value": [
+            "jumping_jack"
+          ]
+        },
+        "rationale": {
+          "value": "repeated vertical cycles co-occur with repeated bimanual raise-spread, so keep the primary family as a bilateral rhythmic coordination pattern"
+        }
+      }
+    },
+    {
+      "node_id": "BILATERAL_RHYTHMIC_GESTURE_PATTERN",
+      "parent_id": "BILATERAL_RHYTHMIC_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+      "taxonomy_parent_id": "BILATERAL_RHYTHMIC_EXERCISE",
+      "lexical_aliases": [
+        "cheer",
+        "dance"
+      ],
+      "match": [
+        {
+          "field": "bimanual_pattern",
+          "op": "eq",
+          "value": "raise_spread_repeated"
+        },
+        {
+          "field": "raise_spread_count",
+          "op": "gte",
+          "value": 3
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "low_gait_bounce",
+            "minor_height_change",
+            "none"
+          ]
+        },
+        {
+          "field": "vertical_amp",
+          "op": "lt",
+          "value": 0.12
+        },
+        {
+          "any": [
+            {
+              "field": "rotation_count",
+              "op": "gte",
+              "value": 2
+            },
+            {
+              "field": "locomotion_segment_count",
+              "op": "gte",
+              "value": 3
+            }
+          ]
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.8
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE"
+        },
+        "name_hint": {
+          "value": "bilateral_rhythmic_gesture"
+        },
+        "confidence": {
+          "base": 0.58,
+          "add_min": {
+            "path": "patterns.bilateral_rhythmic_gesture.raise_spread_count",
+            "scale": 0.02,
+            "cap": 0.12
+          }
+        },
+        "primary_direction": {
+          "value": "in_place"
+        },
+        "turn_count": {
+          "path": "patterns.bilateral_rhythmic_gesture.turn_count",
+          "cast": "int",
+          "default": 0
+        },
+        "locomotion_segment_count": {
+          "path": "patterns.bilateral_rhythmic_gesture.locomotion_segment_count",
+          "cast": "int",
+          "default": 0
+        },
+        "raise_spread_count": {
+          "path": "patterns.bilateral_rhythmic_gesture.raise_spread_count",
+          "cast": "int",
+          "default": 0
+        },
+        "bimanual_count": {
+          "path": "patterns.bilateral_rhythmic_gesture.bimanual_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "patterns.bilateral_rhythmic_gesture.source_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "lexical_alias_candidates": {
+          "value": [
+            "cheer",
+            "dance"
+          ]
+        },
+        "rationale": {
+          "value": "repeated bimanual raise-spread with small turns and low gait bounce is a bilateral rhythmic gesture pattern, not a fixed dance label"
+        }
+      }
+    },
+    {
+      "node_id": "BILATERAL_VERTICAL_COORDINATION_SPARSE_PATTERN",
+      "parent_id": "BILATERAL_RHYTHMIC_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "BILATERAL_RHYTHMIC_COORDINATION",
+      "taxonomy_parent_id": "BILATERAL_RHYTHMIC_EXERCISE",
+      "lexical_aliases": [
+        "jumping_jack"
+      ],
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "bilateral_limb_vertical_coordination"
+        },
+        {
+          "field": "bimanual_event_count",
+          "op": "gte",
+          "value": 3
+        },
+        {
+          "field": "vertical_event_count",
+          "op": "gte",
+          "value": 2
+        },
+        {
+          "field": "paired_bimanual_count",
+          "op": "gte",
+          "value": 2
+        },
+        {
+          "field": "near_strong_translation",
+          "op": "falsy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BILATERAL_RHYTHMIC_COORDINATION"
+        },
+        "name_hint": {
+          "value": "bilateral_rhythmic_coordination"
+        },
+        "primary_direction": {
+          "value": "in_place"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.66
+        },
+        "count": {
+          "path": "cycle_count",
+          "cast": "int",
+          "default": 2
+        },
+        "vertical_amplitude_m": {
+          "path": "vertical_amplitude_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "mean_vertical_amplitude_m": {
+          "path": "mean_vertical_amplitude_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "raise_spread_count": {
+          "path": "bimanual_event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "bimanual_count": {
+          "path": "bimanual_event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "lexical_alias_candidates": {
+          "value": [
+            "jumping_jack"
+          ]
+        },
+        "pattern_evidence": {
+          "value": "bilateral_limb_periodicity+vertical_cycle"
+        }
+      }
+    },
+    {
+      "node_id": "WHOLE_BODY_VERTICAL_UP_PROXY_PATTERN",
+      "parent_id": "VERTICAL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_VERTICAL",
+        "cluster_id": "WB_VERT_UP",
+        "name_hint": "whole_body_vertical_up_proxy",
+        "primary_direction": "up",
+        "base_confidence": 0.42
+      }
+    },
+    {
+      "node_id": "WHOLE_BODY_VERTICAL_DOWN_PROXY_PATTERN",
+      "parent_id": "VERTICAL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_VERTICAL",
+        "cluster_id": "WB_VERT_DOWN",
+        "name_hint": "whole_body_vertical_down_proxy",
+        "primary_direction": "down",
+        "base_confidence": 0.42
+      }
+    },
+    {
+      "node_id": "WHOLE_BODY_VERTICAL_CYCLE_PROXY_PATTERN",
+      "parent_id": "VERTICAL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_VERTICAL",
+        "cluster_id": "WB_VERT_CYCLE",
+        "name_hint": "whole_body_vertical_cycle_proxy",
+        "primary_direction": "vertical",
+        "base_confidence": 0.40
+      }
+    },
+    {
+      "node_id": "WHOLE_BODY_VERTICAL_REPETITION_PROXY_PATTERN",
+      "parent_id": "VERTICAL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_VERTICAL",
+        "cluster_id": "WB_VERT_REP",
+        "name_hint": "whole_body_vertical_repetition_proxy",
+        "primary_direction": "vertical",
+        "base_confidence": 0.40
+      }
+    },
+    {
+      "node_id": "WHOLE_BODY_VERTICAL_ALT_REPETITION_PROXY_PATTERN",
+      "parent_id": "VERTICAL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "taxonomy_parent_id": "VERTICAL_IMPULSE",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_VERTICAL",
+        "cluster_id": "WB_VERT_REP_ALT",
+        "name_hint": "whole_body_vertical_alternating_repetition_proxy",
+        "primary_direction": "vertical",
+        "base_confidence": 0.40
+      }
+    },
+    {
+      "node_id": "TORSO_HUNCHED_FORWARD_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "TORSO_HUNCHED_FORWARD",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "event_proxy": {
+        "super_family": "TORSO_POSTURE",
+        "cluster_id": "TORSO_HUNCHED_FORWARD",
+        "name_hint": "hunched_forward",
+        "primary_direction": "forward",
+        "base_confidence": 0.61
+      }
+    },
+    {
+      "node_id": "TORSO_PERIODIC_MOTION_PROXY_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "TORSO_PERIODIC_MOTION_PROXY",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "event_proxy": {
+        "super_family": "TORSO_PERIODIC",
+        "cluster_id": "TORSO_OSC_FB",
+        "name_hint": "torso_periodic_forward_back",
+        "primary_direction": "forward_back",
+        "base_confidence": 0.48
+      }
+    },
+    {
+      "node_id": "TORSO_BEND_RECOVER_PROXY_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "TORSO_PERIODIC_MOTION_PROXY",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "event_proxy": {
+        "super_family": "TORSO_PERIODIC",
+        "cluster_id": "TORSO_BEND_RECOVER",
+        "name_hint": "torso_bend_recover_proxy",
+        "primary_direction": "forward_back",
+        "base_confidence": 0.46
+      }
+    },
+    {
+      "node_id": "SQUAT_HOLD_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "SQUAT_HOLD",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "lexical_aliases": [
+        "squat"
+      ],
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_POSTURE",
+        "cluster_id": "WB_SQUAT_HOLD",
+        "name_hint": "squat_hold",
+        "primary_direction": "low",
+        "base_confidence": 0.68
+      }
+    },
+    {
+      "node_id": "LOW_BODY_HOLD_PROXY_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LOW_BODY_HOLD_PROXY",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_POSTURE",
+        "cluster_id": "WB_LOW_BODY_HOLD",
+        "name_hint": "low_body_hold_proxy",
+        "primary_direction": "low",
+        "base_confidence": 0.52
+      }
+    },
+    {
+      "node_id": "LUNGE_CANDIDATE_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "composed_candidate",
+      "family_id": "LUNGE_CANDIDATE",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "low_body_leg_forward_pair"
+        },
+        {
+          "field": "has_leg_forward",
+          "op": "truthy"
+        },
+        {
+          "field": "has_low_body_posture",
+          "op": "truthy"
+        },
+        {
+          "field": "near_strong_translation",
+          "op": "falsy"
+        },
+        {
+          "not": {
+            "all": [
+              {
+                "field": "low_body_duration",
+                "op": "gte",
+                "value": 70
+              },
+              {
+                "field": "leg_duration",
+                "op": "gte",
+                "value": 30
+              }
+            ]
+          }
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "LUNGE_CANDIDATE"
+        },
+        "name_hint": {
+          "template": "{side}_leg_lunge_candidate",
+          "args": {
+            "side": {
+              "path": "side",
+              "default": "unknown"
+            }
+          }
+        },
+        "primary_direction": {
+          "value": "low_forward"
+        },
+        "confidence": {
+          "value": 0.68
+        },
+        "dominant_side": {
+          "path": "side",
+          "default": "unknown"
+        },
+        "pattern_evidence": {
+          "value": "leg_forward_extension+low_body_posture"
+        }
+      },
+      "defaults": {
+        "name_hint": "lunge_candidate",
+        "primary_direction": "low_forward",
+        "base_confidence": 0.68
+      }
+    },
+    {
+      "node_id": "SIT_DOWN_CANDIDATE_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "composed_candidate",
+      "family_id": "SIT_DOWN_CANDIDATE",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "low_body_vertical_transition"
+        },
+        {
+          "field": "has_low_body_posture",
+          "op": "truthy"
+        },
+        {
+          "field": "has_vertical_down",
+          "op": "truthy"
+        },
+        {
+          "field": "has_vertical_up",
+          "op": "falsy"
+        },
+        {
+          "field": "strong_unilateral_leg_without_down",
+          "op": "falsy"
+        },
+        {
+          "field": "near_strong_translation",
+          "op": "falsy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "SIT_DOWN_CANDIDATE"
+        },
+        "name_hint": {
+          "value": "sit_down_candidate"
+        },
+        "primary_direction": {
+          "value": "vertical"
+        },
+        "confidence": {
+          "value": 0.66
+        },
+        "phase_order": {
+          "value": "down_to_low"
+        },
+        "pattern_evidence": {
+          "value": "low_body_posture+vertical_transition"
+        }
+      },
+      "defaults": {
+        "name_hint": "sit_down_candidate",
+        "primary_direction": "vertical",
+        "base_confidence": 0.66
+      }
+    },
+    {
+      "node_id": "STAND_UP_CANDIDATE_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "composed_candidate",
+      "family_id": "STAND_UP_CANDIDATE",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "low_body_vertical_transition"
+        },
+        {
+          "field": "has_low_body_posture",
+          "op": "truthy"
+        },
+        {
+          "field": "has_vertical_down",
+          "op": "falsy"
+        },
+        {
+          "field": "has_vertical_up",
+          "op": "truthy"
+        },
+        {
+          "field": "strong_unilateral_leg_without_down",
+          "op": "falsy"
+        },
+        {
+          "field": "near_strong_translation",
+          "op": "falsy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "STAND_UP_CANDIDATE"
+        },
+        "name_hint": {
+          "value": "stand_up_candidate"
+        },
+        "primary_direction": {
+          "value": "vertical"
+        },
+        "confidence": {
+          "value": 0.66
+        },
+        "phase_order": {
+          "value": "low_to_up"
+        },
+        "pattern_evidence": {
+          "value": "low_body_posture+vertical_transition"
+        }
+      },
+      "defaults": {
+        "name_hint": "stand_up_candidate",
+        "primary_direction": "vertical",
+        "base_confidence": 0.66
+      }
+    },
+    {
+      "node_id": "SIT_STAND_CYCLE_CANDIDATE_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "composed_candidate",
+      "family_id": "SIT_STAND_CYCLE_CANDIDATE",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "low_body_vertical_transition"
+        },
+        {
+          "field": "has_low_body_posture",
+          "op": "truthy"
+        },
+        {
+          "field": "has_vertical_down",
+          "op": "truthy"
+        },
+        {
+          "field": "has_vertical_up",
+          "op": "truthy"
+        },
+        {
+          "field": "near_strong_translation",
+          "op": "falsy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "SIT_STAND_CYCLE_CANDIDATE"
+        },
+        "name_hint": {
+          "value": "sit_down_stand_up_cycle_candidate"
+        },
+        "primary_direction": {
+          "value": "vertical"
+        },
+        "confidence": {
+          "value": 0.7
+        },
+        "phase_order": {
+          "path": "phase_order",
+          "default": "down_then_up"
+        },
+        "pattern_evidence": {
+          "value": "low_body_posture+vertical_transition"
+        }
+      },
+      "defaults": {
+        "name_hint": "sit_down_stand_up_cycle_candidate",
+        "primary_direction": "vertical",
+        "base_confidence": 0.7
+      }
+    },
+    {
+      "node_id": "LEFT_HAND_RAISED_HIGH_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_HAND_RAISED_HIGH",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_POSTURE",
+        "cluster_id": "LA_HAND_HIGH",
+        "name_hint": "left_hand_high",
+        "primary_direction": "up",
+        "base_confidence": 0.6
+      }
+    },
+    {
+      "node_id": "RIGHT_HAND_RAISED_HIGH_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_HAND_RAISED_HIGH",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_POSTURE",
+        "cluster_id": "RA_HAND_HIGH",
+        "name_hint": "right_hand_high",
+        "primary_direction": "up",
+        "base_confidence": 0.6
+      }
+    },
+    {
+      "node_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_PERIODIC",
+        "cluster_id": "LA_COMPOSITE",
+        "name_hint": "left_arm_periodic_gesture_proxy",
+        "primary_direction": "left_arm",
+        "base_confidence": 0.46
+      }
+    },
+    {
+      "node_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_PERIODIC",
+        "cluster_id": "RA_COMPOSITE",
+        "name_hint": "right_arm_periodic_gesture_proxy",
+        "primary_direction": "right_arm",
+        "base_confidence": 0.46
+      }
+    },
+    {
+      "node_id": "LEFT_ARM_REPEAT_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_PERIODIC",
+        "cluster_id": "LA_REPEAT",
+        "name_hint": "left_arm_repeat_gesture_proxy",
+        "primary_direction": "left_arm",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "LEFT_ARM_REPEAT_LOCO_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_PERIODIC",
+        "cluster_id": "LA_REPEAT_LOCO",
+        "name_hint": "left_arm_locomotion_coupled_repeat_proxy",
+        "primary_direction": "left_arm",
+        "base_confidence": 0.42
+      }
+    },
+    {
+      "node_id": "LEFT_ARM_REPEAT_ALT_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_PERIODIC",
+        "cluster_id": "LA_REPEAT_ALT",
+        "name_hint": "left_arm_alternating_repeat_gesture_proxy",
+        "primary_direction": "left_arm",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "LEFT_ARM_REPEAT_ALT_LOCO_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_PERIODIC",
+        "cluster_id": "LA_REPEAT_ALT_LOCO",
+        "name_hint": "left_arm_locomotion_coupled_alternating_repeat_proxy",
+        "primary_direction": "left_arm",
+        "base_confidence": 0.42
+      }
+    },
+    {
+      "node_id": "LEFT_ARM_NEAR_FAR_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "LEFT_ARM_PERIODIC",
+        "cluster_id": "LA_NEAR_FAR",
+        "name_hint": "left_arm_near_far_gesture_proxy",
+        "primary_direction": "left_arm",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "RIGHT_ARM_REPEAT_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_PERIODIC",
+        "cluster_id": "RA_REPEAT",
+        "name_hint": "right_arm_repeat_gesture_proxy",
+        "primary_direction": "right_arm",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "RIGHT_ARM_REPEAT_LOCO_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_PERIODIC",
+        "cluster_id": "RA_REPEAT_LOCO",
+        "name_hint": "right_arm_locomotion_coupled_repeat_proxy",
+        "primary_direction": "right_arm",
+        "base_confidence": 0.42
+      }
+    },
+    {
+      "node_id": "RIGHT_ARM_REPEAT_ALT_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_PERIODIC",
+        "cluster_id": "RA_REPEAT_ALT",
+        "name_hint": "right_arm_alternating_repeat_gesture_proxy",
+        "primary_direction": "right_arm",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "RIGHT_ARM_REPEAT_ALT_LOCO_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_PERIODIC",
+        "cluster_id": "RA_REPEAT_ALT_LOCO",
+        "name_hint": "right_arm_locomotion_coupled_alternating_repeat_proxy",
+        "primary_direction": "right_arm",
+        "base_confidence": 0.42
+      }
+    },
+    {
+      "node_id": "RIGHT_ARM_NEAR_FAR_GESTURE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "RIGHT_ARM_PERIODIC",
+        "cluster_id": "RA_NEAR_FAR",
+        "name_hint": "right_arm_near_far_gesture_proxy",
+        "primary_direction": "right_arm",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "BIMANUAL_ARM_RAISE_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "BIMANUAL_ARM_RAISE_SPREAD_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "BIMANUAL_PERIODIC",
+        "cluster_id": "BI_RAISE",
+        "name_hint": "bimanual_arm_raise_proxy",
+        "primary_direction": "up",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "BIMANUAL_ARM_SPREAD_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "BIMANUAL_ARM_RAISE_SPREAD_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "BIMANUAL_PERIODIC",
+        "cluster_id": "BI_SPREAD",
+        "name_hint": "bimanual_arm_spread_proxy",
+        "primary_direction": "outward",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "BIMANUAL_ARM_RAISE_SPREAD_PROXY_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "BIMANUAL_ARM_RAISE_SPREAD_PROXY",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "event_proxy": {
+        "super_family": "BIMANUAL_PERIODIC",
+        "cluster_id": "BI_RAISE_SPREAD",
+        "name_hint": "bimanual_arm_raise_spread_proxy",
+        "primary_direction": "up_outward",
+        "base_confidence": 0.45
+      }
+    },
+    {
+      "node_id": "BIMANUAL_HANDS_CLOSE_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "BIMANUAL_HANDS_CLOSE",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "bimanual_periodic_contact"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BIMANUAL_HANDS_CLOSE"
+        },
+        "name_hint": {
+          "cases": [
+            {
+              "when": {
+                "field": "has_raise",
+                "op": "truthy"
+              },
+              "then": {
+                "value": "hands_close_raise"
+              }
+            }
+          ],
+          "default": {
+            "value": "hands_close"
+          }
+        },
+        "primary_direction": {
+          "value": "inward"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.64
+        },
+        "count": {
+          "path": "event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_clusters": {
+          "path": "source_event_clusters",
+          "cast": "list",
+          "default": []
+        },
+        "global_alias_evidence": {
+          "value": "clap_or_hands_together"
+        },
+        "pattern_evidence": {
+          "value": "bimanual_contact_or_contact_raise"
+        }
+      },
+      "defaults": {
+        "name_hint": "hands_close",
+        "primary_direction": "inward",
+        "base_confidence": 0.64
+      }
+    },
+    {
+      "node_id": "BIMANUAL_ARM_MIME_CANDIDATE_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "BIMANUAL_ARM_MIME_CANDIDATE",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "match": [
+        {
+          "field": "bimanual_count",
+          "op": "gte",
+          "value": 4
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.5
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "none",
+            "minor_height_change",
+            "low_gait_bounce",
+            "crouch_release_or_hop"
+          ]
+        },
+        {
+          "field": "upper_body.arm_event_count",
+          "op": "gt",
+          "value": 0
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BIMANUAL_ARM_MIME_CANDIDATE"
+        },
+        "name_hint": {
+          "value": "bimanual_arm_mime"
+        },
+        "confidence": {
+          "base": 0.54,
+          "add_min": {
+            "path": "bimanual_count",
+            "scale": 0.01,
+            "cap": 0.12
+          }
+        },
+        "primary_direction": {
+          "value": "upper_body"
+        },
+        "source_event_count": {
+          "path": "upper_body.arm_event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "bimanual_count": {
+          "path": "bimanual_count",
+          "cast": "int",
+          "default": 0
+        },
+        "left_arm_count": {
+          "path": "left_arm_count",
+          "cast": "int",
+          "default": 0
+        },
+        "right_arm_count": {
+          "path": "right_arm_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "upper_body.arm_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "rationale": {
+          "value": "upper-body and bimanual events dominate without reliable locomotion or a named object/action cue"
+        }
+      }
+    },
+    {
+      "node_id": "UNILATERAL_ARM_MIME_CANDIDATE_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "UNILATERAL_ARM_MIME_CANDIDATE",
+      "taxonomy_parent_id": "UPPER_LIMB_GESTURE",
+      "match": [
+        {
+          "field": "upper_body.total_arm_signal",
+          "op": "gte",
+          "value": 3
+        },
+        {
+          "field": "bimanual_pattern",
+          "op": "eq",
+          "value": "none"
+        },
+        {
+          "field": "loco_distance",
+          "op": "lt",
+          "value": 0.5
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "none",
+            "minor_height_change",
+            "low_gait_bounce",
+            "crouch_release_or_hop"
+          ]
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "UNILATERAL_ARM_MIME_CANDIDATE"
+        },
+        "name_hint": {
+          "template": "{side}_arm_mime",
+          "args": {
+            "side": {
+              "path": "upper_body.dominant_side",
+              "default": "unknown"
+            }
+          }
+        },
+        "confidence": {
+          "base": 0.5,
+          "add_min": {
+            "path": "upper_body.total_arm_signal",
+            "scale": 0.015,
+            "cap": 0.12
+          }
+        },
+        "primary_direction": {
+          "value": "upper_body"
+        },
+        "dominant_side": {
+          "path": "upper_body.dominant_side",
+          "default": "unknown"
+        },
+        "source_event_count": {
+          "path": "upper_body.arm_event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "left_arm_count": {
+          "path": "left_arm_count",
+          "cast": "int",
+          "default": 0
+        },
+        "right_arm_count": {
+          "path": "right_arm_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "upper_body.arm_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "rationale": {
+          "value": "one arm has repeated or held upper-body motion but no stable semantic action name"
+        }
+      }
+    },
+    {
+      "node_id": "LEFT_LEG_KICK_FORWARD_PATTERN",
+      "parent_id": "LOWER_LIMB_ACTION_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEFT_LEG_KICK_FORWARD",
+      "taxonomy_parent_id": "LOWER_LIMB_ACTION",
+      "event_proxy": {
+        "super_family": "LEFT_LEG_ACTION",
+        "cluster_id": "LL_KICK_FORWARD",
+        "name_hint": "left_kick_forward",
+        "primary_direction": "forward_up",
+        "base_confidence": 0.66
+      }
+    },
+    {
+      "node_id": "RIGHT_LEG_KICK_FORWARD_PATTERN",
+      "parent_id": "LOWER_LIMB_ACTION_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "RIGHT_LEG_KICK_FORWARD",
+      "taxonomy_parent_id": "LOWER_LIMB_ACTION",
+      "event_proxy": {
+        "super_family": "RIGHT_LEG_ACTION",
+        "cluster_id": "RL_KICK_FORWARD",
+        "name_hint": "right_kick_forward",
+        "primary_direction": "forward_up",
+        "base_confidence": 0.66
+      }
+    },
+    {
+      "node_id": "LEFT_LEG_FORWARD_POSE_PATTERN",
+      "parent_id": "LOWER_LIMB_ACTION_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEG_FORWARD_POSE_CANDIDATE",
+      "taxonomy_parent_id": "LOWER_LIMB_ACTION",
+      "event_proxy": {
+        "super_family": "LEFT_LEG_ACTION",
+        "cluster_id": "LL_LEG_FORWARD_POSE",
+        "name_hint": "left_leg_forward_pose",
+        "primary_direction": "forward",
+        "base_confidence": 0.64
+      }
+    },
+    {
+      "node_id": "RIGHT_LEG_FORWARD_POSE_PATTERN",
+      "parent_id": "LOWER_LIMB_ACTION_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "LEG_FORWARD_POSE_CANDIDATE",
+      "taxonomy_parent_id": "LOWER_LIMB_ACTION",
+      "event_proxy": {
+        "super_family": "RIGHT_LEG_ACTION",
+        "cluster_id": "RL_LEG_FORWARD_POSE",
+        "name_hint": "right_leg_forward_pose",
+        "primary_direction": "forward",
+        "base_confidence": 0.64
+      }
+    },
+    {
+      "node_id": "DANCE_LEG_POSE_CANDIDATE_PATTERN",
+      "parent_id": "BODY_LEVEL_PATTERN",
+      "level": 3,
+      "node_type": "composed_candidate",
+      "family_id": "DANCE_LEG_POSE_CANDIDATE",
+      "taxonomy_parent_id": "BODY_LEVEL_POSTURE",
+      "lexical_aliases": [
+        "dance"
+      ],
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "leg_forward_pose_context"
+        },
+        {
+          "field": "has_leg_forward_pose",
+          "op": "truthy"
+        },
+        {
+          "field": "has_turn",
+          "op": "truthy"
+        },
+        {
+          "field": "has_high_hand",
+          "op": "truthy"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "DANCE_LEG_POSE_CANDIDATE"
+        },
+        "name_hint": {
+          "path": "name_hint",
+          "default": "dance_leg_pose_candidate"
+        },
+        "primary_direction": {
+          "value": "forward"
+        },
+        "confidence": {
+          "value": 0.68
+        },
+        "dominant_side": {
+          "path": "side",
+          "default": "unknown"
+        },
+        "pattern_evidence": {
+          "value": "leg_forward_pose+turn+high_hand"
+        }
+      },
+      "defaults": {
+        "name_hint": "dance_leg_pose_candidate",
+        "primary_direction": "forward",
+        "base_confidence": 0.68
+      }
+    },
+    {
+      "node_id": "CIRCULAR_WALK_PATH_PATTERN",
+      "parent_id": "LOCOMOTION_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "CIRCULAR_WALK_PATH",
+      "taxonomy_parent_id": "ROOT_LOCOMOTION",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_PATH",
+        "cluster_id": "ROOT_CIRCULAR_PATH",
+        "name_hint": "walk_circle_path",
+        "primary_direction": "circular",
+        "base_confidence": 0.66
+      }
+    },
+    {
+      "node_id": "CLIMB_UP_OVER_PROXY_PATTERN",
+      "parent_id": "GROUND_PRONE_KNEEL_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "CLIMB_UP_OVER_PROXY",
+      "taxonomy_parent_id": "GROUND_PRONE_KNEEL",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_CLIMB",
+        "cluster_id": "CLIMB_UP_OVER_PROXY",
+        "name_hint": "climb_up_over_proxy",
+        "primary_direction": "up_over",
+        "base_confidence": 0.64
+      }
+    },
+    {
+      "node_id": "CARTWHEEL_CANDIDATE_PATTERN",
+      "parent_id": "ACROBATICS_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "CARTWHEEL_CANDIDATE",
+      "taxonomy_parent_id": "ACROBATICS_INVERSION",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_ACROBATICS",
+        "cluster_id": "WB_CARTWHEEL_CANDIDATE",
+        "name_hint": "cartwheel_candidate",
+        "primary_direction": "inverted",
+        "base_confidence": 0.63
+      }
+    },
+    {
+      "node_id": "INVERTED_ACROBATICS_CANDIDATE_PATTERN",
+      "parent_id": "ACROBATICS_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "INVERTED_ACROBATICS_CANDIDATE",
+      "taxonomy_parent_id": "ACROBATICS_INVERSION",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_ACROBATICS",
+        "cluster_id": "WB_INVERTED_ROTATION_CANDIDATE",
+        "name_hint": "inverted_acrobatics_candidate",
+        "primary_direction": "inverted",
+        "base_confidence": 0.59
+      }
+    },
+    {
+      "node_id": "ACROBATIC_SEQUENCE_CANDIDATE_PATTERN",
+      "parent_id": "ACROBATICS_PATTERN",
+      "level": 3,
+      "node_type": "composed_candidate",
+      "family_id": "ACROBATIC_SEQUENCE_CANDIDATE",
+      "taxonomy_parent_id": "ACROBATICS_INVERSION",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "acrobatic_sequence"
+        },
+        {
+          "field": "segment_count",
+          "op": "gte",
+          "value": 2
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "ACROBATIC_SEQUENCE_CANDIDATE"
+        },
+        "name_hint": {
+          "value": "acrobatic_inverted_sequence"
+        },
+        "primary_direction": {
+          "value": "inverted"
+        },
+        "confidence": {
+          "value": 0.7
+        },
+        "segment_count": {
+          "path": "segment_count",
+          "cast": "int",
+          "default": 0
+        },
+        "pattern_evidence": {
+          "value": "multiple_inverted_body_events"
+        }
+      },
+      "defaults": {
+        "name_hint": "acrobatic_inverted_sequence",
+        "primary_direction": "inverted",
+        "base_confidence": 0.7
+      }
+    },
+    {
+      "node_id": "TRANSLATING_GAIT_SEGMENT_PATTERN",
+      "parent_id": "GAIT_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "TRANSLATING_GAIT_SEGMENT",
+      "taxonomy_parent_id": "ROOT_LOCOMOTION",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "residual_translating_gait_segment"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "TRANSLATING_GAIT_SEGMENT"
+        },
+        "name_hint": {
+          "cases": [
+            {
+              "when": {
+                "field": "speed",
+                "op": "eq",
+                "value": "fast"
+              },
+              "then": {
+                "value": "run"
+              }
+            }
+          ],
+          "default": {
+            "value": "walk"
+          }
+        },
+        "primary_direction": {
+          "path": "direction",
+          "default": "unknown"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.46
+        },
+        "speed": {
+          "path": "speed",
+          "default": "unknown"
+        },
+        "distance_m": {
+          "path": "distance_m",
+          "cast": "float",
+          "default": 0.0
+        },
+        "pattern_evidence": {
+          "value": "residual_root_translation"
+        }
+      }
+    },
+    {
+      "node_id": "TURN_SEGMENT_PATTERN",
+      "parent_id": "ROTATION_PATTERN",
+      "level": 3,
+      "node_type": "sparse_candidate",
+      "family_id": "TURN_SEGMENT",
+      "taxonomy_parent_id": "ROTATION_SPIN",
+      "match": [
+        {
+          "field": "pattern_kind",
+          "op": "eq",
+          "value": "residual_turn_segment"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "TURN_SEGMENT"
+        },
+        "name_hint": {
+          "value": "turn"
+        },
+        "primary_direction": {
+          "path": "direction",
+          "default": "unknown"
+        },
+        "confidence": {
+          "path": "confidence",
+          "default": 0.5
+        },
+        "angle_deg": {
+          "path": "angle_deg",
+          "cast": "float",
+          "default": 0.0
+        },
+        "angle_bin": {
+          "path": "angle_bin",
+          "default": "unknown"
+        },
+        "pattern_evidence": {
+          "value": "residual_root_rotation"
+        }
+      }
+    },
+    {
+      "node_id": "TERMINAL_STILL_PATTERN",
+      "parent_id": "STATE_FALLBACK_PATTERN",
+      "level": 3,
+      "node_type": "event_proxy",
+      "family_id": "TERMINAL_STILL",
+      "taxonomy_parent_id": "ROOT_LOCOMOTION",
+      "event_proxy": {
+        "super_family": "WHOLE_BODY_STATE",
+        "cluster_id": "WB_TERMINAL_STILL",
+        "name_hint": "stand_still",
+        "primary_direction": "still",
+        "base_confidence": 0.5
+      },
+      "defaults": {
+        "name_hint": "stand_still",
+        "primary_direction": "still",
+        "base_confidence": 0.5
+      }
+    },
+    {
+      "node_id": "STATIC_OR_SUBTLE_STATE_PATTERN",
+      "parent_id": "STATE_FALLBACK_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "STATIC_OR_SUBTLE_STATE_PROXY",
+      "taxonomy_parent_id": "UNKNOWN_OR_FALLBACK",
+      "match": [
+        {
+          "field": "upper_body.total_arm_signal",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "field": "bimanual_count",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "field": "loco_state",
+          "op": "eq",
+          "value": "none"
+        },
+        {
+          "field": "rotation.state",
+          "op": "eq",
+          "value": "none"
+        },
+        {
+          "field": "vertical_kind",
+          "op": "in",
+          "value": [
+            "none",
+            "minor_height_change"
+          ]
+        },
+        {
+          "field": "upper_body.subtle_state_event_count",
+          "op": "gt",
+          "value": 0
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "STATIC_OR_SUBTLE_STATE_PROXY"
+        },
+        "name_hint": {
+          "value": "subtle_state"
+        },
+        "confidence": {
+          "value": 0.48
+        },
+        "primary_direction": {
+          "value": "still"
+        },
+        "source_event_count": {
+          "path": "upper_body.subtle_state_event_count",
+          "cast": "int",
+          "default": 0
+        },
+        "source_event_indices": {
+          "path": "upper_body.subtle_state_event_indices",
+          "cast": "list",
+          "default": []
+        },
+        "rationale": {
+          "value": "only static or subtle state evidence is available, so keep the family conservative"
+        }
+      },
+      "defaults": {
+        "name_hint": "subtle_state",
+        "primary_direction": "still",
+        "base_confidence": 0.48
+      }
+    },
+    {
+      "node_id": "EVENT_SEQUENCE_PATTERN",
+      "parent_id": "STATE_FALLBACK_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "EVENT_SEQUENCE",
+      "taxonomy_parent_id": "UNKNOWN_OR_FALLBACK",
+      "match": [
+        {
+          "field": "event_count",
+          "op": "gte",
+          "value": 0
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "EVENT_SEQUENCE"
+        },
+        "name_hint": {
+          "value": "generic_motion"
+        },
+        "confidence": {
+          "value": 0.3
+        },
+        "primary_direction": {
+          "value": "none"
+        },
+        "rationale": {
+          "value": "no stable coarse family matched the event signature"
+        }
+      },
+      "defaults": {
+        "name_hint": "generic_motion",
+        "primary_direction": "none",
+        "base_confidence": 0.3
+      }
+    },
+    {
+      "node_id": "BIMANUAL_ACTION_FALLBACK_PATTERN",
+      "parent_id": "UPPER_LIMB_GESTURE_PATTERN",
+      "level": 3,
+      "node_type": "primary",
+      "family_id": "BIMANUAL_ACTION",
+      "taxonomy_parent_id": "UNKNOWN_OR_FALLBACK",
+      "match": [
+        {
+          "field": "bimanual_pattern",
+          "op": "neq",
+          "value": "none"
+        }
+      ],
+      "outputs": {
+        "prototype_id": {
+          "value": "BIMANUAL_ACTION"
+        },
+        "name_hint": {
+          "path": "bimanual_pattern",
+          "default": "bimanual_action"
+        },
+        "confidence": {
+          "value": 0.45
+        },
+        "primary_direction": {
+          "value": "none"
+        },
+        "rationale": {
+          "value": "bimanual events are the most interpretable fallback family"
+        }
+      }
+    }
+  ],
+  "primary_selection_order": [
+    "LOW_BODY_REPETITION_WITH_ARM_LIFT_PATTERN",
+    "LOW_BODY_REPETITION_PATTERN",
+    "BILATERAL_ARM_LEG_VERTICAL_COORDINATION_PATTERN",
+    "BILATERAL_RHYTHMIC_GESTURE_PATTERN",
+    "BALLISTIC_TRANSLATION_PATTERN",
+    "REPEATED_VERTICAL_JUMP_PATTERN",
+    "SINGLE_VERTICAL_JUMP_PATTERN",
+    "TRANSLATING_GAIT_PATTERN",
+    "IN_PLACE_GAIT_PATTERN",
+    "IN_PLACE_GAIT_PROXY_PATTERN",
+    "ROTATION_DOMINANT_PATTERN",
+    "BIMANUAL_ARM_MIME_CANDIDATE_PATTERN",
+    "UNILATERAL_ARM_MIME_CANDIDATE_PATTERN",
+    "STATIC_OR_SUBTLE_STATE_PATTERN",
+    "BIMANUAL_ACTION_FALLBACK_PATTERN",
+    "EVENT_SEQUENCE_PATTERN"
+  ],
+  "composed_selection_order": [
+    "SIT_STAND_CYCLE_CANDIDATE_PATTERN",
+    "SIT_DOWN_CANDIDATE_PATTERN",
+    "STAND_UP_CANDIDATE_PATTERN",
+    "LUNGE_CANDIDATE_PATTERN",
+    "DANCE_LEG_POSE_CANDIDATE_PATTERN",
+    "ACROBATIC_SEQUENCE_CANDIDATE_PATTERN"
+  ],
+  "sparse_action_selection_order": [
+    "BILATERAL_VERTICAL_COORDINATION_SPARSE_PATTERN",
+    "BIMANUAL_HANDS_CLOSE_PATTERN",
+    "BALLISTIC_TRANSLATION_SEGMENT_PATTERN",
+    "WEAK_BALLISTIC_CANDIDATE_PATTERN",
+    "POST_VERTICAL_RECOVERY_STEP_PATTERN",
+    "TRANSLATING_GAIT_SEGMENT_PATTERN",
+    "TURN_SEGMENT_PATTERN"
+  ]
+}

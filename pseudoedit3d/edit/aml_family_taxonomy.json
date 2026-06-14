@@ -1,0 +1,284 @@
+{
+  "version": "aml_family_taxonomy_v1",
+  "description": "Top-down AML family taxonomy. This is metadata and audit structure first; detector thresholds remain in code or future detector configs.",
+  "lexical_sources": {
+    "wordnet": {
+      "status": "offline_cached_source",
+      "source_note": "Use WordNet verb/activity-noun synsets to propose candidate labels and synonyms; do not promote words to AML families without motion evidence mapping. WordNet is queried only by the offline builder, never during AML extraction.",
+      "repo_reference": "docs/InternVid.ipynb#WordNet\u53d6\u7528\u8bcd\u6c47",
+      "builder_script": "scripts/build_wordnet_action_lexicon.py",
+      "cached_artifact": "outputs/aml_lexicon/wordnet_action_terms_v1.json",
+      "runtime_policy": "AML runtime reads the cached JSON if needed and must not import nltk or query WordNet.",
+      "candidate_outputs": [
+        "action_verbs",
+        "common_action_verbs",
+        "activity_nouns",
+        "common_activity_nouns",
+        "expanded_keywords"
+      ]
+    },
+    "internvid": {
+      "status": "planned_source",
+      "source_note": "Use InternVid human-subject activity sentences as broad lexical coverage evidence, then map phrases to AML taxonomy parents.",
+      "repo_reference": "docs/InternVid.ipynb"
+    },
+    "hml3d_captions": {
+      "status": "active_audit_source",
+      "source_note": "Use HML3D captions for task-local weak labels and coverage audit, not as the sole taxonomy source."
+    }
+  },
+  "parents": {
+    "ROOT_LOCOMOTION": {
+      "label": "root locomotion and path",
+      "scope": "Root translation, in-place gait, turning paths, and recovery steps.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "root_path",
+        "support_gait",
+        "speed",
+        "direction"
+      ],
+      "children": [
+        "TRANSLATING_GAIT",
+        "TRANSLATING_GAIT_SEGMENT",
+        "IN_PLACE_GAIT",
+        "IN_PLACE_GAIT_PROXY",
+        "CIRCULAR_WALK_PATH",
+        "RECOVERY_STEP_SEGMENT",
+        "TERMINAL_STILL"
+      ]
+    },
+    "VERTICAL_IMPULSE": {
+      "label": "vertical impulse and ballistic motion",
+      "scope": "Jumps, hops, vertical cycles, and jump-plus-translation patterns.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "vertical_displacement",
+        "root_translation",
+        "repeat_count"
+      ],
+      "children": [
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "WEAK_BALLISTIC_CANDIDATE",
+        "WHOLE_BODY_VERTICAL_MOTION_PROXY"
+      ]
+    },
+    "BODY_LEVEL_POSTURE": {
+      "label": "body level and posture",
+      "scope": "Low-body posture, squat, lunge, sit/stand, torso lean, and body-level transitions.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "body_height",
+        "torso_angle",
+        "leg_extension",
+        "vertical_transition"
+      ],
+      "children": [
+        "LOW_BODY_REPETITION",
+        "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+        "SQUAT_HOLD",
+        "LOW_BODY_HOLD_PROXY",
+        "LUNGE_CANDIDATE",
+        "SIT_DOWN_CANDIDATE",
+        "STAND_UP_CANDIDATE",
+        "SIT_STAND_CYCLE_CANDIDATE",
+        "TORSO_HUNCHED_FORWARD",
+        "TORSO_PERIODIC_MOTION_PROXY",
+        "LEG_FORWARD_POSE_CANDIDATE",
+        "DANCE_LEG_POSE_CANDIDATE"
+      ]
+    },
+    "GROUND_PRONE_KNEEL": {
+      "label": "ground, prone, kneel, and fall recovery",
+      "scope": "Motions close to or on the floor, kneeling, prone support, crawling, falling, and getting up.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "body_height",
+        "support_mode",
+        "floor_contact_proxy",
+        "recovery_transition"
+      ],
+      "children": [
+        "CLIMB_UP_OVER_PROXY",
+        "FALL_TO_KNEES_CANDIDATE",
+        "KNEEL_CANDIDATE",
+        "PRONE_ARM_LEG_MOTION_CANDIDATE",
+        "GROUND_RECOVERY_CANDIDATE"
+      ]
+    },
+    "UPPER_LIMB_GESTURE": {
+      "label": "upper-limb gesture and hand proximity",
+      "scope": "Unilateral and bimanual arm motion, hand-high states, arm circles, claps, and hand-to-face/head proxies.",
+      "recoverability": "geometry_candidate",
+      "evidence_axes": [
+        "arm_periodicity",
+        "hand_height",
+        "hand_distance",
+        "hand_head_proximity"
+      ],
+      "children": [
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH",
+        "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+        "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+        "BIMANUAL_ARM_RAISE_SPREAD_PROXY",
+        "BIMANUAL_HANDS_CLOSE",
+        "BIMANUAL_ARM_MIME_CANDIDATE",
+        "UNILATERAL_ARM_MIME_CANDIDATE",
+        "ARM_SWING_CANDIDATE",
+        "ARM_CIRCLE_CANDIDATE",
+        "HAND_TO_MOUTH_CANDIDATE",
+        "HAND_TO_FACE_CANDIDATE",
+        "HAND_TO_HEAD_CANDIDATE",
+        "HAND_NEAR_EAR_CANDIDATE",
+        "OBJECT_STRIKE_OR_THROW_CANDIDATE"
+      ]
+    },
+    "LOWER_LIMB_ACTION": {
+      "label": "lower-limb action",
+      "scope": "Kicks, raised-leg poses, footwork fragments, and lower-limb actions not explained by gait.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "leg_extension",
+        "foot_height",
+        "support_switch",
+        "root_coupling"
+      ],
+      "children": [
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "LEG_FORWARD_POSE_CANDIDATE"
+      ]
+    },
+    "BILATERAL_RHYTHMIC_EXERCISE": {
+      "label": "bilateral rhythmic exercise",
+      "scope": "Repeated bilateral arm-leg coordination such as jumping jacks, jump rope, and cheer-like repeated gestures.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "bilateral_arm_cycle",
+        "vertical_cycle",
+        "leg_abduction_proxy",
+        "repeat_count"
+      ],
+      "children": [
+        "BILATERAL_RHYTHMIC_COORDINATION",
+        "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+        "JUMP_ROPE_CANDIDATE",
+        "REPEATED_HOP_WITH_ARM_CIRCLE_CANDIDATE"
+      ],
+      "mutual_exclusion_notes": [
+        "Prefer ARM_CIRCLE_CANDIDATE over BILATERAL_RHYTHMIC_COORDINATION when arm cycling is unilateral and vertical evidence is weak.",
+        "Prefer JUMP_ROPE_CANDIDATE over BILATERAL_RHYTHMIC_COORDINATION when arm-cycle evidence is circular/low and leg motion is hopping rather than arm raise-spread.",
+        "Prefer SWIM_LIKE_MOTION_CANDIDATE or PRONE_ARM_LEG_MOTION_CANDIDATE when body level is prone or torso-forward floor-like."
+      ]
+    },
+    "ROTATION_SPIN": {
+      "label": "rotation and spin",
+      "scope": "Root/body turns, in-place spin, turn segments, and rotational path evidence.",
+      "recoverability": "geometry_recoverable",
+      "evidence_axes": [
+        "root_yaw",
+        "turn_angle",
+        "turn_count",
+        "path_curvature"
+      ],
+      "children": [
+        "ROTATION_DOMINANT",
+        "TURN_SEGMENT",
+        "CIRCULAR_WALK_PATH"
+      ]
+    },
+    "ACROBATICS_INVERSION": {
+      "label": "acrobatics and inversion",
+      "scope": "Cartwheel, handspring, backflip-like, and inverted-body candidate motions.",
+      "recoverability": "geometry_candidate",
+      "evidence_axes": [
+        "inversion_proxy",
+        "root_height",
+        "rotation",
+        "support_transition"
+      ],
+      "children": [
+        "CARTWHEEL_CANDIDATE",
+        "INVERTED_ACROBATICS_CANDIDATE",
+        "ACROBATIC_SEQUENCE_CANDIDATE"
+      ]
+    },
+    "ACTIVITY_INTENT_PROXY": {
+      "label": "activity-level and intent proxy",
+      "scope": "Composed activity names whose exact label often needs object/context but should still keep AML motion evidence.",
+      "recoverability": "geometry_candidate",
+      "evidence_axes": [
+        "composed_motion_signature",
+        "optional_text_resolver"
+      ],
+      "children": [
+        "COMBAT_SEQUENCE_CANDIDATE",
+        "PUNCH_KICK_SEQUENCE_CANDIDATE",
+        "SWIM_LIKE_MOTION_CANDIDATE",
+        "OBJECT_STRIKE_OR_THROW_CANDIDATE",
+        "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE"
+      ]
+    },
+    "UNKNOWN_OR_FALLBACK": {
+      "label": "unknown or fallback",
+      "scope": "Fallback signatures, subtle state, or sequences that have not been assigned to a stable AML family.",
+      "recoverability": "unknown",
+      "evidence_axes": [
+        "fallback_event_signature"
+      ],
+      "children": [
+        "EVENT_SEQUENCE",
+        "BIMANUAL_ACTION",
+        "STATIC_OR_SUBTLE_STATE_PROXY"
+      ]
+    }
+  },
+  "family_overrides": {
+    "CELEBRATORY_DANCE_GESTURE": {
+      "secondary_parents": [
+        "ACTIVITY_INTENT_PROXY"
+      ],
+      "legacy_alias_for": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE"
+    },
+    "JUMPING_JACK": {
+      "legacy_alias_for": "BILATERAL_RHYTHMIC_COORDINATION"
+    },
+    "SQUAT_REPETITION": {
+      "legacy_alias_for": "LOW_BODY_REPETITION"
+    },
+    "SQUAT_ARM_LIFT": {
+      "legacy_alias_for": "LOW_BODY_REPETITION_WITH_ARM_LIFT"
+    },
+    "CIRCULAR_WALK_PATH": {
+      "secondary_parents": [
+        "ROTATION_SPIN"
+      ]
+    },
+    "LEG_FORWARD_POSE_CANDIDATE": {
+      "secondary_parents": [
+        "LOWER_LIMB_ACTION"
+      ]
+    },
+    "OBJECT_STRIKE_OR_THROW_CANDIDATE": {
+      "ambiguity_boundary": "object_or_intent_ambiguous"
+    },
+    "SWIM_LIKE_MOTION_CANDIDATE": {
+      "ambiguity_boundary": "object_or_intent_ambiguous"
+    },
+    "HAND_TO_MOUTH_CANDIDATE": {
+      "ambiguity_boundary": "object_or_intent_ambiguous"
+    },
+    "HAND_NEAR_EAR_CANDIDATE": {
+      "ambiguity_boundary": "object_or_intent_ambiguous"
+    }
+  },
+  "default_family": {
+    "parent_id": "UNKNOWN_OR_FALLBACK",
+    "recoverability": "unknown",
+    "ambiguity_boundary": "unknown_family"
+  }
+}

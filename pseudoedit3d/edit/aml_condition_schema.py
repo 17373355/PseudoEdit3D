@@ -2,50 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-
-REQUIRED_APPROX_SLOTS: dict[str, tuple[str, ...]] = {
-    "TRANSLATING_GAIT": ("span", "direction", "distance_m", "speed"),
-    "TRANSLATING_GAIT_SEGMENT": ("span", "direction", "distance_m", "speed"),
-    "IN_PLACE_GAIT": ("span", "direction", "count", "vertical_amplitude_m"),
-    "IN_PLACE_GAIT_PROXY": ("span", "direction", "count", "vertical_amplitude_m", "source_event_count"),
-    "BALLISTIC_TRANSLATION": ("span", "direction", "distance_m", "vertical_amplitude_m"),
-    "BALLISTIC_TRANSLATION_SEGMENT": ("span", "direction", "distance_m", "vertical_amplitude_m"),
-    "WEAK_BALLISTIC_CANDIDATE": ("span", "direction", "distance_m", "vertical_amplitude_m"),
-    "VERTICAL_JUMP": ("span", "direction", "vertical_amplitude_m"),
-    "VERTICAL_JUMP_SEGMENT": ("span", "direction", "vertical_amplitude_m"),
-    "JUMPING_JACK": ("span", "direction", "count", "vertical_amplitude_m"),
-    "ROTATION_DOMINANT": ("span", "direction", "angle_deg", "angle_bin"),
-    "TURN_SEGMENT": ("span", "direction", "angle_deg", "angle_bin"),
-    "RECOVERY_STEP_SEGMENT": ("span", "direction", "distance_m", "speed"),
-    "TERMINAL_STILL": ("span", "direction"),
-    "BIMANUAL_HANDS_CLOSE": ("span", "direction", "count"),
-    "BIMANUAL_ARM_MIME_CANDIDATE": ("span", "direction", "source_event_count", "bimanual_count"),
-    "UNILATERAL_ARM_MIME_CANDIDATE": ("span", "direction", "source_event_count", "dominant_side"),
-    "TORSO_HUNCHED_FORWARD": ("span", "direction", "source_event_count", "magnitude"),
-    "LEFT_HAND_RAISED_HIGH": ("span", "direction", "source_event_count", "magnitude"),
-    "RIGHT_HAND_RAISED_HIGH": ("span", "direction", "source_event_count", "magnitude"),
-    "SQUAT_HOLD": ("span", "direction", "source_event_count", "magnitude"),
-    "SQUAT_REPETITION": ("span", "direction", "count", "magnitude|vertical_amplitude_m"),
-    "SQUAT_ARM_LIFT": ("span", "direction", "count", "magnitude|vertical_amplitude_m"),
-    "LEFT_LEG_KICK_FORWARD": ("span", "direction", "source_event_count", "magnitude"),
-    "RIGHT_LEG_KICK_FORWARD": ("span", "direction", "source_event_count", "magnitude"),
-    "LEG_FORWARD_POSE_CANDIDATE": ("span", "direction", "dominant_side", "source_event_count"),
-    "DANCE_LEG_POSE_CANDIDATE": ("span", "direction", "dominant_side", "source_event_count"),
-    "CIRCULAR_WALK_PATH": ("span", "direction", "path_length_m", "curvature_rad", "circle_score"),
-    "CLIMB_UP_OVER_PROXY": ("span", "direction", "root_height_gain_m", "source_event_count"),
-    "CARTWHEEL_CANDIDATE": ("span", "direction", "source_event_count"),
-    "INVERTED_ACROBATICS_CANDIDATE": ("span", "direction", "source_event_count"),
-    "ACROBATIC_SEQUENCE_CANDIDATE": ("span", "direction", "segment_count", "source_event_count"),
-    "CELEBRATORY_DANCE_GESTURE": (
-        "span",
-        "direction",
-        "turn_count",
-        "locomotion_segment_count",
-        "raise_spread_count",
-        "bimanual_count",
-    ),
-    "STATIC_OR_SUBTLE_STATE_PROXY": ("span", "source_event_count"),
-}
+from .aml_proto_registry import active_proto_id, registry_map
 
 
 STATUS_CONDITION_WEIGHTS = {
@@ -57,7 +14,13 @@ STATUS_CONDITION_WEIGHTS = {
 
 
 def required_approx_slots(family_id: str) -> tuple[str, ...]:
-    return REQUIRED_APPROX_SLOTS.get(family_id, ("span",))
+    schema = registry_map("condition_schema")
+    required = schema.get("required_approx_slots") or {}
+    default = schema.get("default_required_approx_slots") or ["span"]
+    slots = required.get(active_proto_id(family_id)) if isinstance(required, dict) else None
+    if slots is None:
+        slots = default
+    return tuple(str(item) for item in slots)
 
 
 def slot_requirement_satisfied(requirement: str, approx_slots: dict[str, Any]) -> bool:

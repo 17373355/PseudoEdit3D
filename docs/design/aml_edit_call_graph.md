@@ -24,15 +24,15 @@ HumanML3D joints / pose / translation
        -> pseudoedit3d.edit.bimanual_split.split_bimanual_events
        -> abstract_atomic_events
   -> pseudoedit3d.edit.coarse_signature.build_coarse_action_program
-       -> build_event_coarse_signature
+       -> pseudoedit3d.edit.coarse_axes.build_event_coarse_signature
        -> assign_seeded_prototype
        -> _cover_primary_events
-       -> _semantic_candidate_actions
-       -> _candidate_jump_segments
-       -> _recovery_step_segments
-       -> _secondary_actions
+       -> pseudoedit3d.edit.coarse_pattern_evidence._semantic_candidate_actions
+       -> pseudoedit3d.edit.coarse_pattern_evidence._vertical_impulse_translation_pair_actions
+       -> pseudoedit3d.edit.coarse_pattern_evidence._post_vertical_translation_recovery_actions
+       -> pseudoedit3d.edit.coarse_pattern_evidence._secondary_actions
        -> _apply_semantic_dominance
-       -> _attach_action_metadata
+       -> pseudoedit3d.edit.coarse_action_materializer._attach_action_metadata
             -> _semantic_family_descriptor
             -> _approx_slots
   -> pseudoedit3d.edit.coarse_prompt_renderer.render_coarse_aml_prompt
@@ -82,7 +82,11 @@ scripts/analyze_bimanual_split_candidates.py
 | `bimanual_split.py` | Bimanual periodic split and feature diagnostics. | Active AML mainline. |
 | `coordination_patterns.py` | Layer 4 coordination diagnostics for regression selection. | Active diagnostic path. |
 | `aml_language.py` | Deterministic AML text for inspection. | Active inspection path. |
-| `coarse_signature.py` | Layer 3.5/4 coarse signatures, canonical actions, semantic family, approximate slots. | Active AutoPrompt and future conditioning path. |
+| `coarse_signature.py` | Layer 3.5/4 orchestration: primary prototype, cover plan, action ordering. | Active AutoPrompt and future conditioning path. |
+| `coarse_axes.py` | Layer3 event axes and coarse event signature construction. | Active AutoPrompt and future conditioning path. |
+| `coarse_pattern_evidence.py` | Sparse/composed pattern evidence builders routed through the pattern tree. | Active AutoPrompt and future conditioning path. |
+| `coarse_action_materializer.py` | Probe aliases, semantic family metadata, approximate slots, canonical action records. | Active AutoPrompt and future conditioning path. |
+| `coarse_event_utils.py` | Shared event span, overlap, magnitude, coverage, and audit helpers. | Active utility module. |
 | `coarse_prompt_renderer.py` | Budgeted probe text from canonical actions. | Active AutoPrompt path. |
 | `aml_condition_schema.py` | Required-slot schema and condition weights shared by diagnostics/exporters. | Active future conditioning path. |
 | `aml_prompt_renderer.py` | Event-stream naturalizer and residual fallback. | Keep active, but not main semantics. |

@@ -39,3 +39,7 @@ Extract a motion-derived structured annotation layer:
 ## Current Proposal
 
 - `paper_current_proposal.md`
+
+## Submission Strategy Notes
+
+- `iclr_cvpr_followup_strategy.md`: records the current ICLR/CVPR split, Cross-Axis comparison boundary, concurrent-submission risk, and CVPR supplement/rebuttal strategy.

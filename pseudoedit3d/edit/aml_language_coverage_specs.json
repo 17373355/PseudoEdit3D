@@ -1,0 +1,142 @@
+{
+  "version": "aml_language_coverage_specs_v1",
+  "description": "Weak-label caption coverage specs for AML language audits. These are audit rules, not runtime motion-family logic.",
+  "specs": [
+    {
+      "label": "sit_or_stand_transition",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\bsits?\\s+down\\b", "\\bsitting\\b", "\\bsat\\b", "\\bstands?\\s+up\\b", "\\bgets?\\s+(back\\s+)?up\\b", "\\bsits?\\s+back\\s+down\\b"],
+      "expected_families": ["SIT_DOWN_CANDIDATE", "STAND_UP_CANDIDATE", "SIT_STAND_CYCLE_CANDIDATE"],
+      "substitute_families": ["SQUAT_HOLD", "LOW_BODY_REPETITION", "LOW_BODY_REPETITION_WITH_ARM_LIFT", "TORSO_HUNCHED_FORWARD"],
+      "substitute_prompt_patterns": ["\\bsquats?\\b", "\\blowers?\\s+the\\s+body\\b"]
+    },
+    {
+      "label": "lunge",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\blunge\\b", "\\blunges\\b"],
+      "expected_families": ["LUNGE_CANDIDATE"],
+      "substitute_families": ["LEFT_LEG_KICK_FORWARD", "RIGHT_LEG_KICK_FORWARD", "LEG_FORWARD_POSE_CANDIDATE", "SQUAT_HOLD"],
+      "substitute_prompt_patterns": ["\\bkicks?\\b", "\\bsquats?\\b", "\\bholds? .*leg forward\\b"]
+    },
+    {
+      "label": "jumping_jack",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\bjumping\\s+jacks?\\b"],
+      "expected_families": ["BILATERAL_RHYTHMIC_COORDINATION"],
+      "substitute_families": ["LEFT_HAND_RAISED_HIGH", "RIGHT_HAND_RAISED_HIGH", "VERTICAL_JUMP", "SQUAT_HOLD", "TRANSLATING_GAIT"],
+      "substitute_prompt_patterns": ["\\braises? .*hand\\b", "\\bsquats?\\b", "\\bwalks?\\b"]
+    },
+    {
+      "label": "in_place_spin",
+      "issue_type": "prompt_priority_error",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\bspins?\\b", "\\bspinning\\b", "\\btwirls?\\b"],
+      "expected_families": ["ROTATION_DOMINANT", "TURN_SEGMENT"],
+      "substitute_families": ["CIRCULAR_WALK_PATH", "TRANSLATING_GAIT"],
+      "substitute_prompt_patterns": ["\\bwalks? in a circular path\\b", "\\bwalks?\\b"]
+    },
+    {
+      "label": "locomotion_prompt_priority",
+      "issue_type": "prompt_priority_error",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\bwalk(s|ing)?\\b", "\\bjog(s|ging)?\\b", "\\brun(s|ning)?\\b", "\\bstepp?ing\\b", "\\bmoves?\\s+(forward|backward|around)\\b"],
+      "negative_caption_patterns": ["\\bkick(s|ing|ed)?\\b", "\\blunge(s|ing|d)?\\b", "\\bkarate\\b", "\\bmartial\\b", "\\bfighting\\b", "\\bjump\\s+rope\\b", "\\bskipping\\s+rope\\b"],
+      "expected_families": ["IN_PLACE_GAIT", "TRANSLATING_GAIT", "TRANSLATING_GAIT_SEGMENT", "CIRCULAR_WALK_PATH"],
+      "substitute_families": ["LEFT_LEG_KICK_FORWARD", "RIGHT_LEG_KICK_FORWARD", "LEG_FORWARD_POSE_CANDIDATE"],
+      "substitute_prompt_patterns": ["\\bkicks?\\b", "\\bholds? .*leg forward\\b"]
+    },
+    {
+      "label": "fall_or_knees",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\bfalls?\\b", "\\bon (his|her|their)?\\s*knees\\b", "\\bto (his|her|their)?\\s*knees\\b", "\\bkneels?\\b"],
+      "expected_families": ["FALL_TO_KNEES_CANDIDATE", "KNEEL_CANDIDATE"],
+      "substitute_families": ["SQUAT_HOLD", "LOW_BODY_REPETITION", "TORSO_HUNCHED_FORWARD", "LEFT_LEG_KICK_FORWARD", "RIGHT_LEG_KICK_FORWARD"],
+      "substitute_prompt_patterns": ["\\bsquats?\\b", "\\bkicks?\\b", "\\bhunched\\b"]
+    },
+    {
+      "label": "arm_swing_or_windmill",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_recoverable",
+      "caption_patterns": ["\\bswings? .*arm\\b", "\\barm .*swings?\\b", "\\bwindmills?\\b", "\\barm .*clockwise\\b", "\\bclockwise .*arm\\b", "\\barm .*anti-?clockwise\\b", "\\banti-?clockwise .*arm\\b"],
+      "expected_families": ["UNILATERAL_ARM_MIME_CANDIDATE", "ARM_SWING_CANDIDATE", "ARM_CIRCLE_CANDIDATE"],
+      "substitute_families": ["LEFT_HAND_RAISED_HIGH", "RIGHT_HAND_RAISED_HIGH", "BIMANUAL_ARM_MIME_CANDIDATE"],
+      "substitute_prompt_patterns": ["\\braises? .*hand\\b", "\\bmoves? both arms\\b"]
+    },
+    {
+      "label": "hand_to_mouth_or_drinking",
+      "issue_type": "object_or_intent_ambiguous",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bdrinks?\\b", "\\bdrinking\\b", "\\bmouth\\b"],
+      "expected_families": ["HAND_TO_MOUTH_CANDIDATE", "HAND_TO_FACE_CANDIDATE", "UNILATERAL_ARM_MIME_CANDIDATE"],
+      "substitute_families": ["RIGHT_HAND_RAISED_HIGH", "LEFT_HAND_RAISED_HIGH"],
+      "substitute_prompt_patterns": ["\\braises? .*hand\\b"]
+    },
+    {
+      "label": "hand_to_head_or_phone",
+      "issue_type": "object_or_intent_ambiguous",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bphone\\b", "\\bear\\b", "\\bhead\\b", "\\blook(s|ing)? upward\\b"],
+      "expected_families": ["HAND_TO_HEAD_CANDIDATE", "HAND_NEAR_EAR_CANDIDATE", "UNILATERAL_ARM_MIME_CANDIDATE"],
+      "substitute_families": ["RIGHT_HAND_RAISED_HIGH", "LEFT_HAND_RAISED_HIGH"],
+      "substitute_prompt_patterns": ["\\braises? .*hand\\b"]
+    },
+    {
+      "label": "tennis_or_ball_strike",
+      "issue_type": "object_or_intent_ambiguous",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\btennis\\b", "\\bballs?\\b", "\\bthrow(s|ing)?\\b", "\\bcatch(es|ing)?\\b"],
+      "expected_families": ["OBJECT_STRIKE_OR_THROW_CANDIDATE", "UNILATERAL_ARM_MIME_CANDIDATE", "BIMANUAL_ARM_MIME_CANDIDATE"],
+      "substitute_families": ["BIMANUAL_HANDS_CLOSE", "LEFT_HAND_RAISED_HIGH", "RIGHT_HAND_RAISED_HIGH", "TRANSLATING_GAIT"],
+      "substitute_prompt_patterns": ["\\bwalks?\\b", "\\bjumps?\\b", "\\bsquats?\\b", "\\braises? .*hand\\b"]
+    },
+    {
+      "label": "swim_or_prone_motion",
+      "issue_type": "object_or_intent_ambiguous",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bswims?\\b", "\\bswimming\\b", "\\bflying around like a fly\\b"],
+      "expected_families": ["SWIM_LIKE_MOTION_CANDIDATE", "PRONE_ARM_LEG_MOTION_CANDIDATE"],
+      "substitute_families": ["LOW_BODY_REPETITION_WITH_ARM_LIFT", "TORSO_HUNCHED_FORWARD", "CIRCULAR_WALK_PATH", "LEFT_HAND_RAISED_HIGH"],
+      "substitute_prompt_patterns": ["\\bwalks?\\b", "\\bsquats?\\b", "\\braises? .*hand\\b"]
+    },
+    {
+      "label": "jump_rope",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bjump\\s+rope\\b", "\\bskipping\\s+rope\\b"],
+      "expected_families": ["JUMP_ROPE_CANDIDATE", "REPEATED_HOP_WITH_ARM_CIRCLE_CANDIDATE"],
+      "substitute_families": ["VERTICAL_JUMP", "LEFT_LEG_KICK_FORWARD", "RIGHT_LEG_KICK_FORWARD", "SQUAT_HOLD", "BIMANUAL_ARM_MIME_CANDIDATE"],
+      "substitute_prompt_patterns": ["\\bjumps?\\b", "\\bkicks?\\b", "\\bsquats?\\b"]
+    },
+    {
+      "label": "combat_or_martial_arts",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bkarate\\b", "\\bmartial\\b", "\\bfighting\\b", "\\bpunch(es|ing)?\\b", "\\bcombat\\b"],
+      "expected_families": ["COMBAT_SEQUENCE_CANDIDATE", "PUNCH_KICK_SEQUENCE_CANDIDATE"],
+      "substitute_families": ["LEFT_LEG_KICK_FORWARD", "RIGHT_LEG_KICK_FORWARD", "TURN_SEGMENT", "TRANSLATING_GAIT", "BIMANUAL_HANDS_CLOSE"],
+      "substitute_prompt_patterns": ["\\bwalks?\\b", "\\bruns?\\b", "\\bturns?\\b"]
+    },
+    {
+      "label": "cheer_or_dance",
+      "issue_type": "missing_composed_family",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bcheer(s|ing)?\\b", "\\bdanc(es|ing)?\\b", "\\bclaps?\\b", "\\bclapping\\b"],
+      "expected_families": ["BILATERAL_RHYTHMIC_GESTURE_CANDIDATE", "BIMANUAL_HANDS_CLOSE", "BIMANUAL_ARM_MIME_CANDIDATE"],
+      "substitute_families": ["LEFT_HAND_RAISED_HIGH", "RIGHT_HAND_RAISED_HIGH", "LEFT_LEG_KICK_FORWARD", "RIGHT_LEG_KICK_FORWARD"],
+      "substitute_prompt_patterns": ["\\bkicks?\\b", "\\braises? .*hand\\b"]
+    },
+    {
+      "label": "acrobatics",
+      "issue_type": "momask_realization_or_scale_review",
+      "recoverability": "geometry_candidate",
+      "caption_patterns": ["\\bcartwheel(s|ing)?\\b", "\\bbackflip(s)?\\b", "\\bhandsprings?\\b"],
+      "expected_families": ["ACROBATIC_SEQUENCE_CANDIDATE", "CARTWHEEL_CANDIDATE", "INVERTED_ACROBATICS_CANDIDATE"],
+      "substitute_families": ["VERTICAL_JUMP", "BALLISTIC_TRANSLATION", "TURN_SEGMENT"],
+      "substitute_prompt_patterns": ["\\bjumps?\\b", "\\bturns?\\b"]
+    }
+  ]
+}

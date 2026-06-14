@@ -10,6 +10,7 @@ from .aml_language import aml_event_to_template, aml_program_to_templates, attac
 from .aml_prompt_renderer import event_to_prompt_clause, render_aml_prompt, select_prompt_events
 from .coarse_signature import build_coarse_action_program, build_event_coarse_signature, assign_seeded_prototype
 from .coarse_prompt_renderer import render_coarse_aml_prompt
+from .geometry_sidecar import build_geometry_signature, summarize_geometry_sidecars
 
 __all__ = [
     "EditProgram",
@@ -43,4 +44,6 @@ __all__ = [
     "build_coarse_action_program",
     "assign_seeded_prototype",
     "build_event_coarse_signature",
+    "build_geometry_signature",
+    "summarize_geometry_sidecars",
 ]

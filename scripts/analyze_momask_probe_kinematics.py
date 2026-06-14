@@ -87,8 +87,12 @@ def _flag(row: dict[str, Any]) -> list[str]:
     vert_ratio = _ratio(pred['root_vertical_amp_m'], gt['root_vertical_amp_m'])
     if path_ratio is not None and (path_ratio < 0.35 or path_ratio > 2.8):
         flags.append('root_path_mismatch')
+    elif path_ratio is not None and (path_ratio < 0.60 or path_ratio > 1.50):
+        flags.append('root_path_scale_review')
     if vert_ratio is not None and (vert_ratio < 0.35 or vert_ratio > 2.8):
         flags.append('vertical_amp_mismatch')
+    elif vert_ratio is not None and (vert_ratio < 0.55 or vert_ratio > 2.20):
+        flags.append('vertical_amp_scale_review')
     if gt['root_path_xz_m'] < 0.35 and pred['root_path_xz_m'] > 1.2:
         flags.append('unexpected_translation')
     if gt['root_vertical_amp_m'] < 0.12 and pred['root_vertical_amp_m'] > 0.35:

@@ -17,6 +17,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
 from pseudoedit3d.edit import build_coarse_action_program
+from pseudoedit3d.edit.aml_family_taxonomy import active_family_id, family_taxonomy_metadata
 from pseudoedit3d.edit.aml_condition_schema import (
     action_condition_weight,
     missing_required_slots,
@@ -154,19 +155,27 @@ def _case_num_frames(case: dict[str, Any]) -> int | None:
 
 def _condition_from_action(action: dict[str, Any], action_index: int) -> dict[str, Any]:
     family = dict(action.get("semantic_family") or {})
-    family_id = str(family.get("family_id") or action.get("canonical_id") or "UNKNOWN")
+    source_family = str(family.get("family_id") or action.get("canonical_id") or "UNKNOWN")
+    family_id = active_family_id(source_family)
+    taxonomy = family_taxonomy_metadata(family_id)
     approx_slots = dict(action.get("approx_slots") or (action.get("slots") or {}).get("approx_slots") or {})
     missing_slots = missing_required_slots(family_id, approx_slots)
     return {
         "action_index": int(action_index),
         "canonical_id": str(action.get("canonical_id") or family_id),
         "family_id": family_id,
-        "source_family": str(family.get("source_family") or action.get("family") or action.get("canonical_id") or family_id),
+        "source_family": str(family.get("source_family") or action.get("family") or action.get("canonical_id") or source_family),
         "status": str(family.get("status") or (action.get("slots") or {}).get("semantic_family_status") or "unknown"),
         "condition_weight": action_condition_weight(family, missing_slots),
         "probe_visible": family.get("probe_visible", True) is not False,
         "motion_only": family.get("motion_only", True) is not False,
         "label_confidence": family.get("label_confidence"),
+        "taxonomy_parent_id": family.get("taxonomy_parent_id") or taxonomy.get("taxonomy_parent_id"),
+        "taxonomy_parent_label": family.get("taxonomy_parent_label") or taxonomy.get("taxonomy_parent_label"),
+        "taxonomy_recoverability": family.get("taxonomy_recoverability") or taxonomy.get("taxonomy_recoverability"),
+        "taxonomy_evidence_axes": family.get("taxonomy_evidence_axes") or taxonomy.get("taxonomy_evidence_axes") or [],
+        "taxonomy_secondary_parent_ids": family.get("taxonomy_secondary_parent_ids") or taxonomy.get("taxonomy_secondary_parent_ids") or [],
+        "ambiguity_boundary": family.get("ambiguity_boundary") or taxonomy.get("ambiguity_boundary"),
         "slot_values": slot_values(approx_slots),
         "slot_confidences": slot_confidences(approx_slots),
         "slot_qualities": slot_qualities(approx_slots),
@@ -195,6 +204,7 @@ def _record_from_case(case: dict[str, Any]) -> dict[str, Any]:
         "num_conditions": len(conditions),
         "status_counts": dict(Counter(cond["status"] for cond in conditions)),
         "family_ids": [cond["family_id"] for cond in conditions],
+        "taxonomy_parent_ids": sorted({str(cond.get("taxonomy_parent_id") or "UNKNOWN_OR_FALLBACK") for cond in conditions}),
         "conditions": conditions,
     }
 
@@ -202,6 +212,8 @@ def _record_from_case(case: dict[str, Any]) -> dict[str, Any]:
 def _summarize(records: list[dict[str, Any]], source: dict[str, Any]) -> dict[str, Any]:
     status_counts: Counter[str] = Counter()
     family_counts: Counter[str] = Counter()
+    taxonomy_parent_counts: Counter[str] = Counter()
+    taxonomy_recoverability_counts: Counter[str] = Counter()
     missing_required = 0
     zero_weight = 0
     total_conditions = 0
@@ -210,6 +222,8 @@ def _summarize(records: list[dict[str, Any]], source: dict[str, Any]) -> dict[st
             total_conditions += 1
             status_counts[str(cond.get("status"))] += 1
             family_counts[str(cond.get("family_id"))] += 1
+            taxonomy_parent_counts[str(cond.get("taxonomy_parent_id") or "UNKNOWN_OR_FALLBACK")] += 1
+            taxonomy_recoverability_counts[str(cond.get("taxonomy_recoverability") or "unknown")] += 1
             if cond.get("missing_required_slots"):
                 missing_required += 1
             if float(cond.get("condition_weight") or 0.0) <= 0.0:
@@ -221,6 +235,8 @@ def _summarize(records: list[dict[str, Any]], source: dict[str, Any]) -> dict[st
         "total_conditions": total_conditions,
         "status_counts": status_counts.most_common(),
         "family_counts": family_counts.most_common(),
+        "taxonomy_parent_counts": taxonomy_parent_counts.most_common(),
+        "taxonomy_recoverability_counts": taxonomy_recoverability_counts.most_common(),
         "missing_required_condition_count": missing_required,
         "zero_weight_condition_count": zero_weight,
     }
@@ -245,6 +261,10 @@ def _write_markdown(summary: dict[str, Any], output: Path, top_n: int) -> None:
         "## Status Counts",
         "",
         _table(["status", "conditions"], [[k, v] for k, v in summary.get("status_counts", [])]),
+        "",
+        "## Top Taxonomy Parents",
+        "",
+        _table(["taxonomy_parent", "conditions"], [[k, v] for k, v in (summary.get("taxonomy_parent_counts") or [])[:top_n]]),
         "",
         "## Top Families",
         "",

@@ -1,0 +1,1219 @@
+{
+  "version": "aml_proto_registry_v1",
+  "legacy_aliases": {
+    "JUMPING_JACK": "BILATERAL_RHYTHMIC_COORDINATION",
+    "CELEBRATORY_DANCE_GESTURE": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+    "SQUAT_REPETITION": "LOW_BODY_REPETITION",
+    "SQUAT_ARM_LIFT": "LOW_BODY_REPETITION_WITH_ARM_LIFT"
+  },
+  "semantic_family_status": {
+    "unknown": {
+      "EVENT_SEQUENCE": "UNKNOWN_EVENT_SEQUENCE",
+      "BIMANUAL_ACTION": "UNKNOWN_BIMANUAL_FAMILY"
+    },
+    "candidate": [
+      "WEAK_BALLISTIC_CANDIDATE",
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+      "LUNGE_CANDIDATE",
+      "SIT_DOWN_CANDIDATE",
+      "STAND_UP_CANDIDATE",
+      "SIT_STAND_CYCLE_CANDIDATE",
+      "CIRCULAR_WALK_PATH",
+      "CARTWHEEL_CANDIDATE",
+      "INVERTED_ACROBATICS_CANDIDATE",
+      "ACROBATIC_SEQUENCE_CANDIDATE",
+      "LEG_FORWARD_POSE_CANDIDATE",
+      "DANCE_LEG_POSE_CANDIDATE",
+      "BIMANUAL_ARM_MIME_CANDIDATE",
+      "UNILATERAL_ARM_MIME_CANDIDATE"
+    ],
+    "proxy": [
+      "CLIMB_UP_OVER_PROXY",
+      "TORSO_HUNCHED_FORWARD",
+      "LEFT_HAND_RAISED_HIGH",
+      "RIGHT_HAND_RAISED_HIGH",
+      "SQUAT_HOLD",
+      "LEFT_LEG_KICK_FORWARD",
+      "RIGHT_LEG_KICK_FORWARD",
+      "IN_PLACE_GAIT_PROXY",
+      "STATIC_OR_SUBTLE_STATE_PROXY",
+      "LOW_BODY_HOLD_PROXY",
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "TORSO_PERIODIC_MOTION_PROXY",
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY"
+    ]
+  },
+  "semantic_cover_suppression": {
+    "low_body_vertical_transition_cover": [
+      "LEFT_LEG_KICK_FORWARD",
+      "RIGHT_LEG_KICK_FORWARD",
+      "LEG_FORWARD_POSE_CANDIDATE",
+      "SQUAT_HOLD",
+      "LOW_BODY_REPETITION",
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+      "LEFT_HAND_RAISED_HIGH",
+      "RIGHT_HAND_RAISED_HIGH",
+      "TORSO_HUNCHED_FORWARD",
+      "IN_PLACE_GAIT",
+      "IN_PLACE_GAIT_PROXY"
+    ],
+    "low_body_leg_pair_cover": [
+      "LEFT_LEG_KICK_FORWARD",
+      "RIGHT_LEG_KICK_FORWARD",
+      "LEG_FORWARD_POSE_CANDIDATE",
+      "SQUAT_HOLD",
+      "TORSO_HUNCHED_FORWARD"
+    ],
+    "ground_transition_cover": [
+      "LEFT_LEG_KICK_FORWARD",
+      "RIGHT_LEG_KICK_FORWARD",
+      "LEG_FORWARD_POSE_CANDIDATE"
+    ]
+  },
+  "semantic_action_groups": {
+    "hand_high": [
+      "LEFT_HAND_RAISED_HIGH",
+      "RIGHT_HAND_RAISED_HIGH"
+    ],
+    "aggregate_by_group": [
+      "TORSO_HUNCHED_FORWARD",
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "TORSO_PERIODIC_MOTION_PROXY",
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY"
+    ],
+    "suppress_when_repeated_low_body": [
+      "SQUAT_HOLD"
+    ],
+    "defer_to_state_axis": [
+      "TERMINAL_STILL"
+    ],
+    "leg_forward_pose": [
+      "LEG_FORWARD_POSE_CANDIDATE"
+    ],
+    "leg_kick": [
+      "LEFT_LEG_KICK_FORWARD",
+      "RIGHT_LEG_KICK_FORWARD"
+    ],
+    "emit_and_cover": [
+      "CIRCULAR_WALK_PATH",
+      "CLIMB_UP_OVER_PROXY",
+      "CARTWHEEL_CANDIDATE",
+      "INVERTED_ACROBATICS_CANDIDATE",
+      "SQUAT_HOLD",
+      "LOW_BODY_HOLD_PROXY",
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "TORSO_PERIODIC_MOTION_PROXY",
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY"
+    ],
+    "skip_when_already_covered": [
+      "LOW_BODY_HOLD_PROXY",
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY",
+      "TORSO_PERIODIC_MOTION_PROXY",
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY"
+    ]
+  },
+  "semantic_action_emitters": {
+    "low_body_repetition": {
+      "prototype_id": "LOW_BODY_REPETITION",
+      "name_hint": "low_body_repetition",
+      "primary_direction": "low",
+      "confidence": 0.72,
+      "lexical_alias_candidates": [
+        "squat"
+      ]
+    },
+    "low_body_repetition_with_arm_lift": {
+      "prototype_id": "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+      "name_hint": "low_body_repetition_with_arm_lift",
+      "primary_direction": "low",
+      "confidence": 0.72,
+      "lexical_alias_candidates": [
+        "squat"
+      ]
+    }
+  },
+  "semantic_suppression_reasons": {
+    "low_body_leg_pair_cover": "composed_low_body_leg_pair"
+  },
+  "fallback_entrypoints": {
+    "no_salient_event_family": "STATIC_OR_SUBTLE_STATE_PROXY",
+    "unknown_source_family": "EVENT_SEQUENCE"
+  },
+  "dominance": {
+    "dominant_prototypes": [
+      "CLIMB_UP_OVER_PROXY",
+      "ACROBATIC_SEQUENCE_CANDIDATE",
+      "CARTWHEEL_CANDIDATE",
+      "DANCE_LEG_POSE_CANDIDATE",
+      "BILATERAL_RHYTHMIC_COORDINATION",
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+      "LUNGE_CANDIDATE",
+      "SIT_DOWN_CANDIDATE",
+      "STAND_UP_CANDIDATE",
+      "SIT_STAND_CYCLE_CANDIDATE",
+      "IN_PLACE_GAIT"
+    ],
+    "hideable_targets": [
+      "BALLISTIC_TRANSLATION",
+      "BALLISTIC_TRANSLATION_SEGMENT",
+      "VERTICAL_JUMP",
+      "VERTICAL_JUMP_SEGMENT",
+      "CIRCULAR_WALK_PATH",
+      "TRANSLATING_GAIT_SEGMENT",
+      "LEFT_LEG_KICK_FORWARD",
+      "RIGHT_LEG_KICK_FORWARD",
+      "LEG_FORWARD_POSE_CANDIDATE",
+      "SQUAT_HOLD",
+      "LOW_BODY_REPETITION",
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+      "LEFT_HAND_RAISED_HIGH",
+      "RIGHT_HAND_RAISED_HIGH",
+      "TORSO_HUNCHED_FORWARD",
+      "IN_PLACE_GAIT",
+      "IN_PLACE_GAIT_PROXY"
+    ],
+    "dominant_groups": {
+      "SIT_STAND_TRANSITION": [
+        "SIT_DOWN_CANDIDATE",
+        "STAND_UP_CANDIDATE",
+        "SIT_STAND_CYCLE_CANDIDATE"
+      ],
+      "ACROBATICS": [
+        "ACROBATIC_SEQUENCE_CANDIDATE",
+        "CARTWHEEL_CANDIDATE"
+      ]
+    },
+    "hide_by_dominant": {
+      "IN_PLACE_GAIT": [
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "LEG_FORWARD_POSE_CANDIDATE"
+      ],
+      "BILATERAL_RHYTHMIC_COORDINATION": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "SQUAT_HOLD",
+        "LOW_BODY_REPETITION",
+        "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH",
+        "IN_PLACE_GAIT",
+        "IN_PLACE_GAIT_PROXY"
+      ],
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH",
+        "IN_PLACE_GAIT",
+        "IN_PLACE_GAIT_PROXY"
+      ],
+      "LOW_BODY_REPETITION": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "SQUAT_HOLD"
+      ],
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "SQUAT_HOLD",
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH"
+      ],
+      "LUNGE_CANDIDATE": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "TRANSLATING_GAIT_SEGMENT",
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "LEG_FORWARD_POSE_CANDIDATE",
+        "SQUAT_HOLD",
+        "TORSO_HUNCHED_FORWARD"
+      ],
+      "SIT_STAND_TRANSITION": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP",
+        "VERTICAL_JUMP_SEGMENT",
+        "TRANSLATING_GAIT_SEGMENT",
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "LEG_FORWARD_POSE_CANDIDATE",
+        "SQUAT_HOLD",
+        "LOW_BODY_REPETITION",
+        "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+        "TORSO_HUNCHED_FORWARD"
+      ],
+      "CLIMB_UP_OVER_PROXY": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "CIRCULAR_WALK_PATH",
+        "TRANSLATING_GAIT_SEGMENT"
+      ],
+      "ACROBATICS": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "VERTICAL_JUMP_SEGMENT",
+        "TRANSLATING_GAIT_SEGMENT"
+      ],
+      "DANCE_LEG_POSE_CANDIDATE": [
+        "BALLISTIC_TRANSLATION",
+        "BALLISTIC_TRANSLATION_SEGMENT",
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "TRANSLATING_GAIT_SEGMENT"
+      ]
+    }
+  },
+  "fallback_actions": {
+    "redundant": [
+      "EVENT_SEQUENCE",
+      "BIMANUAL_ACTION"
+    ]
+  },
+  "condition_schema": {
+    "default_required_approx_slots": [
+      "span"
+    ],
+    "required_approx_slots": {
+      "TRANSLATING_GAIT": [
+        "span",
+        "direction",
+        "distance_m",
+        "speed"
+      ],
+      "TRANSLATING_GAIT_SEGMENT": [
+        "span",
+        "direction",
+        "distance_m",
+        "speed"
+      ],
+      "IN_PLACE_GAIT": [
+        "span",
+        "direction",
+        "count",
+        "vertical_amplitude_m"
+      ],
+      "IN_PLACE_GAIT_PROXY": [
+        "span",
+        "direction",
+        "count",
+        "vertical_amplitude_m",
+        "source_event_count"
+      ],
+      "BALLISTIC_TRANSLATION": [
+        "span",
+        "direction",
+        "distance_m",
+        "vertical_amplitude_m"
+      ],
+      "BALLISTIC_TRANSLATION_SEGMENT": [
+        "span",
+        "direction",
+        "distance_m",
+        "vertical_amplitude_m"
+      ],
+      "WEAK_BALLISTIC_CANDIDATE": [
+        "span",
+        "direction",
+        "distance_m",
+        "vertical_amplitude_m"
+      ],
+      "VERTICAL_JUMP": [
+        "span",
+        "direction",
+        "vertical_amplitude_m"
+      ],
+      "VERTICAL_JUMP_SEGMENT": [
+        "span",
+        "direction",
+        "vertical_amplitude_m"
+      ],
+      "BILATERAL_RHYTHMIC_COORDINATION": [
+        "span",
+        "direction",
+        "count",
+        "vertical_amplitude_m",
+        "raise_spread_count"
+      ],
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE": [
+        "span",
+        "direction",
+        "turn_count",
+        "locomotion_segment_count",
+        "raise_spread_count",
+        "bimanual_count"
+      ],
+      "ROTATION_DOMINANT": [
+        "span",
+        "direction",
+        "angle_deg",
+        "angle_bin"
+      ],
+      "TURN_SEGMENT": [
+        "span",
+        "direction",
+        "angle_deg",
+        "angle_bin"
+      ],
+      "RECOVERY_STEP_SEGMENT": [
+        "span",
+        "direction",
+        "distance_m",
+        "speed"
+      ],
+      "TERMINAL_STILL": [
+        "span",
+        "direction"
+      ],
+      "BIMANUAL_HANDS_CLOSE": [
+        "span",
+        "direction",
+        "count"
+      ],
+      "BIMANUAL_ARM_MIME_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count",
+        "bimanual_count"
+      ],
+      "UNILATERAL_ARM_MIME_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count",
+        "dominant_side"
+      ],
+      "TORSO_HUNCHED_FORWARD": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "LEFT_HAND_RAISED_HIGH": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "RIGHT_HAND_RAISED_HIGH": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "SQUAT_HOLD": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "LOW_BODY_REPETITION": [
+        "span",
+        "direction",
+        "count",
+        "magnitude|vertical_amplitude_m"
+      ],
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT": [
+        "span",
+        "direction",
+        "count",
+        "magnitude|vertical_amplitude_m",
+        "bimanual_count"
+      ],
+      "LUNGE_CANDIDATE": [
+        "span",
+        "direction",
+        "dominant_side",
+        "source_event_count",
+        "magnitude"
+      ],
+      "SIT_DOWN_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "STAND_UP_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "SIT_STAND_CYCLE_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "LEFT_LEG_KICK_FORWARD": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "RIGHT_LEG_KICK_FORWARD": [
+        "span",
+        "direction",
+        "source_event_count",
+        "magnitude"
+      ],
+      "LEG_FORWARD_POSE_CANDIDATE": [
+        "span",
+        "direction",
+        "dominant_side",
+        "source_event_count"
+      ],
+      "DANCE_LEG_POSE_CANDIDATE": [
+        "span",
+        "direction",
+        "dominant_side",
+        "source_event_count"
+      ],
+      "CIRCULAR_WALK_PATH": [
+        "span",
+        "direction",
+        "path_length_m",
+        "curvature_rad",
+        "circle_score"
+      ],
+      "CLIMB_UP_OVER_PROXY": [
+        "span",
+        "direction",
+        "root_height_gain_m",
+        "source_event_count"
+      ],
+      "CARTWHEEL_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count"
+      ],
+      "INVERTED_ACROBATICS_CANDIDATE": [
+        "span",
+        "direction",
+        "source_event_count"
+      ],
+      "ACROBATIC_SEQUENCE_CANDIDATE": [
+        "span",
+        "direction",
+        "segment_count",
+        "source_event_count"
+      ],
+      "STATIC_OR_SUBTLE_STATE_PROXY": [
+        "span",
+        "source_event_count"
+      ],
+      "LOW_BODY_HOLD_PROXY": [
+        "span",
+        "direction",
+        "source_event_count"
+      ],
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY": [
+        "span",
+        "direction",
+        "source_event_count",
+        "count"
+      ],
+      "TORSO_PERIODIC_MOTION_PROXY": [
+        "span",
+        "direction",
+        "source_event_count",
+        "count"
+      ],
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY": [
+        "span",
+        "direction",
+        "source_event_count",
+        "count"
+      ],
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY": [
+        "span",
+        "direction",
+        "source_event_count",
+        "count"
+      ],
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY": [
+        "span",
+        "direction",
+        "source_event_count",
+        "count"
+      ]
+    }
+  },
+  "probe_aliases": {
+    "default": {
+      "field": "name_hint",
+      "fallback": "motion",
+      "transform": "underscore_to_space"
+    },
+    "by_prototype": {
+      "EVENT_SEQUENCE": {
+        "value": "unknown motion pattern"
+      },
+      "WEAK_BALLISTIC_CANDIDATE": {
+        "template": "weak jump-like {direction} motion candidate",
+        "fields": {
+          "direction": {
+            "path": "primary_direction",
+            "default": "in_place",
+            "omit_if": [
+              "in_place"
+            ]
+          }
+        },
+        "fallback": "weak jump-like motion candidate"
+      },
+      "TRANSLATING_GAIT": {
+        "field": "name_hint",
+        "default": "walk"
+      },
+      "TRANSLATING_GAIT_SEGMENT": {
+        "field": "name_hint",
+        "default": "walk"
+      },
+      "IN_PLACE_GAIT": {
+        "name_cases": {
+          "run_in_place": "run in place",
+          "jog_in_place": "jog in place"
+        },
+        "default": "walk in place"
+      },
+      "IN_PLACE_GAIT_PROXY": {
+        "value": "in-place gait proxy"
+      },
+      "BILATERAL_RHYTHMIC_COORDINATION": {
+        "value": "bilateral rhythmic arm-leg coordination"
+      },
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE": {
+        "value": "bilateral rhythmic upper-body gesture"
+      },
+      "BALLISTIC_TRANSLATION": {
+        "template": "jump {direction}",
+        "fields": {
+          "direction": {
+            "path": "primary_direction",
+            "default": "in_place",
+            "omit_if": [
+              "in_place"
+            ]
+          }
+        },
+        "fallback": "jump"
+      },
+      "BALLISTIC_TRANSLATION_SEGMENT": {
+        "template": "jump {direction}",
+        "fields": {
+          "direction": {
+            "path": "primary_direction",
+            "default": "in_place",
+            "omit_if": [
+              "in_place"
+            ]
+          }
+        },
+        "fallback": "jump"
+      },
+      "VERTICAL_JUMP": {
+        "value": "jump upward"
+      },
+      "VERTICAL_JUMP_SEGMENT": {
+        "value": "jump upward"
+      },
+      "RECOVERY_STEP_SEGMENT": {
+        "value": "recovery step"
+      },
+      "ROTATION_DOMINANT": {
+        "value": "turn"
+      },
+      "TURN_SEGMENT": {
+        "value": "turn"
+      },
+      "TERMINAL_STILL": {
+        "value": "stand still"
+      },
+      "BIMANUAL_HANDS_CLOSE": {
+        "value": "bring hands together"
+      },
+      "BIMANUAL_ACTION": {
+        "field": "name_hint",
+        "default": "bimanual action",
+        "transform": "underscore_to_space"
+      },
+      "BIMANUAL_ARM_MIME_CANDIDATE": {
+        "value": "bimanual upper-body gesture"
+      },
+      "UNILATERAL_ARM_MIME_CANDIDATE": {
+        "template": "{side} arm gesture",
+        "fields": {
+          "side": {
+            "path": "dominant_side",
+            "allowed": [
+              "left",
+              "right"
+            ]
+          }
+        },
+        "fallback": "one-arm gesture"
+      },
+      "STATIC_OR_SUBTLE_STATE_PROXY": {
+        "value": "subtle mostly still pose"
+      },
+      "TORSO_HUNCHED_FORWARD": {
+        "value": "torso hunched forward"
+      },
+      "LEFT_HAND_RAISED_HIGH": {
+        "value": "left hand raised high"
+      },
+      "RIGHT_HAND_RAISED_HIGH": {
+        "value": "right hand raised high"
+      },
+      "SQUAT_HOLD": {
+        "value": "low squat hold"
+      },
+      "LOW_BODY_REPETITION": {
+        "value": "repeated low-body posture"
+      },
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT": {
+        "value": "repeated low-body posture with arm lift"
+      },
+      "LUNGE_CANDIDATE": {
+        "value": "lunge candidate"
+      },
+      "SIT_DOWN_CANDIDATE": {
+        "value": "sit down candidate"
+      },
+      "STAND_UP_CANDIDATE": {
+        "value": "stand up candidate"
+      },
+      "SIT_STAND_CYCLE_CANDIDATE": {
+        "value": "sit stand cycle candidate"
+      },
+      "ACROBATIC_SEQUENCE_CANDIDATE": {
+        "value": "acrobatic inverted sequence"
+      },
+      "LEFT_LEG_KICK_FORWARD": {
+        "value": "left leg forward kick"
+      },
+      "RIGHT_LEG_KICK_FORWARD": {
+        "value": "right leg forward kick"
+      },
+      "LEG_FORWARD_POSE_CANDIDATE": {
+        "value": "leg forward pose"
+      },
+      "DANCE_LEG_POSE_CANDIDATE": {
+        "value": "dance-like raised leg pose"
+      },
+      "CIRCULAR_WALK_PATH": {
+        "value": "circular walking path"
+      },
+      "CLIMB_UP_OVER_PROXY": {
+        "value": "climb up and over proxy"
+      },
+      "CARTWHEEL_CANDIDATE": {
+        "value": "cartwheel candidate"
+      },
+      "INVERTED_ACROBATICS_CANDIDATE": {
+        "value": "inverted acrobatic candidate"
+      },
+      "LOW_BODY_HOLD_PROXY": {
+        "value": "low-body hold proxy"
+      },
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY": {
+        "value": "whole-body vertical motion proxy"
+      },
+      "TORSO_PERIODIC_MOTION_PROXY": {
+        "value": "torso periodic motion proxy"
+      },
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY": {
+        "value": "left arm periodic gesture proxy"
+      },
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY": {
+        "value": "right arm periodic gesture proxy"
+      },
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY": {
+        "value": "bimanual arm raise or spread proxy"
+      }
+    }
+  },
+  "prompt_renderer": {
+    "default_clause": {
+      "kind": "none"
+    },
+    "default_salience": 0.25,
+    "by_prototype": {
+      "TRANSLATING_GAIT": {
+        "clause": {
+          "kind": "gait"
+        },
+        "salience": 0.9
+      },
+      "TRANSLATING_GAIT_SEGMENT": {
+        "clause": {
+          "kind": "gait"
+        },
+        "salience": 0.74
+      },
+      "IN_PLACE_GAIT": {
+        "clause": {
+          "kind": "name_cases",
+          "cases": {
+            "run_in_place": "runs in place",
+            "jog_in_place": "jogs in place"
+          },
+          "default": "walks in place"
+        },
+        "salience": 0.9
+      },
+      "IN_PLACE_GAIT_PROXY": {
+        "clause": {
+          "value": "makes a small in-place bouncing motion"
+        },
+        "salience": 0.56
+      },
+      "BILATERAL_RHYTHMIC_COORDINATION": {
+        "clause": {
+          "template": "repeatedly coordinates both arms with vertical body motion{count_suffix}",
+          "fields": {
+            "count_suffix": {
+              "kind": "repeat_suffix",
+              "path": "count",
+              "min": 2
+            }
+          }
+        },
+        "salience": 1.0
+      },
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE": {
+        "clause": {
+          "template": "makes a bilateral rhythmic upper-body gesture{count_suffix}",
+          "fields": {
+            "count_suffix": {
+              "kind": "repeat_suffix",
+              "path": "raise_spread_count",
+              "min": 2
+            }
+          }
+        },
+        "salience": 0.92
+      },
+      "BALLISTIC_TRANSLATION": {
+        "clause": {
+          "kind": "jump"
+        },
+        "salience": 0.96
+      },
+      "BALLISTIC_TRANSLATION_SEGMENT": {
+        "clause": {
+          "kind": "jump"
+        },
+        "salience": 0.82
+      },
+      "WEAK_BALLISTIC_CANDIDATE": {
+        "clause": {
+          "value": "makes a weak jump-like motion"
+        },
+        "salience": 0.5
+      },
+      "VERTICAL_JUMP": {
+        "clause": {
+          "kind": "jump"
+        },
+        "salience": 0.93
+      },
+      "VERTICAL_JUMP_SEGMENT": {
+        "clause": {
+          "kind": "jump"
+        },
+        "salience": 0.25
+      },
+      "ROTATION_DOMINANT": {
+        "clause": {
+          "kind": "turn"
+        },
+        "salience": 0.76
+      },
+      "TURN_SEGMENT": {
+        "clause": {
+          "kind": "turn"
+        },
+        "salience": 0.72
+      },
+      "TERMINAL_STILL": {
+        "clause": {
+          "value": "comes to a stop and stands still"
+        },
+        "salience": 0.7
+      },
+      "RECOVERY_STEP_SEGMENT": {
+        "clause": {
+          "kind": "recovery_step"
+        },
+        "salience": 0.7
+      },
+      "BIMANUAL_HANDS_CLOSE": {
+        "clause": {
+          "value": "brings both hands together"
+        },
+        "salience": 0.45
+      },
+      "BIMANUAL_ACTION": {
+        "clause": {
+          "kind": "bimanual_signature"
+        },
+        "salience": 0.42
+      },
+      "BIMANUAL_ARM_MIME_CANDIDATE": {
+        "clause": {
+          "value": "makes a bimanual upper-body gesture"
+        },
+        "salience": 0.62
+      },
+      "UNILATERAL_ARM_MIME_CANDIDATE": {
+        "clause": {
+          "template": "makes repeated {side} arm gestures",
+          "fields": {
+            "side": {
+              "path": "dominant_side",
+              "allowed": [
+                "left",
+                "right"
+              ]
+            }
+          },
+          "fallback": "makes repeated one-arm gestures"
+        },
+        "salience": 0.58
+      },
+      "STATIC_OR_SUBTLE_STATE_PROXY": {
+        "clause": {
+          "value": "holds a mostly still subtle pose"
+        },
+        "salience": 0.44
+      },
+      "TORSO_HUNCHED_FORWARD": {
+        "clause": {
+          "value": "keeps the torso hunched forward"
+        },
+        "salience": 0.72
+      },
+      "LEFT_HAND_RAISED_HIGH": {
+        "clause": {
+          "value": "raises the left hand high"
+        },
+        "salience": 0.8
+      },
+      "RIGHT_HAND_RAISED_HIGH": {
+        "clause": {
+          "value": "raises the right hand high"
+        },
+        "salience": 0.8
+      },
+      "SQUAT_HOLD": {
+        "clause": {
+          "value": "squats low"
+        },
+        "salience": 0.84
+      },
+      "LOW_BODY_REPETITION": {
+        "clause": {
+          "kind": "low_body_repetition"
+        },
+        "salience": 0.94
+      },
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT": {
+        "clause": {
+          "kind": "low_body_repetition",
+          "has_arm_lift": true
+        },
+        "salience": 0.96
+      },
+      "LUNGE_CANDIDATE": {
+        "clause": {
+          "template": "does a {side}-leg lunge",
+          "fields": {
+            "side": {
+              "path": "dominant_side",
+              "allowed": [
+                "left",
+                "right"
+              ]
+            }
+          },
+          "fallback": "does a lunge"
+        },
+        "salience": 0.91
+      },
+      "SIT_DOWN_CANDIDATE": {
+        "clause": {
+          "value": "sits down"
+        },
+        "salience": 0.93
+      },
+      "STAND_UP_CANDIDATE": {
+        "clause": {
+          "value": "stands up"
+        },
+        "salience": 0.93
+      },
+      "SIT_STAND_CYCLE_CANDIDATE": {
+        "clause": {
+          "field_cases": {
+            "field": "phase_order",
+            "cases": {
+              "up_then_down": "stands up, then sits down"
+            },
+            "default": "sits down, then stands back up"
+          }
+        },
+        "salience": 0.98
+      },
+      "LEFT_LEG_KICK_FORWARD": {
+        "clause": {
+          "value": "kicks the left leg forward"
+        },
+        "salience": 0.82
+      },
+      "RIGHT_LEG_KICK_FORWARD": {
+        "clause": {
+          "value": "kicks the right leg forward"
+        },
+        "salience": 0.82
+      },
+      "LEG_FORWARD_POSE_CANDIDATE": {
+        "clause": {
+          "template": "holds the {side} leg forward",
+          "fields": {
+            "side": {
+              "path": "dominant_side",
+              "allowed": [
+                "left",
+                "right"
+              ]
+            }
+          },
+          "fallback": "holds one leg forward"
+        },
+        "salience": 0.86
+      },
+      "DANCE_LEG_POSE_CANDIDATE": {
+        "clause": {
+          "template": "holds a dance-like pose with the {side} leg extended",
+          "fields": {
+            "side": {
+              "path": "dominant_side",
+              "allowed": [
+                "left",
+                "right"
+              ]
+            }
+          },
+          "fallback": "holds a dance-like raised-leg pose"
+        },
+        "salience": 0.97
+      },
+      "CIRCULAR_WALK_PATH": {
+        "clause": {
+          "value": "walks in a circular path"
+        },
+        "salience": 0.87
+      },
+      "CLIMB_UP_OVER_PROXY": {
+        "clause": {
+          "value": "climbs upward and over"
+        },
+        "salience": 0.92
+      },
+      "CARTWHEEL_CANDIDATE": {
+        "clause": {
+          "value": "does a cartwheel-like inverted motion"
+        },
+        "salience": 0.95
+      },
+      "INVERTED_ACROBATICS_CANDIDATE": {
+        "clause": {
+          "value": "does an inverted acrobatic motion"
+        },
+        "salience": 0.92
+      },
+      "ACROBATIC_SEQUENCE_CANDIDATE": {
+        "clause": {
+          "kind": "acrobatic_sequence"
+        },
+        "salience": 1.02
+      },
+      "LOW_BODY_HOLD_PROXY": {
+        "clause": {
+          "value": "holds the body low"
+        },
+        "salience": 0.48
+      },
+      "WHOLE_BODY_VERTICAL_MOTION_PROXY": {
+        "clause": {
+          "value": "changes body height"
+        },
+        "salience": 0.38
+      },
+      "TORSO_PERIODIC_MOTION_PROXY": {
+        "clause": {
+          "value": "moves the torso forward and back"
+        },
+        "salience": 0.42
+      },
+      "LEFT_ARM_PERIODIC_GESTURE_PROXY": {
+        "clause": {
+          "value": "makes repeated left arm gestures"
+        },
+        "salience": 0.42
+      },
+      "RIGHT_ARM_PERIODIC_GESTURE_PROXY": {
+        "clause": {
+          "value": "makes repeated right arm gestures"
+        },
+        "salience": 0.42
+      },
+      "BIMANUAL_ARM_RAISE_SPREAD_PROXY": {
+        "clause": {
+          "value": "raises or spreads both arms"
+        },
+        "salience": 0.43
+      }
+    }
+  },
+  "primary_action_metadata": {
+    "primary_event_cover": {
+      "BILATERAL_RHYTHMIC_COORDINATION": {
+        "mode": "families",
+        "families": [
+          "WHOLE_BODY_VERTICAL",
+          "BIMANUAL_PERIODIC",
+          "LEFT_ARM_PERIODIC",
+          "RIGHT_ARM_PERIODIC",
+          "TORSO_PERIODIC"
+        ]
+      },
+      "BALLISTIC_TRANSLATION": {
+        "mode": "ballistic_translation"
+      },
+      "VERTICAL_JUMP": {
+        "mode": "vertical_jump"
+      },
+      "TRANSLATING_GAIT": {
+        "mode": "translating_gait"
+      },
+      "IN_PLACE_GAIT": {
+        "mode": "families",
+        "families": [
+          "WHOLE_BODY_VERTICAL",
+          "LEFT_ARM_PERIODIC",
+          "RIGHT_ARM_PERIODIC",
+          "BIMANUAL_PERIODIC",
+          "TORSO_PERIODIC"
+        ]
+      },
+      "IN_PLACE_GAIT_PROXY": {
+        "mode": "prototype_source_indices"
+      },
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE": {
+        "mode": "families_with_weak_locomotion",
+        "families": [
+          "BIMANUAL_PERIODIC",
+          "WHOLE_BODY_ROTATION",
+          "WHOLE_BODY_VERTICAL",
+          "TORSO_PERIODIC"
+        ],
+        "weak_locomotion_max_m": 0.45
+      },
+      "ROTATION_DOMINANT": {
+        "mode": "rotation"
+      },
+      "BIMANUAL_ACTION": {
+        "mode": "limb_indices",
+        "limb_key": "bimanual_event_indices"
+      },
+      "BIMANUAL_ARM_MIME_CANDIDATE": {
+        "mode": "prototype_source_indices"
+      },
+      "UNILATERAL_ARM_MIME_CANDIDATE": {
+        "mode": "prototype_source_indices"
+      },
+      "STATIC_OR_SUBTLE_STATE_PROXY": {
+        "mode": "prototype_source_indices"
+      },
+      "LOW_BODY_REPETITION": {
+        "mode": "low_body_repetition"
+      },
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT": {
+        "mode": "low_body_repetition",
+        "include_bimanual": true
+      }
+    },
+    "covered_span_prototypes": [
+      "BILATERAL_RHYTHMIC_COORDINATION",
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+      "VERTICAL_JUMP",
+      "IN_PLACE_GAIT",
+      "LOW_BODY_REPETITION",
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT"
+    ],
+    "source_event_detail_prototypes": [
+      "EVENT_SEQUENCE",
+      "BIMANUAL_ACTION",
+      "BIMANUAL_ARM_MIME_CANDIDATE",
+      "UNILATERAL_ARM_MIME_CANDIDATE",
+      "BILATERAL_RHYTHMIC_COORDINATION",
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+      "IN_PLACE_GAIT_PROXY",
+      "STATIC_OR_SUBTLE_STATE_PROXY"
+    ],
+    "vertical_count_prototypes": [
+      "BILATERAL_RHYTHMIC_COORDINATION",
+      "VERTICAL_JUMP",
+      "IN_PLACE_GAIT",
+      "IN_PLACE_GAIT_PROXY"
+    ],
+    "squat_vertical_prototypes": [
+      "LOW_BODY_REPETITION",
+      "LOW_BODY_REPETITION_WITH_ARM_LIFT"
+    ],
+    "bilateral_rhythmic_count_prototypes": [
+      "BILATERAL_RHYTHMIC_COORDINATION"
+    ],
+    "bilateral_rhythmic_gesture_prototypes": [
+      "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE"
+    ],
+    "primary_index_from_rotation": [
+      "ROTATION_DOMINANT"
+    ],
+    "locomotion_metric_prototypes": [
+      "TRANSLATING_GAIT"
+    ],
+    "ballistic_metric_prototypes": [
+      "BALLISTIC_TRANSLATION"
+    ],
+    "rotation_metric_prototypes": [
+      "ROTATION_DOMINANT"
+    ],
+    "skip_bilateral_rhythmic_secondary": [
+      "BILATERAL_RHYTHMIC_COORDINATION"
+    ]
+  }
+}

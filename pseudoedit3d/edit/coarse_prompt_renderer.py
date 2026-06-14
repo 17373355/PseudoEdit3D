@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from .aml_family_taxonomy import active_family_id
 from .aml_prompt_renderer import event_to_prompt_clause
+from .aml_proto_registry import registry_map
 from .coarse_signature import build_coarse_action_program
 
 
@@ -100,11 +102,12 @@ def _jump_clause(signature: dict[str, Any], action: dict[str, Any]) -> str:
     return 'jumps upward'
 
 
-def _jumping_jack_clause(signature: dict[str, Any], action: dict[str, Any]) -> str:
-    repeat = int(action.get('count') or (signature.get('vertical') or {}).get('repeat_count') or 0)
-    if repeat >= 2:
-        return f'does jumping jacks{_repeat_phrase(repeat)}'
-    return 'does a jumping jack'
+def _low_body_repetition_clause(action: dict[str, Any], *, has_arm_lift: bool = False) -> str:
+    count = int(action.get('count') or 0)
+    suffix = _repeat_phrase(count) if count >= 2 else ''
+    if has_arm_lift:
+        return f'repeats a low-body posture while lifting the arms{suffix}'
+    return f'repeats a low-body posture{suffix}' if count >= 2 else 'holds a low-body posture'
 
 
 def _turn_clause(signature: dict[str, Any], action: dict[str, Any] | None = None) -> str:
@@ -142,100 +145,115 @@ def _bimanual_clause(signature: dict[str, Any]) -> str:
     return 'moves both arms'
 
 
-def _hands_close_clause(action: dict[str, Any]) -> str:
-    del action
-    return 'brings both hands together'
+def _renderer_specs() -> dict[str, Any]:
+    return registry_map('prompt_renderer')
+
+
+def _renderer_spec_for(action: dict[str, Any]) -> dict[str, Any]:
+    pid = active_family_id(str(action.get('prototype_id', '')))
+    specs = _renderer_specs()
+    by_prototype = specs.get('by_prototype') or {}
+    spec = by_prototype.get(pid) if isinstance(by_prototype, dict) else None
+    return dict(spec) if isinstance(spec, dict) else {}
+
+
+def _field_text(action: dict[str, Any], spec: dict[str, Any]) -> str:
+    path = str(spec.get('path', ''))
+    value = action.get(path) if path else None
+    if value is None:
+        value = spec.get('default')
+    if value is None:
+        return ''
+    text = str(value)
+    allowed = spec.get('allowed')
+    if isinstance(allowed, list) and text not in {str(item) for item in allowed}:
+        return ''
+    omit_if = {str(item) for item in spec.get('omit_if') or []}
+    if text in omit_if:
+        return ''
+    return text
+
+
+def _template_fields(action: dict[str, Any], fields: dict[str, Any]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for key, value in fields.items():
+        if not isinstance(value, dict):
+            continue
+        if value.get('kind') == 'repeat_suffix':
+            count = int(action.get(str(value.get('path', 'count'))) or 0)
+            threshold = int(value.get('min', 1) or 1)
+            out[str(key)] = _repeat_phrase(count) if count >= threshold else ''
+        else:
+            out[str(key)] = _field_text(action, value)
+    return out
+
+
+def _recovery_step_clause(action: dict[str, Any]) -> str:
+    direction = str(action.get('primary_direction') or '')
+    if direction in {'backward', 'forward'}:
+        return f'steps {direction} to regain balance'
+    if direction in {'left', 'right'}:
+        return f'steps to the {direction} to regain balance'
+    return 'takes a recovery step to regain balance'
+
+
+def _acrobatic_sequence_clause(action: dict[str, Any]) -> str:
+    count = int(action.get('segment_count') or action.get('count') or 0)
+    if count >= 2:
+        return f'does repeated inverted acrobatic motions{_repeat_phrase(count)}'
+    return 'does an inverted acrobatic motion'
+
+
+def _clause_from_spec(signature: dict[str, Any], action: dict[str, Any], spec: dict[str, Any]) -> str | None:
+    if not spec:
+        return None
+    if 'value' in spec:
+        return str(spec['value'])
+    if 'field_cases' in spec:
+        field_cases = spec.get('field_cases') or {}
+        field = str(field_cases.get('field', ''))
+        value = str(action.get(field) or '')
+        cases = field_cases.get('cases') or {}
+        if isinstance(cases, dict) and value in cases:
+            return str(cases[value])
+        if field_cases.get('default') is not None:
+            return str(field_cases['default'])
+    if spec.get('kind') == 'name_cases':
+        cases = spec.get('cases') or {}
+        name = str(action.get('name_hint') or '')
+        if isinstance(cases, dict) and name in cases:
+            return str(cases[name])
+        return str(spec.get('default', ''))
+    if 'template' in spec:
+        fields = _template_fields(action, spec.get('fields') or {})
+        if all(value for value in fields.values() if value is not None) or fields:
+            try:
+                return str(spec['template']).format(**fields)
+            except KeyError:
+                pass
+        if spec.get('fallback') is not None:
+            return str(spec['fallback'])
+    kind = str(spec.get('kind', ''))
+    if kind == 'gait':
+        return _gait_clause(signature, action)
+    if kind == 'jump':
+        return _jump_clause(signature, action)
+    if kind == 'turn':
+        return _turn_clause(signature, action)
+    if kind == 'bimanual_signature':
+        return _bimanual_clause(signature)
+    if kind == 'low_body_repetition':
+        return _low_body_repetition_clause(action, has_arm_lift=bool(spec.get('has_arm_lift')))
+    if kind == 'recovery_step':
+        return _recovery_step_clause(action)
+    if kind == 'acrobatic_sequence':
+        return _acrobatic_sequence_clause(action)
+    return None
 
 
 def _action_clause(signature: dict[str, Any], action: dict[str, Any]) -> str | None:
-    pid = str(action.get('prototype_id', ''))
-    if pid in {'TRANSLATING_GAIT', 'TRANSLATING_GAIT_SEGMENT'}:
-        return _gait_clause(signature, action)
-    if pid == 'IN_PLACE_GAIT':
-        name_hint = str(action.get('name_hint'))
-        if name_hint == 'run_in_place':
-            return 'runs in place'
-        if name_hint == 'jog_in_place':
-            return 'jogs in place'
-        return 'walks in place'
-    if pid == 'IN_PLACE_GAIT_PROXY':
-        return 'makes a small in-place bouncing motion'
-    if pid == 'CELEBRATORY_DANCE_GESTURE':
-        count = int(action.get('raise_spread_count') or 0)
-        if count >= 3:
-            return 'makes a cheer-like dance gesture with repeated arm raises'
-        return 'makes a cheer-like dance gesture'
-    if pid in {'BALLISTIC_TRANSLATION', 'BALLISTIC_TRANSLATION_SEGMENT', 'VERTICAL_JUMP', 'VERTICAL_JUMP_SEGMENT'}:
-        return _jump_clause(signature, action)
-    if pid == 'JUMPING_JACK':
-        return _jumping_jack_clause(signature, action)
-    if pid in {'ROTATION_DOMINANT', 'TURN_SEGMENT'}:
-        return _turn_clause(signature, action)
-    if pid == 'TERMINAL_STILL':
-        return 'comes to a stop and stands still'
-    if pid == 'RECOVERY_STEP_SEGMENT':
-        direction = str(action.get('primary_direction') or '')
-        if direction in {'backward', 'forward'}:
-            return f'steps {direction} to regain balance'
-        if direction in {'left', 'right'}:
-            return f'steps to the {direction} to regain balance'
-        return 'takes a recovery step to regain balance'
-    if pid == 'BIMANUAL_HANDS_CLOSE':
-        return _hands_close_clause(action)
-    if pid == 'BIMANUAL_ACTION':
-        return _bimanual_clause(signature)
-    if pid == 'BIMANUAL_ARM_MIME_CANDIDATE':
-        return 'makes a bimanual upper-body gesture'
-    if pid == 'UNILATERAL_ARM_MIME_CANDIDATE':
-        side = str(action.get('dominant_side') or '')
-        if side in {'left', 'right'}:
-            return f'makes repeated {side} arm gestures'
-        return 'makes repeated one-arm gestures'
-    if pid == 'STATIC_OR_SUBTLE_STATE_PROXY':
-        return 'holds a mostly still subtle pose'
-    if pid == 'TORSO_HUNCHED_FORWARD':
-        return 'keeps the torso hunched forward'
-    if pid == 'LEFT_HAND_RAISED_HIGH':
-        return 'raises the left hand high'
-    if pid == 'RIGHT_HAND_RAISED_HIGH':
-        return 'raises the right hand high'
-    if pid == 'SQUAT_HOLD':
-        return 'squats low'
-    if pid == 'SQUAT_REPETITION':
-        count = int(action.get('count') or 0)
-        return f'repeatedly squats low{_repeat_phrase(count)}' if count >= 2 else 'squats low'
-    if pid == 'SQUAT_ARM_LIFT':
-        count = int(action.get('count') or 0)
-        suffix = _repeat_phrase(count) if count >= 2 else ''
-        return f'repeatedly squats low while lifting the arms{suffix}'
-    if pid == 'LEFT_LEG_KICK_FORWARD':
-        return 'kicks the left leg forward'
-    if pid == 'RIGHT_LEG_KICK_FORWARD':
-        return 'kicks the right leg forward'
-    if pid == 'LEG_FORWARD_POSE_CANDIDATE':
-        side = str(action.get('dominant_side') or '')
-        if side in {'left', 'right'}:
-            return f'holds the {side} leg forward'
-        return 'holds one leg forward'
-    if pid == 'DANCE_LEG_POSE_CANDIDATE':
-        side = str(action.get('dominant_side') or '')
-        if side in {'left', 'right'}:
-            return f'holds a dance-like pose with the {side} leg extended'
-        return 'holds a dance-like raised-leg pose'
-    if pid == 'CIRCULAR_WALK_PATH':
-        return 'walks in a circular path'
-    if pid == 'CLIMB_UP_OVER_PROXY':
-        return 'climbs upward and over'
-    if pid == 'CARTWHEEL_CANDIDATE':
-        return 'does a cartwheel-like inverted motion'
-    if pid == 'INVERTED_ACROBATICS_CANDIDATE':
-        return 'does an inverted acrobatic motion'
-    if pid == 'ACROBATIC_SEQUENCE_CANDIDATE':
-        count = int(action.get('segment_count') or action.get('count') or 0)
-        if count >= 2:
-            return f'does repeated inverted acrobatic motions{_repeat_phrase(count)}'
-        return 'does an inverted acrobatic motion'
-    return None
+    spec = _renderer_spec_for(action).get('clause') or _renderer_specs().get('default_clause') or {}
+    return _clause_from_spec(signature, action, dict(spec)) if isinstance(spec, dict) else None
 
 
 def _probe_sort_key(action: dict[str, Any]) -> tuple[int, int, int]:
@@ -255,42 +273,8 @@ def _semantic_status(action: dict[str, Any]) -> str:
 
 
 def _action_salience(action: dict[str, Any]) -> float:
-    pid = str(action.get('prototype_id', ''))
-    score = {
-        'JUMPING_JACK': 1.0,
-        'BALLISTIC_TRANSLATION': 0.96,
-        'VERTICAL_JUMP': 0.93,
-        'CELEBRATORY_DANCE_GESTURE': 0.92,
-        'ACROBATIC_SEQUENCE_CANDIDATE': 1.02,
-        'CARTWHEEL_CANDIDATE': 0.95,
-        'INVERTED_ACROBATICS_CANDIDATE': 0.92,
-        'CLIMB_UP_OVER_PROXY': 0.92,
-        'SQUAT_ARM_LIFT': 0.96,
-        'SQUAT_REPETITION': 0.94,
-        'CIRCULAR_WALK_PATH': 0.87,
-        'SQUAT_HOLD': 0.84,
-        'LEFT_LEG_KICK_FORWARD': 0.82,
-        'RIGHT_LEG_KICK_FORWARD': 0.82,
-        'LEG_FORWARD_POSE_CANDIDATE': 0.86,
-        'DANCE_LEG_POSE_CANDIDATE': 0.97,
-        'TORSO_HUNCHED_FORWARD': 0.72,
-        'LEFT_HAND_RAISED_HIGH': 0.80,
-        'RIGHT_HAND_RAISED_HIGH': 0.80,
-        'IN_PLACE_GAIT': 0.90,
-        'IN_PLACE_GAIT_PROXY': 0.56,
-        'TRANSLATING_GAIT': 0.90,
-        'TRANSLATING_GAIT_SEGMENT': 0.74,
-        'BALLISTIC_TRANSLATION_SEGMENT': 0.82,
-        'RECOVERY_STEP_SEGMENT': 0.70,
-        'ROTATION_DOMINANT': 0.76,
-        'TURN_SEGMENT': 0.72,
-        'TERMINAL_STILL': 0.70,
-        'BIMANUAL_HANDS_CLOSE': 0.45,
-        'BIMANUAL_ACTION': 0.42,
-        'BIMANUAL_ARM_MIME_CANDIDATE': 0.62,
-        'UNILATERAL_ARM_MIME_CANDIDATE': 0.58,
-        'STATIC_OR_SUBTLE_STATE_PROXY': 0.44,
-    }.get(pid, 0.25)
+    specs = _renderer_specs()
+    score = float(_renderer_spec_for(action).get('salience', specs.get('default_salience', 0.25)))
     if action.get('probe_visible') is False:
         score -= 1.0
     status = _semantic_status(action)

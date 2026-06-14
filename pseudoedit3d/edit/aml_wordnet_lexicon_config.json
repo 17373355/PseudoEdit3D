@@ -1,0 +1,203 @@
+{
+  "version": "aml_wordnet_lexicon_config_v1",
+  "action_noun_lexnames": [
+    "noun.act",
+    "noun.communication",
+    "noun.event",
+    "noun.process"
+  ],
+  "stop_terms": [
+    "act",
+    "be",
+    "do",
+    "get",
+    "go",
+    "have",
+    "make",
+    "move",
+    "object",
+    "person",
+    "put",
+    "take",
+    "thing",
+    "use"
+  ],
+  "parent_term_seeds": {
+    "ROOT_LOCOMOTION": [
+      "amble",
+      "backpedal",
+      "circle",
+      "circumambulate",
+      "crawl",
+      "creep",
+      "gait",
+      "jog",
+      "locomote",
+      "march",
+      "pace",
+      "run",
+      "saunter",
+      "shuffle",
+      "sidestep",
+      "skip",
+      "step",
+      "stride",
+      "stroll",
+      "travel",
+      "traverse",
+      "walk"
+    ],
+    "VERTICAL_IMPULSE": [
+      "bob",
+      "bounce",
+      "bound",
+      "hop",
+      "jump",
+      "leap",
+      "spring",
+      "vault"
+    ],
+    "BODY_LEVEL_POSTURE": [
+      "bend",
+      "bow",
+      "crouch",
+      "duck",
+      "lunge",
+      "recline",
+      "rise",
+      "sit",
+      "squat",
+      "stand",
+      "stoop"
+    ],
+    "GROUND_PRONE_KNEEL": [
+      "collapse",
+      "fall",
+      "get up",
+      "kneel",
+      "lie",
+      "prone",
+      "sprawl"
+    ],
+    "UPPER_LIMB_GESTURE": [
+      "beckon",
+      "clap",
+      "gesture",
+      "grab",
+      "hand",
+      "lift",
+      "motion",
+      "raise",
+      "reach",
+      "signal",
+      "swing",
+      "throw",
+      "touch",
+      "wave"
+    ],
+    "LOWER_LIMB_ACTION": [
+      "kick",
+      "leg",
+      "pedal",
+      "punt",
+      "stamp",
+      "stomp",
+      "trip"
+    ],
+    "BILATERAL_RHYTHMIC_EXERCISE": [
+      "calisthenics",
+      "cheer",
+      "exercise",
+      "jumping jack",
+      "skip rope",
+      "star jump"
+    ],
+    "ROTATION_SPIN": [
+      "pirouette",
+      "rotate",
+      "spin",
+      "swirl",
+      "turn",
+      "twirl",
+      "twist",
+      "wheel"
+    ],
+    "ACROBATICS_INVERSION": [
+      "backflip",
+      "cartwheel",
+      "flip",
+      "handspring",
+      "somersault",
+      "tumble"
+    ],
+    "ACTIVITY_INTENT_PROXY": [
+      "ballroom dance",
+      "box",
+      "boxing",
+      "combat",
+      "dance",
+      "drink",
+      "fight",
+      "karate",
+      "phone",
+      "punch",
+      "swim",
+      "swimming",
+      "telephone",
+      "tennis"
+    ]
+  },
+  "parent_regex_rules": {
+    "ROOT_LOCOMOTION": [
+      {"name": "walk-run-step", "pattern": "\\b(walk|run|jog|step|stride|shuffle|march|pace|stroll|sidestep)s?\\b"},
+      {"name": "path", "pattern": "\\b(circle|circular|traverse|travel|locomot)"}
+    ],
+    "VERTICAL_IMPULSE": [
+      {"name": "jump-hop-leap", "pattern": "\\b(jump|hop|leap|bounce|bound|vault|spring)s?\\b"}
+    ],
+    "BODY_LEVEL_POSTURE": [
+      {"name": "sit-stand-squat", "pattern": "\\b(sit|stand|squat|crouch|stoop|bend|bow|lunge|duck|rise)s?\\b"}
+    ],
+    "GROUND_PRONE_KNEEL": [
+      {"name": "ground", "pattern": "\\b(kneel|crawl|fall|fallen|lie|lying|prone|sprawl|collapse|get up)s?\\b"}
+    ],
+    "UPPER_LIMB_GESTURE": [
+      {"name": "arm-hand", "pattern": "\\b(arm|hand|clap|wave|swing|raise|lift|reach|touch|grab|throw|gesture)s?\\b"}
+    ],
+    "LOWER_LIMB_ACTION": [
+      {"name": "leg-foot-kick", "pattern": "\\b(kick|leg|foot|stomp|stamp|pedal|punt|trip)s?\\b"}
+    ],
+    "BILATERAL_RHYTHMIC_EXERCISE": [
+      {"name": "rhythmic-exercise", "pattern": "\\b(jumping jack|star jump|skip rope|calisthenic|cheer|exercise)s?\\b"}
+    ],
+    "ROTATION_SPIN": [
+      {"name": "turn-spin", "pattern": "\\b(turn|spin|rotate|twirl|twist|swirl|pirouette|wheel)s?\\b"}
+    ],
+    "ACROBATICS_INVERSION": [
+      {"name": "acrobatics", "pattern": "\\b(cartwheel|somersault|handspring|backflip|flip|tumble)s?\\b"}
+    ],
+    "ACTIVITY_INTENT_PROXY": [
+      {"name": "activity", "pattern": "\\b(karate|combat|fight|box|boxing|punch|dance|tennis|swim|drink|phone|telephone)s?\\b"}
+    ]
+  },
+  "family_term_seeds": {
+    "backflip": "INVERTED_ACROBATICS_CANDIDATE",
+    "cartwheel": "CARTWHEEL_CANDIDATE",
+    "combat": "COMBAT_SEQUENCE_CANDIDATE",
+    "dance": "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+    "fight": "COMBAT_SEQUENCE_CANDIDATE",
+    "flip": "INVERTED_ACROBATICS_CANDIDATE",
+    "handspring": "ACROBATIC_SEQUENCE_CANDIDATE",
+    "jump rope": "JUMP_ROPE_CANDIDATE",
+    "jumping jack": "BILATERAL_RHYTHMIC_COORDINATION",
+    "karate": "COMBAT_SEQUENCE_CANDIDATE",
+    "kick": "LEG_FORWARD_POSE_CANDIDATE",
+    "lunge": "LUNGE_CANDIDATE",
+    "punch": "PUNCH_KICK_SEQUENCE_CANDIDATE",
+    "skip rope": "JUMP_ROPE_CANDIDATE",
+    "somersault": "ACROBATIC_SEQUENCE_CANDIDATE",
+    "star jump": "BILATERAL_RHYTHMIC_COORDINATION",
+    "swim": "SWIM_LIKE_MOTION_CANDIDATE",
+    "swimming": "SWIM_LIKE_MOTION_CANDIDATE"
+  }
+}

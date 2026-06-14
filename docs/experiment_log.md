@@ -1459,3 +1459,756 @@ Current conclusion:
   - remaining language-coverage watchpoints are still visible, e.g. arm/object-like actions, throw/catch, drink/wave, and some walking-like clips with extra leg-kick clauses.
 - Verification:
   - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/run_aml_momask_review_pack.py scripts/run_momask_aml_autoprompt_probe.py scripts/visualize_momask_auto_gt.py scripts/analyze_momask_probe_kinematics.py`
+
+### AML MoMask review-pack group_01 50-case trial
+
+- Scope:
+  - ran only `group_01` from the fixed 250-case regression set;
+  - generated motion with the current `AML -> AutoPrompt -> MoMask` path;
+  - rendered GT-vs-generated GIFs for manual semantic coverage review.
+- Command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_aml_momask_review_pack.py --case-list outputs/aml_regression_testset_v2/group_01_case_ids.txt --output-root outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1 --review-name aml_review250_semantic_v1 --ext-prefix aml_review250_semantic_v1 --prompt-mode coarse --max-events 8 --time-steps 10 --cond-scale 4 --gpu-id 0 --reuse-existing --frame-stride 4`
+- Output:
+  - master index: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/index.md`
+  - group index: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/index.md`
+  - probe summary: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/probe/summary.json`
+  - GIF summary: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/gifs/summary.json`
+  - GIF directory: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/gifs/`
+  - kinematic sanity: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/kinematic_sanity.md`
+- Result:
+  - MoMask generations: `50/50`
+  - rendered GIFs: `50/50`
+  - kinematic rows: `50/50`
+  - aggregate sanity flags: `root_path_mismatch: 12`, `vertical_amp_mismatch: 12`, `unexpected_jumpiness: 2`
+- Notes:
+  - this is not a final metric; the sanity flags are only a triage layer before manual GIF inspection;
+  - several flagged examples are expected to distinguish `AutoPrompt semantic loss` from `MoMask realization failure` during manual review.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/run_aml_momask_review_pack.py scripts/run_momask_aml_autoprompt_probe.py scripts/visualize_momask_auto_gt.py scripts/analyze_momask_probe_kinematics.py`
+  - `git diff --check`
+
+### AML manual-review seed4 semantic patch v1
+
+- Input manual observations from `group_01` GIF review:
+  - `000189`: `walk in place` was over-rendered as left/right kick clauses.
+  - `000263`: bended-knee / lunge-like motion was not captured by a semantic family.
+  - `004303`: `does a lunge` was rendered as kick plus squat.
+  - `000905`: AutoPrompt semantics were plausible, but MoMask generated root translation was visibly larger than GT.
+- Code changes:
+  - `pseudoedit3d/edit/coarse_signature.py`: hide leg-forward proxy actions when dominated by `IN_PLACE_GAIT`; add `LUNGE_CANDIDATE` from leg-forward extension plus low-body posture; hide low-level jump/gait/squat components under lunge.
+  - `pseudoedit3d/edit/coarse_prompt_renderer.py`: render `LUNGE_CANDIDATE` as a lunge phrase and give it higher prompt salience than low-level leg/squat components.
+  - `pseudoedit3d/edit/aml_condition_schema.py`: add required slots for `LUNGE_CANDIDATE`.
+  - `scripts/analyze_momask_probe_kinematics.py`: add softer manual-review flags `root_path_scale_review` and `vertical_amp_scale_review` in addition to severe mismatch flags.
+  - `scripts/run_aml_momask_review_pack.py`: hide non-probe-visible / semantically dominated canonical ids from future review index tables.
+- Preview-only command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 000189,000263,004303,000905 --output-dir outputs/aml_regression_testset_v2/manual_review_seed4_prompt_patch_v1 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix manual_review_seed4_prompt_patch_v1`
+- Patched prompts:
+  - `000189`: `a person walks in place`
+  - `000263`: `a person does a right-leg lunge`
+  - `004303`: `a person raises the left hand high, then does a right-leg lunge, then comes to a stop and stands still`
+  - `000905`: unchanged semantic prompt; now caught by `root_path_scale_review` for manual MoMask-scale review.
+- Output:
+  - manual seed md: `outputs/aml_regression_testset_v2/manual_review_seed4_prompt_patch_v1/manual_review_seed.md`
+  - manual seed json: `outputs/aml_regression_testset_v2/manual_review_seed4_prompt_patch_v1/manual_review_seed.json`
+  - prompt preview: `outputs/aml_regression_testset_v2/manual_review_seed4_prompt_patch_v1/summary.json`
+  - condition manifest: `outputs/aml_regression_testset_v2/manual_review_seed4_condition_manifest_patch_v1/conditions.jsonl`
+  - review-threshold sanity: `outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/kinematic_sanity_review_thresholds_v2.md`
+- Checks:
+  - `000189` condition manifest keeps leg proxy evidence but marks those conditions `probe_visible=false`, `condition_weight=0.0`; `IN_PLACE_GAIT` stays selected.
+  - `000263` and `004303` expose `LUNGE_CANDIDATE` with candidate weight `0.7` and no missing required slots.
+  - `000905` has `root_path_scale_review` under the softer review threshold.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py scripts/analyze_momask_probe_kinematics.py scripts/run_aml_momask_review_pack.py scripts/run_momask_aml_autoprompt_probe.py scripts/export_aml_condition_manifest.py`
+  - `git diff --check`
+
+### AML language coverage weak-label audit v1
+
+- Motivation:
+  - manual GIF review is useful for discovering failure modes, but it should not be the main scaling mechanism;
+  - this audit converts manual-review patterns into caption/AML/AutoPrompt weak labels and writes simple markdown/json/jsonl outputs.
+- Added:
+  - `scripts/audit_aml_language_coverage.py`
+- Issue buckets:
+  - `missing_composed_family`: caption suggests a geometry-recoverable composed action family missing from AML output.
+  - `object_or_intent_ambiguous`: caption names object/intent semantics that skeleton geometry can usually support only as candidate/proxy evidence.
+  - `prompt_priority_error`: a reasonable family exists, but lower-level wording dominates AutoPrompt.
+  - `momask_realization_or_scale_review`: optional MoMask kinematic sanity flag; should not drive AML taxonomy changes alone.
+- Group_01 command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_aml_language_coverage.py --summary-json outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/probe/summary.json --kinematic-json outputs/aml_regression_testset_v2/aml_momask_review250_semantic_v1/group_01/kinematic_sanity_review_thresholds_v2.json --output-dir outputs/aml_regression_testset_v2/aml_language_coverage_group01_v1 --active-samples-per-type 12`
+- Group_01 output:
+  - report: `outputs/aml_regression_testset_v2/aml_language_coverage_group01_v1/coverage_report.md`
+  - summary: `outputs/aml_regression_testset_v2/aml_language_coverage_group01_v1/summary.json`
+  - per-case jsonl: `outputs/aml_regression_testset_v2/aml_language_coverage_group01_v1/coverage_cases.jsonl`
+  - active sample list: `outputs/aml_regression_testset_v2/aml_language_coverage_group01_v1/active_sample_case_ids.txt`
+- Group_01 result:
+  - cases: `50`
+  - cases with issues: `46`
+  - issue counts: `momask_realization_or_scale_review:47`, `missing_composed_family:23`, `object_or_intent_ambiguous:15`, `prompt_priority_error:13`
+  - key labels include `hand_to_head_or_phone`, `cheer_or_dance`, `locomotion_prompt_priority`, `combat_or_martial_arts`, `arm_swing_or_windmill`, and `lunge`.
+  - `000189` is now automatically flagged as `locomotion_prompt_priority` in the old group_01 summary, matching the manual observation that kick wording dominated walking.
+- Manual seed patch sanity:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_aml_language_coverage.py --summary-json outputs/aml_regression_testset_v2/manual_review_seed4_prompt_patch_v1/summary.json --output-dir outputs/aml_regression_testset_v2/aml_language_coverage_manual_seed4_patch_v1 --active-samples-per-type 12`
+  - result: `4/4` cases without weak-label issues; covered labels are `locomotion_prompt_priority:2` and `lunge:2`.
+- 250-case patched manifest:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --case-list <all five group case lists> --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v1/summary.json --output-md outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v1/summary.md --progress-every 50`
+  - result: `250` valid cases, `1420` conditions, `stable:860`, `proxy:326`, `candidate:234`, `missing_required_condition_count:0`.
+  - caution: `LUNGE_CANDIDATE` appears `133` times, which is likely too broad and needs targeted refinement before treating lunge coverage as solved.
+- 250-case coverage audit:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_aml_language_coverage.py --condition-jsonl outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v1/conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v1 --active-samples-per-type 20`
+  - report: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v1/coverage_report.md`
+  - summary: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v1/summary.json`
+  - active sample list: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v1/active_sample_case_ids.txt`
+  - result: `250` cases, `121` cases with weak-label issues, active sample count `45`.
+  - issue counts: `missing_composed_family:87`, `object_or_intent_ambiguous:52`, `prompt_priority_error:23`.
+  - top labels: `sit_or_stand_transition:26`, `hand_to_head_or_phone:25`, `arm_swing_or_windmill:23`, `locomotion_prompt_priority:23`, `tennis_or_ball_strike:18`.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/audit_aml_language_coverage.py`
+
+### AML composed-family refinement after weak-label audit v1
+
+- Motivation:
+  - the first 250-case patched manifest exposed that `LUNGE_CANDIDATE` was too broad;
+  - the user also raised the larger concern that manual GIF inspection and future CLIP fallback should not become the main AML scaling mechanism.
+- Boundary document:
+  - `docs/design/aml_clip_boundary.md`
+  - rule: `geometry_recoverable` failures must be fixed in AML extraction/composition/renderer priority; future CLIP-like resolvers may only attach optional metadata for `object_or_intent_ambiguous` cases.
+- Lunge refinement:
+  - `pseudoedit3d/edit/coarse_signature.py`
+  - changed lunge composition from broad `leg-forward + low/torso posture` to a conservative `leg-forward + local squat/low-body anchor` rule;
+  - suppresses lunge when strong root translation explains the leg event or when the low posture is a long sitting-like state.
+- Lunge targeted previews:
+  - v1: `outputs/aml_regression_testset_v2/lunge_tighten_preview_v1/summary.json`
+  - v2: `outputs/aml_regression_testset_v2/lunge_tighten_preview_v2/summary.json`
+  - preserved lunge prompts for `000263` and `004303`;
+  - removed obvious lunge over-triggering in `011643`, `006986`, `014448`, `M005037`, and `002950`.
+- 250-case lunge check:
+  - manifest: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v2/conditions.jsonl`
+  - coverage: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v2/coverage_report.md`
+  - `LUNGE_CANDIDATE` count reduced from `133` in patch v1 to `7` in patch v2.
+  - coverage audit: `119/250` cases with weak-label issues; `missing_composed_family:89`, `object_or_intent_ambiguous:52`, `prompt_priority_error:16`.
+- Sit/stand candidate addition:
+  - `pseudoedit3d/edit/coarse_signature.py`: added conservative `SIT_DOWN_CANDIDATE`, `STAND_UP_CANDIDATE`, and `SIT_STAND_CYCLE_CANDIDATE` from low-body posture plus vertical transition evidence.
+  - `pseudoedit3d/edit/coarse_prompt_renderer.py`: renders the new families as `sits down`, `stands up`, or `sits down, then stands back up`.
+  - `pseudoedit3d/edit/aml_condition_schema.py`: adds required approximate slots for the new families.
+- Sit/stand preview:
+  - v1: `outputs/aml_regression_testset_v2/sitstand_preview_v1/summary.json`
+  - v2: `outputs/aml_regression_testset_v2/sitstand_preview_v2/summary.json`
+  - v2 restored `000263` to `a person does a right-leg lunge` after v1 over-prioritized stand-up;
+  - v2 captures sit/stand evidence in examples including `007581`, `M000886`, and `M004095`, while keeping `004303` as lunge.
+- 250-case sit/stand check:
+  - manifest: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v3/conditions.jsonl`
+  - coverage: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v3/coverage_report.md`
+  - summary: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v3/summary.json`
+  - condition summary: `250` valid cases, `1427` conditions, `missing_required_condition_count:0`.
+  - new family counts: `STAND_UP_CANDIDATE:7`, `SIT_STAND_CYCLE_CANDIDATE:1`, `SIT_DOWN_CANDIDATE:1`.
+  - `LUNGE_CANDIDATE` count is now `4`.
+  - weak-label issues: `116/250` cases; `missing_composed_family:81`, `object_or_intent_ambiguous:52`, `prompt_priority_error:16`.
+  - `sit_or_stand_transition` issue count reduced from `26` to `18`.
+- Decision:
+  - stop this rule pass here; remaining sit/stand cases are more mixed with kneeling, crawling, prone recovery, and object interactions, and should be handled as separate family design rather than ad hoc expansion.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py`
+
+### AML proto registry and jumping-jack coverage patch
+
+- Motivation:
+  - `coarse_signature.py` had multiple hard-coded `prototype_id` sets for candidate/proxy status, cover suppression, prompt dominance, fallback removal, and primary metadata attachment.
+  - This made AML extension fragile: every new composed family required editing several unrelated branches.
+  - `jumping_jack` remained a weak-label miss after patch v3/v4, and several manual-review cases were still rendered as low-level jump/hand/squat clauses.
+- Registry:
+  - added `pseudoedit3d/edit/aml_proto_registry.json`;
+  - moved high-level proto groups into JSON:
+    - `semantic_family_status.unknown/candidate/proxy`;
+    - `semantic_cover_suppression.sit_stand_cover/lunge_cover/climb_cover`;
+    - `semantic_action_groups.hand_high/leg_forward_pose/leg_kick/emit_and_cover`;
+    - `dominance.dominant_prototypes/hideable_targets/dominant_groups/hide_by_dominant`;
+    - `fallback_actions.redundant`;
+    - `primary_action_metadata.*`.
+  - `pseudoedit3d/edit/coarse_signature.py` now loads the registry with a cached helper; algorithmic thresholds remain in code.
+- Jumping-jack refinement:
+  - added secondary `JUMPING_JACK` composition from repeated `BI_RAISE_SPREAD` plus vertical cycles;
+  - the secondary candidate can inspect evidence already covered by primary `VERTICAL_JUMP`/`IN_PLACE_GAIT`, then semantic dominance hides the lower-level prompt clauses;
+  - candidate extraction first attempts a global composed family, and falls back to windows split by strong root translation so cases such as `011643` can keep `jumping jacks` before later walking.
+- Targeted preview:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,008227,005722,M005904,M001919,M008014,000263,004303 --output-dir outputs/aml_regression_testset_v2/jumpingjack_preview_v4 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix jumpingjack_preview_v4`
+  - output: `outputs/aml_regression_testset_v2/jumpingjack_preview_v4/summary.json`
+  - representative prompts:
+    - `011643`: `a person does jumping jacks 5 times, then walks naturally for about 3.0 meters, then raises both arms`
+    - `003082`: `a person does jumping jacks 5 times`
+    - `007808`: `a person does jumping jacks 4 times`
+    - `M001919`: `a person does jumping jacks 8 times`
+    - lunge sanity preserved: `000263` remains `a person does a right-leg lunge`; `004303` remains a left-hand-high plus right-leg-lunge prompt.
+- 250-case manifest:
+  - manifest: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v4/conditions.jsonl`
+  - summary: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v4/summary.json`
+  - report: `outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v4/summary.md`
+  - result: `250` valid cases, `1439` conditions, `missing_required_condition_count:0`.
+  - key family counts: `JUMPING_JACK:20`, `LUNGE_CANDIDATE:4`, `SIT_DOWN_CANDIDATE:1`, `STAND_UP_CANDIDATE:7`, `SIT_STAND_CYCLE_CANDIDATE:1`.
+- 250-case coverage audit:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_aml_language_coverage.py --condition-jsonl outputs/aml_regression_testset_v2/aml_condition_manifest_250_patch_v4/conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v5 --active-samples-per-type 20`
+  - report: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v5/coverage_report.md`
+  - summary: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v5/summary.json`
+  - active samples: `outputs/aml_regression_testset_v2/aml_language_coverage_250_patch_v5/active_sample_case_ids.txt`
+  - result: weak-label issue cases reduced from `103/250` in patch v4 to `99/250`; `missing_composed_family` reduced from `64` to `57`; `jumping_jack` issue count reduced from `7` to `0`; `jumping_jack` covered-label count increased from `6` to `13`.
+- Residual risk:
+  - `JUMPING_JACK` family count increased from `7` to `20`; this is not explosive, but it can absorb geometrically similar arm/vertical motions such as swimming-like flailing, jump-rope-like hopping, or windmill-like arm swings.
+  - Treat those as future family splits (`swim_or_prone_motion`, `jump_rope`, `arm_swing_or_windmill`) rather than CLIP-only fixes.
+
+### AML top-down family taxonomy scaffold
+
+- Motivation:
+  - the user pointed out that AML family splitting was becoming bottom-up: each manual/audit failure was patched as an isolated family;
+  - the next stage should define a top-down family taxonomy first, then map WordNet/InternVid/HML3D terms and geometry detectors into that taxonomy.
+- WordNet / InternVid reference:
+  - read-only reference: `docs/InternVid.ipynb`
+  - relevant section: `WordNet取用词汇`
+  - notebook currently sketches:
+    - `wn.all_synsets(wn.VERB)` for action verbs;
+    - WordNet noun synsets for activity nouns;
+    - synonym expansion through WordNet lemmas;
+    - human-subject sentence filtering for InternVid captions using spaCy.
+  - decision: use WordNet/InternVid as lexical proposal sources, not as runtime AML taxonomy or as direct family promotion.
+- Added taxonomy files:
+  - `pseudoedit3d/edit/aml_family_taxonomy.json`
+  - `pseudoedit3d/edit/aml_family_taxonomy.py`
+  - `docs/design/aml_family_taxonomy_v1.md`
+- Taxonomy parent groups:
+  - `ROOT_LOCOMOTION`
+  - `VERTICAL_IMPULSE`
+  - `BODY_LEVEL_POSTURE`
+  - `GROUND_PRONE_KNEEL`
+  - `UPPER_LIMB_GESTURE`
+  - `LOWER_LIMB_ACTION`
+  - `BILATERAL_RHYTHMIC_EXERCISE`
+  - `ROTATION_SPIN`
+  - `ACROBATICS_INVERSION`
+  - `ACTIVITY_INTENT_PROXY`
+  - `UNKNOWN_OR_FALLBACK`
+- Code integration:
+  - `pseudoedit3d/edit/coarse_signature.py`: semantic family descriptors now include taxonomy metadata:
+    - `taxonomy_parent_id`
+    - `taxonomy_parent_label`
+    - `taxonomy_recoverability`
+    - `taxonomy_evidence_axes`
+    - `taxonomy_secondary_parent_ids`
+    - `ambiguity_boundary`
+  - `scripts/export_aml_condition_manifest.py`: condition records now persist the same taxonomy fields and manifest summaries include:
+    - `taxonomy_parent_counts`
+    - `taxonomy_recoverability_counts`
+  - `scripts/audit_aml_language_coverage.py`: coverage summaries and reports now include:
+    - `issue_taxonomy_parent_counts`
+    - `visible_taxonomy_parent_counts`
+- 250-case taxonomy manifest:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/aml_condition_manifest_250_taxonomy_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/aml_condition_manifest_250_taxonomy_v1/summary.json --output-md outputs/aml_regression_testset_v2/aml_condition_manifest_250_taxonomy_v1/summary.md --progress-every 50`
+  - result: `250` valid cases, `1439` conditions, `missing_required_condition_count:0`.
+  - top taxonomy parents by condition count:
+    - `ROTATION_SPIN:492`
+    - `ROOT_LOCOMOTION:275`
+    - `BODY_LEVEL_POSTURE:205`
+    - `UPPER_LIMB_GESTURE:204`
+    - `LOWER_LIMB_ACTION:107`
+    - `VERTICAL_IMPULSE:101`
+    - `BILATERAL_RHYTHMIC_EXERCISE:21`
+- 250-case taxonomy audit:
+  - command: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_aml_language_coverage.py --condition-jsonl outputs/aml_regression_testset_v2/aml_condition_manifest_250_taxonomy_v1/conditions.jsonl --output-dir outputs/aml_regression_testset_v2/aml_language_coverage_250_taxonomy_v1 --active-samples-per-type 20`
+  - report: `outputs/aml_regression_testset_v2/aml_language_coverage_250_taxonomy_v1/coverage_report.md`
+  - summary: `outputs/aml_regression_testset_v2/aml_language_coverage_250_taxonomy_v1/summary.json`
+  - issue totals unchanged from patch v5 by design: `99/250` cases with issues, `151/250` clean.
+  - top issue taxonomy parents:
+    - `UPPER_LIMB_GESTURE:189`
+    - `ROOT_LOCOMOTION:64`
+    - `BODY_LEVEL_POSTURE:58`
+    - `ACTIVITY_INTENT_PROXY:23`
+    - `BILATERAL_RHYTHMIC_EXERCISE:16`
+    - `GROUND_PRONE_KNEEL:13`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/aml_family_taxonomy.py pseudoedit3d/edit/coarse_signature.py scripts/export_aml_condition_manifest.py scripts/audit_aml_language_coverage.py`
+  - `python -m json.tool pseudoedit3d/edit/aml_family_taxonomy.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_proto_registry.json`
+  - `git diff --check`
+
+### WordNet cached action lexicon and Layer3 call-order note
+
+- User requirement:
+  - WordNet should not be queried every time AML extraction runs.
+  - Download/build once, then read a stable JSON/YAML artifact.
+- Added builder:
+  - `scripts/build_wordnet_action_lexicon.py`
+  - runtime policy in artifact: `offline_builder_only; AML extraction must read this JSON and must not query WordNet`
+  - `nltk` is imported only inside the builder's WordNet loading function, not by AML runtime modules.
+- Environment setup:
+  - installed `nltk` into `h2char` with:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m pip install nltk`
+  - used proxy for the WordNet corpus download:
+    - `http_proxy=http://10.130.136.133:7890`
+    - `https_proxy=http://10.130.136.133:7890`
+  - downloaded and validated:
+    - `/home/guoruoxi/nltk_data/corpora/wordnet.zip`
+- Cached artifact:
+  - `outputs/aml_lexicon/wordnet_action_terms_v1.json`
+  - size: about `21M`
+  - summary:
+    - `27986` terms
+    - `700` WordNet-mapped terms plus `3` curated multi-word bridge phrases
+    - top mapped taxonomy parents:
+      - `ROOT_LOCOMOTION:137`
+      - `UPPER_LIMB_GESTURE:126`
+      - `ACTIVITY_INTENT_PROXY:115`
+      - `LOWER_LIMB_ACTION:73`
+      - `ROTATION_SPIN:61`
+      - `BODY_LEVEL_POSTURE:56`
+      - `GROUND_PRONE_KNEEL:55`
+      - `VERTICAL_IMPULSE:52`
+      - `BILATERAL_RHYTHMIC_EXERCISE:25`
+      - `ACROBATICS_INVERSION:13`
+  - curated bridge phrases are included because WordNet does not reliably contain current AML multi-word targets such as `jumping jack` and `skip rope`.
+- Updated source metadata:
+  - `pseudoedit3d/edit/aml_family_taxonomy.json`: WordNet marked as `offline_cached_source`, with builder and cached artifact path.
+  - `docs/design/aml_family_taxonomy_v1.md`: WordNet runtime policy and install/build commands.
+- Added call-order note:
+  - `docs/design/aml_layer3_coarse_signature_call_order.md`
+  - records:
+    - current artifact paths;
+    - Layer3 construction route;
+    - `build_coarse_action_program` function order;
+    - condition manifest conversion route.
+- Coarse signature structure cleanup:
+  - renamed the jumping-jack-only secondary selector into parent-level `_bilateral_rhythmic_candidate_actions`;
+  - current behavior is unchanged, but future jump-rope / cheer / windmill-like splits should enter through this bilateral rhythmic exercise selector rather than adding one selector per family to the main pipeline.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_wordnet_action_lexicon.py pseudoedit3d/edit/coarse_signature.py scripts/export_aml_condition_manifest.py scripts/audit_aml_language_coverage.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m json.tool outputs/aml_lexicon/wordnet_action_terms_v1.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m json.tool pseudoedit3d/edit/aml_family_taxonomy.json`
+  - `git diff --check`
+
+### AML generic motion-pattern prototype refactor
+
+- Motivation:
+  - the primary prototype assignment had become bottom-up and case-like:
+    `post_jump_recovery`, `squat_events`, `JUMPING_JACK`, and `CELEBRATORY_DANCE_GESTURE` were embedded directly in `assign_seeded_prototype`;
+  - the user requested a top-down family structure where action names such as jumping jack / cheer / squat are aliases or descendants, not hard-coded primary family decisions.
+- Code structure:
+  - `pseudoedit3d/edit/coarse_signature.py`
+    - added `_motion_patterns_axis`, which computes reusable evidence patterns from Layer3 axes:
+      - `coupled_locomotion`
+      - `post_vertical_recovery_step`
+      - `low_body_repetition`
+      - `bilateral_rhythmic_coordination`
+      - `bilateral_rhythmic_gesture`
+    - refactored `assign_seeded_prototype` into a short ordered rule chain:
+      - `_rule_low_body_repetition`
+      - `_rule_bilateral_rhythmic_coordination`
+      - `_rule_bilateral_rhythmic_gesture`
+      - `_rule_ballistic_translation`
+      - `_rule_vertical_jump`
+      - `_rule_translating_gait`
+      - `_rule_in_place_gait`
+      - `_rule_in_place_gait_proxy`
+      - `_rule_rotation`
+      - `_rule_upper_body_or_subtle`
+      - `_rule_bimanual_fallback`
+    - new primary families:
+      - `LOW_BODY_REPETITION`
+      - `LOW_BODY_REPETITION_WITH_ARM_LIFT`
+      - `BILATERAL_RHYTHMIC_COORDINATION`
+      - `BILATERAL_RHYTHMIC_GESTURE_CANDIDATE`
+    - legacy aliases are normalized through `active_family_id` / registry aliasing:
+      - `SQUAT_REPETITION -> LOW_BODY_REPETITION`
+      - `SQUAT_ARM_LIFT -> LOW_BODY_REPETITION_WITH_ARM_LIFT`
+      - `JUMPING_JACK -> BILATERAL_RHYTHMIC_COORDINATION`
+      - `CELEBRATORY_DANCE_GESTURE -> BILATERAL_RHYTHMIC_GESTURE_CANDIDATE`
+  - `pseudoedit3d/edit/coarse_prompt_renderer.py`
+    - renders new families using conservative motion wording:
+      - bilateral rhythmic coordination
+      - bilateral rhythmic upper-body gesture
+      - low-body repetition
+    - legacy family ids are normalized before rendering.
+  - `pseudoedit3d/edit/aml_condition_schema.py`, `scripts/export_aml_condition_manifest.py`, and `scripts/audit_aml_language_coverage.py`
+    - condition and audit paths normalize legacy ids to active families so fixed batch vocab should not keep old bottom-up labels.
+  - `pseudoedit3d/edit/aml_proto_registry.json`
+    - added centralized `legacy_aliases`;
+    - runtime metadata groups now use active family ids.
+  - `pseudoedit3d/edit/aml_family_taxonomy.py/json`
+    - added `active_family_id`;
+    - legacy aliases remain in `family_overrides`, but are removed from active parent `children`.
+- Preview:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,M001919,000263,004303,006986,007581 --output-dir outputs/aml_regression_testset_v2/generic_rule_refactor_preview_v2 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix generic_rule_refactor_preview_v2`
+  - summary:
+    - `outputs/aml_regression_testset_v2/generic_rule_refactor_preview_v2/summary.json`
+  - condition manifest:
+    - `outputs/aml_regression_testset_v2/generic_rule_refactor_preview_v2/conditions.jsonl`
+    - `outputs/aml_regression_testset_v2/generic_rule_refactor_preview_v2/conditions_summary.json`
+  - observed canonical ids contain no legacy hits among:
+    - `JUMPING_JACK`
+    - `SQUAT_REPETITION`
+    - `SQUAT_ARM_LIFT`
+    - `CELEBRATORY_DANCE_GESTURE`
+  - representative prompts:
+    - `011643`: `a person repeatedly coordinates both arms with vertical body motion 5 times, then walks naturally for about 3.0 meters, then raises both arms`
+    - `003082`: `a person repeatedly coordinates both arms with vertical body motion 5 times`
+    - `000263`: `a person does a right-leg lunge`
+    - `004303`: `a person raises the left hand high, then does a right-leg lunge, then comes to a stop and stands still`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py pseudoedit3d/edit/aml_family_taxonomy.py scripts/audit_aml_language_coverage.py scripts/export_aml_condition_manifest.py scripts/build_wordnet_action_lexicon.py`
+  - `python -m json.tool pseudoedit3d/edit/aml_proto_registry.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_family_taxonomy.json`
+  - `python -m json.tool outputs/aml_lexicon/wordnet_action_terms_v1.json`
+  - `git diff --check`
+
+### AML primary seeded-family spec refactor
+
+- Motivation:
+  - after the generic family pass, `assign_seeded_prototype` still depended on a Python `_rule_*` chain;
+  - the user pointed out that signature assignment was still bottom-up and difficult to extend;
+  - this pass moves the primary seeded-family match order and threshold combinations into a JSON family spec file.
+- Added:
+  - `pseudoedit3d/edit/aml_family_specs.json`
+    - stores `primary_seeded_prototypes` in priority order;
+    - supports `all` / `any` / `not`, field-path predicates, literal/path/template outputs, simple confidence expressions, and case-based outputs;
+    - primary families remain top-down IDs such as `BILATERAL_RHYTHMIC_COORDINATION`, not legacy action labels such as `JUMPING_JACK`.
+- Changed:
+  - `pseudoedit3d/edit/coarse_signature.py`
+    - added cached `_family_specs` / `_primary_seeded_family_specs`;
+    - added generic matcher helpers `_condition_matches`, `_spec_matches`, `_resolve_spec_value`, `_prototype_from_spec`, and `_match_seeded_family_spec`;
+    - removed the primary `_rule_low_body_repetition`, `_rule_bilateral_rhythmic_coordination`, `_rule_bilateral_rhythmic_gesture`, `_rule_ballistic_translation`, `_rule_vertical_jump`, `_rule_translating_gait`, `_rule_in_place_gait`, `_rule_in_place_gait_proxy`, and `_rule_rotation` chain;
+    - `assign_seeded_prototype` now routes:
+      `signature/events -> _prototype_context -> _match_seeded_family_spec -> upper-body/subtle fallback -> bimanual fallback -> EVENT_SEQUENCE`;
+    - `_motion_patterns_axis` now keeps reusable evidence fields instead of final `matched` booleans for low-body/bilateral-rhythmic patterns.
+- Documentation:
+  - `docs/design/aml_layer3_coarse_signature_call_order.md` now records the spec-driven call order.
+  - `docs/design/aml_coarse_signature_pipeline.md` lists `aml_family_specs.json` as an active main module.
+- Preview:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,M001919,000263,004303,006986,007581 --output-dir outputs/aml_regression_testset_v2/spec_primary_refactor_preview_v1 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix spec_primary_refactor_preview_v1`
+  - output:
+    - `outputs/aml_regression_testset_v2/spec_primary_refactor_preview_v1/summary.json`
+  - result:
+    - all 8 prompts match `generic_rule_refactor_preview_v2`;
+    - no visible prompt drift in this smoke set.
+- Condition manifest:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --summary-json outputs/aml_regression_testset_v2/spec_primary_refactor_preview_v1/summary.json --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/spec_primary_refactor_preview_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/spec_primary_refactor_preview_v1/conditions_summary.json --output-md outputs/aml_regression_testset_v2/spec_primary_refactor_preview_v1/conditions_summary.md --top-n 20`
+  - result:
+    - cases: `8`
+    - conditions: `33`
+    - missing required conditions: `0`
+    - legacy family hits among `JUMPING_JACK`, `SQUAT_REPETITION`, `SQUAT_ARM_LIFT`, `CELEBRATORY_DANCE_GESTURE`: `0`
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_family_specs.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py pseudoedit3d/edit/aml_family_taxonomy.py scripts/export_aml_condition_manifest.py scripts/audit_aml_language_coverage.py`
+  - `git diff --check`
+
+### AML pattern tree primary matcher refactor
+
+- Motivation:
+  - the flat `aml_family_specs.json` removed hard-coded Python rule chains, but it was still a flat priority list;
+  - the user requested a bottom-up pattern-cluster tree with a WordNet-like parent/child structure, rather than case-by-case family rules.
+- Added:
+  - `pseudoedit3d/edit/aml_pattern_tree.json`
+    - root/abstract/primary nodes:
+      - `MOTION_PATTERN`
+      - `WHOLE_BODY_PATTERN`
+      - `LIMB_GESTURE_PATTERN`
+      - `LOCOMOTION_PATTERN`
+      - `VERTICAL_IMPULSE_PATTERN`
+      - `BODY_LEVEL_PATTERN`
+      - `ROTATION_PATTERN`
+      - `BILATERAL_RHYTHMIC_PATTERN`
+    - primary leaves include:
+      - `TRANSLATING_GAIT_PATTERN`
+      - `IN_PLACE_GAIT_PATTERN`
+      - `BALLISTIC_TRANSLATION_PATTERN`
+      - `REPEATED_VERTICAL_JUMP_PATTERN`
+      - `LOW_BODY_REPETITION_PATTERN`
+      - `BILATERAL_ARM_LEG_VERTICAL_COORDINATION_PATTERN`
+      - `BILATERAL_RHYTHMIC_GESTURE_PATTERN`
+    - lexical aliases such as `jumping_jack`, `squat`, `cheer`, and `dance` are metadata, not primary detector ids.
+  - `pseudoedit3d/edit/aml_pattern_tree.py`
+    - generic tree loader;
+    - `PatternMatch`;
+    - condition matcher;
+    - output resolver;
+    - `match_pattern_tree`;
+    - `select_primary_pattern_match`.
+- Changed:
+  - `pseudoedit3d/edit/coarse_signature.py`
+    - `assign_seeded_prototype` now routes:
+      `signature/events -> _prototype_context -> _select_seeded_pattern_prototype -> upper-body/subtle fallback -> bimanual fallback -> EVENT_SEQUENCE`;
+    - primary prototypes now include:
+      - `pattern_node_id`
+      - `pattern_path`
+      - `pattern_taxonomy_parent_id`
+      - `pattern_tree_matches`
+  - `pseudoedit3d/edit/legacy/aml_family_specs.json`
+    - previous flat spec moved to legacy for migration reference only.
+- Preview:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,M001919,000263,004303,006986,007581 --output-dir outputs/aml_regression_testset_v2/pattern_tree_primary_preview_v1 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix pattern_tree_primary_preview_v1`
+  - output:
+    - `outputs/aml_regression_testset_v2/pattern_tree_primary_preview_v1/summary.json`
+  - result:
+    - all 8 prompts match `spec_primary_refactor_preview_v1`;
+    - representative pattern paths:
+      - `011643`: `MOTION_PATTERN/WHOLE_BODY_PATTERN/LOCOMOTION_PATTERN/TRANSLATING_GAIT_PATTERN`
+      - `003082`: `MOTION_PATTERN/WHOLE_BODY_PATTERN/VERTICAL_IMPULSE_PATTERN/REPEATED_VERTICAL_JUMP_PATTERN`
+      - `006986`: `MOTION_PATTERN/WHOLE_BODY_PATTERN/BODY_LEVEL_PATTERN/LOW_BODY_REPETITION_WITH_ARM_LIFT_PATTERN`
+  - observed multi-match examples:
+    - `011643`: `TRANSLATING_GAIT_PATTERN`, `IN_PLACE_GAIT_PATTERN`
+    - `006986`: `SINGLE_VERTICAL_JUMP_PATTERN`, `LOW_BODY_REPETITION_WITH_ARM_LIFT_PATTERN`
+    - this is expected; `primary_selection_order` chooses the current primary while preserving match evidence for audit.
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_pattern_tree.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/aml_pattern_tree.py pseudoedit3d/edit/coarse_signature.py`
+
+### AML pattern tree event-proxy metadata refactor
+
+- Motivation:
+  - primary prototype matching was already tree-driven, but `_semantic_candidate_actions` still owned a local hard-coded `semantic_map`;
+  - this made residual/proxy candidates harder to extend and harder to audit as a tree.
+- Changed:
+  - `pseudoedit3d/edit/aml_pattern_tree.json`
+    - added abstract taxonomy branches:
+      - `UPPER_LIMB_GESTURE_PATTERN`
+      - `LOWER_LIMB_ACTION_PATTERN`
+      - `GROUND_PRONE_KNEEL_PATTERN`
+      - `ACROBATICS_PATTERN`
+      - `STATE_FALLBACK_PATTERN`
+    - added `event_proxy` leaves for Layer-3 event pairs such as:
+      - `LEFT_ARM_POSTURE/LA_HAND_HIGH -> LEFT_HAND_RAISED_HIGH_PATTERN`
+      - `RIGHT_ARM_POSTURE/RA_HAND_HIGH -> RIGHT_HAND_RAISED_HIGH_PATTERN`
+      - `WHOLE_BODY_POSTURE/WB_SQUAT_HOLD -> SQUAT_HOLD_PATTERN`
+      - `LEFT_LEG_ACTION/LL_KICK_FORWARD -> LEFT_LEG_KICK_FORWARD_PATTERN`
+      - `RIGHT_LEG_ACTION/RL_KICK_FORWARD -> RIGHT_LEG_KICK_FORWARD_PATTERN`
+      - `WHOLE_BODY_PATH/ROOT_CIRCULAR_PATH -> CIRCULAR_WALK_PATH_PATTERN`
+      - `WHOLE_BODY_CLIMB/CLIMB_UP_OVER_PROXY -> CLIMB_UP_OVER_PROXY_PATTERN`
+      - `WHOLE_BODY_ACROBATICS/* -> CARTWHEEL_CANDIDATE_PATTERN` / `INVERTED_ACROBATICS_CANDIDATE_PATTERN`
+    - added `composed_candidate` leaves for procedural temporal candidates:
+      - `LUNGE_CANDIDATE_PATTERN`
+      - `SIT_DOWN_CANDIDATE_PATTERN`
+      - `STAND_UP_CANDIDATE_PATTERN`
+      - `SIT_STAND_CYCLE_CANDIDATE_PATTERN`
+      - `ACROBATIC_SEQUENCE_CANDIDATE_PATTERN`
+      - `DANCE_LEG_POSE_CANDIDATE_PATTERN`
+      - fallback state leaves such as `TERMINAL_STILL_PATTERN`.
+  - `pseudoedit3d/edit/aml_pattern_tree.py`
+    - added `event_proxy_map`, `event_proxy_for_event`, `event_proxy_action_fields`;
+    - added `family_pattern_nodes`, `pattern_node_for_family`, `action_pattern_metadata_for_family`, and `action_pattern_metadata_for_node`.
+  - `pseudoedit3d/edit/coarse_signature.py`
+    - removed the local `semantic_map`;
+    - `_semantic_candidate_actions` now gets event-proxy fields from `aml_pattern_tree.py`;
+    - `_attach_action_metadata` now fills `pattern_node_id`, `pattern_path`, and `pattern_taxonomy_parent_id` for every visible action whose family is represented in the pattern tree;
+    - canonical `semantic_family` and `slots` records preserve the same pattern metadata for md/json review.
+- Preview:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,M001919,000263,004303,006986,007581 --output-dir outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix pattern_tree_event_proxy_preview_v1`
+  - output:
+    - `outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/summary.json`
+  - result:
+    - prompt changes vs `pattern_tree_primary_preview_v1`: `0`;
+    - visible actions missing `pattern_node_id`: `0`;
+    - examples:
+      - `004303`: `LEFT_HAND_RAISED_HIGH_PATTERN`, `LUNGE_CANDIDATE_PATTERN`, `TERMINAL_STILL_PATTERN`
+      - `011643`: `BILATERAL_ARM_LEG_VERTICAL_COORDINATION_PATTERN`, `TRANSLATING_GAIT_PATTERN`
+- Condition manifest:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --summary-json outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/summary.json --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/conditions_summary.json --output-md outputs/aml_regression_testset_v2/pattern_tree_event_proxy_preview_v1/conditions_summary.md --top-n 20`
+  - result:
+    - cases: `8`
+    - conditions: `33`
+    - missing required conditions: `0`
+    - status counts: `stable=14`, `proxy=14`, `candidate=5`
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_pattern_tree.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/aml_pattern_tree.py pseudoedit3d/edit/coarse_signature.py`
+  - `git diff --check`
+
+### AML pattern tree composed matcher refactor
+
+- Motivation:
+  - after the event-proxy refactor, sit/stand and lunge still chose their final family id directly inside `_semantic_candidate_actions`;
+  - the temporal evidence still needs procedural pairing, but the family decision should be represented as pattern-tree nodes.
+- Changed:
+  - `pseudoedit3d/edit/aml_pattern_tree.json`
+    - added `match` and `outputs` for:
+      - `LUNGE_CANDIDATE_PATTERN`
+      - `SIT_DOWN_CANDIDATE_PATTERN`
+      - `STAND_UP_CANDIDATE_PATTERN`
+      - `SIT_STAND_CYCLE_CANDIDATE_PATTERN`
+    - added `composed_selection_order`, with sit/stand cycle before one-way sit/stand and lunge.
+  - `pseudoedit3d/edit/aml_pattern_tree.py`
+    - added `composed_selection_order`;
+    - added `select_composed_pattern_match`.
+  - `pseudoedit3d/edit/coarse_signature.py`
+    - added local `make_composed_action`;
+    - sit/stand now builds a context like `low_body_vertical_transition` and routes it through `select_composed_pattern_match`;
+    - lunge now builds a context like `low_body_leg_forward_pair` and routes it through `select_composed_pattern_match`;
+    - low-level pairing, overlap, gap, and near-translation checks stay in Python for now because they depend on event spans and temporal assignment.
+- Preview:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,M001919,000263,004303,006986,007581 --output-dir outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix pattern_tree_composed_preview_v1`
+  - output:
+    - `outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/summary.json`
+  - result:
+    - prompt changes vs `pattern_tree_event_proxy_preview_v1`: `0`;
+    - visible actions missing `pattern_node_id`: `0`;
+    - examples:
+      - `000263`: `LUNGE_CANDIDATE`, `right_leg_lunge_candidate`, `LUNGE_CANDIDATE_PATTERN`
+      - `004303`: `LUNGE_CANDIDATE`, `right_leg_lunge_candidate`, `LUNGE_CANDIDATE_PATTERN`
+      - `006986`: `STAND_UP_CANDIDATE`, `low_to_up`, `STAND_UP_CANDIDATE_PATTERN`
+      - `007581`: `STAND_UP_CANDIDATE`, `low_to_up`, `STAND_UP_CANDIDATE_PATTERN`
+- Condition manifest:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --summary-json outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/summary.json --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/conditions_summary.json --output-md outputs/aml_regression_testset_v2/pattern_tree_composed_preview_v1/conditions_summary.md --top-n 20`
+  - result:
+    - cases: `8`
+    - conditions: `33`
+    - missing required conditions: `0`
+    - status counts: `stable=14`, `proxy=14`, `candidate=5`
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_pattern_tree.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/aml_pattern_tree.py pseudoedit3d/edit/coarse_signature.py`
+  - `git diff --check`
+
+### AML registry consistency refactor
+
+- Motivation:
+  - `coarse_signature.py`, renderer, condition schema, coverage audit, and WordNet builder still carried several Python-local prototype/pattern lists after the tree matcher landed.
+  - This made extension brittle: adding a family required edits across Python files instead of tree/registry JSON.
+- Changed:
+  - added `pseudoedit3d/edit/aml_proto_registry.py` as the shared runtime registry reader;
+  - moved condition required approx slots into `pseudoedit3d/edit/aml_proto_registry.json` under `condition_schema`;
+  - moved renderer clause/salience and probe aliases into `pseudoedit3d/edit/aml_proto_registry.json`;
+  - moved semantic action emitters, cover/suppression groups, fallback entrypoints, and primary cover modes into `pseudoedit3d/edit/aml_proto_registry.json`;
+  - moved language coverage weak-label specs into `pseudoedit3d/edit/aml_language_coverage_specs.json`;
+  - moved WordNet builder seed/regex/family-term config into `pseudoedit3d/edit/aml_wordnet_lexicon_config.json`;
+  - extended `pseudoedit3d/edit/aml_pattern_tree.json` so upper-body fallback, subtle fallback, bimanual fallback, event sequence, acrobatic sequence, dance-like leg pose, and terminal still are tree/event-proxy nodes rather than local prototype switches.
+- Preview:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/run_momask_aml_autoprompt_probe.py --case-ids 011643,003082,007808,M001919,000263,004303,006986,007581 --output-dir outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1 --skip-generation --prompt-mode coarse --max-events 8 --ext-prefix pattern_tree_consistency_refactor_preview_v1`
+  - output:
+    - `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/summary.json`
+  - regression vs `pattern_tree_composed_preview_v1`:
+    - prompt changes: `0`
+    - probe alias changes: `0`
+    - canonical id changes: `0`
+- Condition manifest:
+  - `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/conditions.jsonl`
+  - `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/conditions_summary.md`
+- Language coverage audit:
+  - `outputs/aml_regression_testset_v2/pattern_tree_consistency_refactor_preview_v1/language_coverage_audit/coverage_report.md`
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_pattern_tree.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_proto_registry.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_language_coverage_specs.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_wordnet_lexicon_config.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/aml_pattern_tree.py pseudoedit3d/edit/aml_proto_registry.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py scripts/audit_aml_language_coverage.py scripts/build_wordnet_action_lexicon.py scripts/export_aml_condition_manifest.py scripts/run_momask_aml_autoprompt_probe.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_wordnet_action_lexicon.py --output /tmp/wordnet_action_terms_config_smoke.json --no-include-nouns --max-sample-synsets 1`
+
+### AML tree cleanup plus geometry sidecar refresh
+
+- Motivation:
+  - keep the AML tree as the mainline condition schema;
+  - keep geometry clustering as a diagnostic sidecar instead of replacing AML;
+  - remove Python-local action lists where the same behavior can be represented by tree/registry nodes.
+- Changed:
+  - `pseudoedit3d/edit/coarse_pattern_evidence.py`
+    - residual gait/turn and residual proxy evidence now routes through tree/registry groups;
+    - gait-like leg swing events are emitted as hidden zero-weight proxies so sidecar provenance is preserved without polluting prompts;
+    - low-body repetition variables were renamed away from `squat`-specific function names.
+  - `pseudoedit3d/edit/geometry_sidecar.py`
+    - separates true unmapped events from covered-context geometry;
+    - sidecar summary schema is `aml_geometry_sidecar_summary_v2`.
+  - `scripts/export_aml_geometry_sidecar.py`
+    - exports Markdown/JSON summaries with separate context-only and unable-to-name sections.
+  - `pseudoedit3d/edit/aml_pattern_tree.json`
+    - added generic event proxy nodes for low-body hold, torso periodic motion, left/right arm periodic gestures.
+  - `pseudoedit3d/edit/aml_proto_registry.json`
+    - added required approx slots, prompt renderer specs, and probe aliases for the generic proxy families;
+    - registry consistency check now has no required family missing alias/prompt config.
+- Refreshed 250-case condition manifest:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/tree_cleanup_step5_proxy_review250_v3/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/tree_cleanup_step5_proxy_review250_v3/summary.json --output-md outputs/aml_regression_testset_v2/tree_cleanup_step5_proxy_review250_v3/summary.md --top-n 80 --progress-every 50`
+  - result:
+    - cases: `250`
+    - conditions: `2302`
+    - missing required conditions: `0`
+    - zero-weight conditions: `587`
+    - status counts: `proxy=1287`, `candidate=780`, `stable=235`
+- Refreshed 250-case geometry sidecar:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_geometry_sidecar.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --output-jsonl outputs/aml_regression_testset_v2/geometry_sidecar_review250_v4/geometry_sidecar.jsonl --output-summary-json outputs/aml_regression_testset_v2/geometry_sidecar_review250_v4/summary.json --output-md outputs/aml_regression_testset_v2/geometry_sidecar_review250_v4/summary.md --top-n 80 --progress-every 50`
+  - result:
+    - cases: `250`
+    - geometry events: `6473`
+    - true unable-to-name clusters: `27`
+    - context-only geometry clusters: `48`
+    - stable geometry mappings: `1`
+    - one-to-many geometry clusters: `55`
+  - top remaining unable-to-name clusters:
+    - `BIMANUAL_PERIODIC/BI_RAISE`: `56`, share `0.4516`
+    - `BIMANUAL_PERIODIC/BI_SPREAD`: `79`, share `0.4293`
+    - `WHOLE_BODY_LOCOMOTION/LOCO_MIXED_MEDIUM`: `3`, share `0.4286`
+    - `WHOLE_BODY_LOCOMOTION/LOCO_TURN_LEFT_SMALL`: `5`, share `0.3571`
+    - `WHOLE_BODY_LOCOMOTION/LOCO_ACTIVE_SLOW`: `12`, share `0.3333`
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_proto_registry.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_family_taxonomy.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_pattern_tree.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_pattern_evidence.py pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/geometry_sidecar.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py scripts/export_aml_geometry_sidecar.py scripts/export_aml_condition_manifest.py`
+  - residual grep for old Python-local selector names returned no hits.
+
+### AML generic proxy coverage pass
+
+- Motivation:
+  - after the first sidecar cleanup, the largest true unable-to-name clusters were generic bimanual arm raise/spread, locomotion-coupled arm periodic events, small turn locomotion fragments, and residual vertical body-height events;
+  - these should be represented as conservative proxy families instead of activity names.
+- Changed:
+  - `pseudoedit3d/edit/aml_family_taxonomy.json`
+    - added `BIMANUAL_ARM_RAISE_SPREAD_PROXY` under `UPPER_LIMB_GESTURE`;
+    - added `WHOLE_BODY_VERTICAL_MOTION_PROXY` under `VERTICAL_IMPULSE`.
+  - `pseudoedit3d/edit/aml_proto_registry.json`
+    - registered the new proxy families in `semantic_family_status.proxy`;
+    - added required approx slots, probe aliases, and prompt renderer clauses;
+    - included the new proxies in aggregate/emit/skip residual groups.
+  - `pseudoedit3d/edit/aml_pattern_tree.json`
+    - added event proxy nodes for `BI_RAISE`, `BI_SPREAD`, `BI_RAISE_SPREAD`;
+    - added event proxy nodes for `LA_REPEAT_LOCO`, `LA_REPEAT_ALT_LOCO`, `RA_REPEAT_LOCO`, `RA_REPEAT_ALT_LOCO`;
+    - added event proxy nodes for `WB_VERT_UP`, `WB_VERT_DOWN`, `WB_VERT_CYCLE`, `WB_VERT_REP`, `WB_VERT_REP_ALT`.
+  - `pseudoedit3d/edit/coarse_pattern_evidence.py`
+    - residual `LOCO_TURN_*` events without a nearby rotation driver now emit neutral `TURN_SEGMENT` sparse actions.
+- Refreshed 250-case condition manifest:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_condition_manifest.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --max-residual-events 8 --output-jsonl outputs/aml_regression_testset_v2/tree_cleanup_step9_generic_proxy_review250_v1/conditions.jsonl --output-summary-json outputs/aml_regression_testset_v2/tree_cleanup_step9_generic_proxy_review250_v1/summary.json --output-md outputs/aml_regression_testset_v2/tree_cleanup_step9_generic_proxy_review250_v1/summary.md --top-n 80 --progress-every 50`
+  - result:
+    - cases: `250`
+    - conditions: `2635`
+    - missing required conditions: `0`
+    - zero-weight conditions: `570`
+    - status counts: `proxy=1648`, `candidate=752`, `stable=235`
+    - new generic proxy counts:
+      - `BIMANUAL_ARM_RAISE_SPREAD_PROXY`: `131`
+      - `WHOLE_BODY_VERTICAL_MOTION_PROXY`: `127`
+- Refreshed 250-case geometry sidecar:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/export_aml_geometry_sidecar.py --case-list outputs/aml_regression_testset_v2/semantic_status_250_v1/case_ids.txt --output-jsonl outputs/aml_regression_testset_v2/geometry_sidecar_step9_generic_proxy_review250_v1/geometry_sidecar.jsonl --output-summary-json outputs/aml_regression_testset_v2/geometry_sidecar_step9_generic_proxy_review250_v1/summary.json --output-md outputs/aml_regression_testset_v2/geometry_sidecar_step9_generic_proxy_review250_v1/summary.md --top-n 80 --progress-every 50`
+  - result:
+    - cases: `250`
+    - geometry events: `6473`
+    - true unable-to-name clusters: `15`
+    - context-only geometry clusters: `48`
+  - true unable-to-name cluster count progression:
+    - step6 bimanual proxy: `25`
+    - step7 loco/turn/arm proxy: `18`
+    - step8 vertical proxy: `16`
+    - step9 generic proxy: `15`
+  - remaining top unable clusters are dominated by weak/mixed root drift:
+    - `WHOLE_BODY_LOCOMOTION/LOCO_MIXED_MEDIUM`: `3`, share `0.4286`
+    - `WHOLE_BODY_LOCOMOTION/LOCO_ACTIVE_SLOW`: `12`, share `0.3333`
+    - `WHOLE_BODY_LOCOMOTION/LOCO_MIXED_SLOW`: `3`, share `0.3000`
+    - `WHOLE_BODY_LOCOMOTION/LOCO_ACTIVE_MEDIUM`: `1`, share `0.2500`
+- Verification:
+  - `python -m json.tool pseudoedit3d/edit/aml_pattern_tree.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_proto_registry.json`
+  - `python -m json.tool pseudoedit3d/edit/aml_family_taxonomy.json`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_pattern_evidence.py pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/geometry_sidecar.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py pseudoedit3d/edit/aml_pattern_tree.py scripts/export_aml_geometry_sidecar.py scripts/export_aml_condition_manifest.py`
