@@ -2212,3 +2212,581 @@ Current conclusion:
   - `python -m json.tool pseudoedit3d/edit/aml_proto_registry.json`
   - `python -m json.tool pseudoedit3d/edit/aml_family_taxonomy.json`
   - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile pseudoedit3d/edit/coarse_pattern_evidence.py pseudoedit3d/edit/coarse_signature.py pseudoedit3d/edit/geometry_sidecar.py pseudoedit3d/edit/coarse_prompt_renderer.py pseudoedit3d/edit/aml_condition_schema.py pseudoedit3d/edit/aml_pattern_tree.py scripts/export_aml_geometry_sidecar.py scripts/export_aml_condition_manifest.py`
+
+### Motion-corpus pattern-tree mainline switch
+
+- Decision:
+  - stop treating the hand-built AML tree as the source of truth for future
+    pattern structure;
+  - use HumanML3D as both a motion corpus and a text corpus;
+  - induce structure from `motion cluster + Layer3 event-BPE`;
+  - use `text-BPE + caption aliases + WordNet` only to name and audit
+    motion-derived nodes.
+- New docs:
+  - `docs/design/motion_corpus_pattern_tree_mainline.md`
+  - `docs/design/motion_cluster_bpe_tree_induction.md`
+  - `docs/design/text_bpe_wordnet_naming_layer.md`
+- Legacy cleanup:
+  - moved `docs/design/motion_bpe_baseline.md` to `legacy/motion_bpe_baseline/docs/design/motion_bpe_baseline.md`;
+  - moved `scripts/learn_motion_bpe.py` to `legacy/motion_bpe_baseline/scripts/learn_motion_bpe.py`;
+  - recorded the move in `legacy/README.md`.
+- New offline proposal script:
+  - `scripts/propose_motion_pattern_tree_candidates.py`
+  - input:
+    - `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/bpe_phrase_to_pattern_tree_candidates.json`
+    - `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/bpe_motif_audit.json`
+  - output:
+    - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/summary.json`
+    - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_pattern_tree_candidates.json`
+    - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_pattern_tree_candidate_report.md`
+- First proposal result:
+  - input records: `29228`
+  - input BPE stable candidates: `8`
+  - proposed offline candidate nodes: `7`
+  - important candidate families:
+    - torso hunch + vertical rise, language name evidence: `sit_down`
+    - bimanual raise-spread, language name evidence: `jumping_jack`
+    - low-body hold + squat hold, language name evidence: `sit_down`
+    - bimanual hands-close / near-far arm cycles, language evidence: `cheer_dance`, kept diagnostic
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/propose_motion_pattern_tree_candidates.py scripts/audit_hml3d_layer3_event_bpe.py`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_pattern_tree_candidates.json`
+
+### Motion-BPE motif tier audit
+
+- Motivation:
+  - the first motion-tree proposal had only `7` candidate nodes because it
+    intentionally used only `8` stable caption-alias motifs;
+  - this could be misread as the full-corpus scan discovering only seven
+    structures, so the proposal script now also emits all `256` learned BPE
+    motifs by tier.
+- Updated:
+  - `scripts/propose_motion_pattern_tree_candidates.py`
+    - added `motion_bpe_motif_tiers.json`
+    - added `motion_bpe_motif_tiers.md`
+    - preserved the strict `motion_pattern_tree_candidates.json` output
+- Output:
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.json`
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.md`
+- Tier result:
+  - total motifs: `256`
+  - `named_motion_candidate`: `8`
+  - `motion_stable_unnamed`: `25`
+  - `legacy_aligned_diagnostic`: `133`
+  - `language_weak_diagnostic`: `0`
+  - `generic_or_low_purity`: `90`
+- Interpretation:
+  - the corpus has many stable motion motifs, but only a small fraction have
+    clean caption-alias names under the current sidecar;
+  - the next useful work is to inspect the `25` `motion_stable_unnamed` motifs
+    and decide whether they become unnamed structural tree nodes, need better
+    text-BPE/WordNet names, or are old-tree artifacts such as over-broad
+    kick/hand-high patterns.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/propose_motion_pattern_tree_candidates.py`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/summary.json`
+
+### Candidate-node manual review and language naming layer
+
+- User reviewed the first `7` offline candidate nodes from:
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_pattern_tree_candidate_report.md`
+- Manual review artifact:
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/manual_review_v1.json`
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/manual_review_v1.md`
+- Manual decisions:
+  - `motion_node_0001`: reframe as stand-up / rise-from-low-or-seated transition evidence; `sit_down` is implied by starting pose, not the vertical-rise event itself.
+  - `motion_node_0002`: downgrade to jumping-jack upper-body component.
+  - `motion_node_0003`: split; current low-body hold / squat-hold family mixes sit/squat/kneel-like states.
+  - `motion_node_0004`: downgrade to reusable component; can appear in multiple patterns.
+  - `motion_node_0005`: keep diagnostic; broad bilateral near-far arm motion.
+  - `motion_node_0006`: promote candidate as the closest complete jumping-jack composite because bimanual raise-spread co-occurs with vertical body motion.
+  - `motion_node_0007`: downgrade to upper-body hands-high component.
+- New language naming script:
+  - `scripts/build_text_bpe_wordnet_naming_layer.py`
+- Naming layer output:
+  - `outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/text_bpe_wordnet_naming_layer.json`
+  - `outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/text_bpe_wordnet_naming_layer.md`
+- Naming layer summary:
+  - motion nodes: `7`
+  - caption cases from BPE sequence rows: `28823`
+  - phrase vocab size: `5465`
+  - alias clusters: `12`
+  - WordNet terms: `27986`
+- Important observation:
+  - language evidence can strongly name `motion_node_0002` and `motion_node_0007` as `jumping_jack`, but manual motion review correctly downgrades them to components;
+  - this confirms the new policy that language names motion-derived structure but does not decide promotion.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_text_bpe_wordnet_naming_layer.py scripts/propose_motion_pattern_tree_candidates.py`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/manual_review_v1.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/text_bpe_wordnet_naming_layer.json`
+
+### Promoted motion-tree draft v1
+
+- Motivation:
+  - start iterating from reviewed motion candidates into a draft tree without
+    adding case-by-case logic;
+  - consume artifacts instead of hard-coding action names or node ids.
+- New script:
+  - `scripts/build_promoted_motion_tree_draft.py`
+- Inputs:
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_pattern_tree_candidates.json`
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/manual_review_v1.json`
+  - `outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/text_bpe_wordnet_naming_layer.json`
+- Outputs:
+  - `outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json`
+  - `outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.md`
+- Draft result:
+  - candidate nodes: `7`
+  - reviewed nodes: `7`
+  - promoted candidates: `1`
+  - structural components: `4`
+  - split required: `1`
+  - diagnostic only: `1`
+- Case-by-case guard:
+  - builder uses manual `decision` and `recommended_structural_role` as typed
+    disposition overlay;
+  - builder uses motion evidence, source motifs, and geometry overlap for
+    structural links;
+  - builder does not use text labels or WordNet terms to create structure;
+  - language label conflicts are emitted only in `naming_conflicts`.
+- Important fix after risk audit:
+  - initial component-link logic allowed shared strong language labels as a
+    link signal;
+  - it was corrected so component links now require motion-geometry overlap
+    only;
+  - after the fix, the only component link is geometry-based:
+    `motion_node_0006 -> motion_node_0002` with Jaccard `0.5`.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_promoted_motion_tree_draft.py scripts/build_text_bpe_wordnet_naming_layer.py scripts/propose_motion_pattern_tree_candidates.py`
+  - `python -m json.tool outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json`
+  - linted structural fields for common language/action words; no hits in status, structural role, motion family key, required geometry clusters, component relationship, or split method.
+
+### Motion split planner v1
+
+- Motivation:
+  - continue from the reviewed/promoted draft without adding case-by-case action logic;
+  - handle nodes marked `split_required` by mining motion context axes from the full HML3D Layer3 event-BPE sequences;
+  - keep text labels and WordNet evidence as diagnostics only.
+- New script:
+  - `scripts/plan_motion_node_splits.py`
+- Inputs:
+  - `outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json`
+  - `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/case_bpe_sequences.jsonl`
+  - `outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/text_bpe_wordnet_naming_layer.json`
+- Outputs:
+  - `outputs/aml_regression_testset_v2/motion_split_planner_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_plan.json`
+  - `outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_axis_summary.json`
+  - `outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_plan.md`
+- Result for current split node:
+  - `motion_node_0003` / source motif `<M0111>` has `169` occurrences in `169` unique cases;
+  - exact context signatures are too sparse to become stable groups directly;
+  - coarse motion-context axis groups are usable and produce `21` candidate axes;
+  - top split axes include overlap/arm, after/arm, before/arm, overlap/locomotion, after/leg, overlap/leg, after/vertical, and overlap/other-context groups.
+- Current interpretation:
+  - `motion_node_0003` should not be promoted as one named action node;
+  - it is better treated as a low-body/torso component that needs split by surrounding motion context;
+  - the compact JSON intentionally excludes language diagnostics from structural fields.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/plan_motion_node_splits.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/plan_motion_node_splits.py --draft outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json --bpe-sequences outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/case_bpe_sequences.jsonl --naming-layer outputs/aml_regression_testset_v2/text_bpe_wordnet_naming_layer_v1/text_bpe_wordnet_naming_layer.json --output-dir outputs/aml_regression_testset_v2/motion_split_planner_v1`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_plan.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_axis_summary.json`
+
+### Motion split proposals v1
+
+- Motivation:
+  - convert generic motion-context split axes into child-node candidates for
+    human review;
+  - keep this as an offline proposal layer, not a runtime AML tree mutation;
+  - avoid case-by-case action names by selecting axes from body-channel
+    structure (`relation`, `context_bucket`, `cluster_id`, support).
+- New script:
+  - `scripts/build_motion_split_proposals.py`
+- Inputs:
+  - `outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json`
+  - `outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_plan.json`
+- Outputs:
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_proposals.json`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_promotion_queue.json`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_proposals.md`
+- Result:
+  - source split plan count: `1`
+  - proposal count: `1`
+  - split child candidates: `18`
+  - promotion queue candidates: `13`
+  - readiness counts: `review_for_promotion=6`, `review_as_minor_split=7`, `low_support_diagnostic=5`
+  - selected axes for `motion_node_0003`: overlap/vertical, overlap/leg,
+    overlap/locomotion, overlap/other, overlap/state, overlap/rotation.
+- Current interpretation:
+  - `motion_node_0003` remains a parent component;
+  - vertical and leg overlap children are the strongest review targets;
+  - locomotion/other/state children are useful minor or context splits;
+  - low-support rotation and acrobatics-derived children stay diagnostic unless
+    future full-corpus evidence strengthens them.
+- Guardrails:
+  - arm and torso context axes are deferred as modifiers for this low-body
+    source node;
+  - compact promotion queue excludes caption aliases, text labels, phrases, and
+    WordNet fields;
+  - full proposal JSON keeps caption alias diagnostics only under diagnostics.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_motion_split_proposals.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_motion_split_proposals.py --draft outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json --split-plan outputs/aml_regression_testset_v2/motion_split_planner_v1/motion_split_plan.json --output-dir outputs/aml_regression_testset_v2/motion_split_proposals_v1`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_proposals.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_promotion_queue.json`
+  - linted `motion_split_promotion_queue.json` for caption/label/phrase/WordNet/language keys; no hits.
+
+### Motion split review artifacts v1
+
+- Motivation:
+  - make split-child review easier than reading raw JSON;
+  - include example HML3D captions in human-facing review tables so manual
+    screening can use the original text context;
+  - persist the current manual decision that the six `review_for_promotion`
+    candidates are acceptable promotion candidates;
+  - keep the source clear: these candidates come from the full HML3D
+    Layer3/event-BPE audit, not from the 250-case MoMask/GIF review subset.
+- New script:
+  - `scripts/render_motion_split_review_artifacts.py`
+- Inputs:
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_promotion_queue.json`
+- Outputs:
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_promotion_queue_review.md`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_promotion_queue_review.csv`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/manual_split_review_seed_v1.json`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/manual_split_review_seed_v1.md`
+- Result:
+  - queue rows: `13`
+  - `promote_candidate`: `6`
+  - `review_pending`: `7`
+  - promoted seed candidates are the six `review_for_promotion` rows:
+    vertical up, vertical down, right/left leg-forward pose, left/right kick-forward.
+- Human-review convention:
+  - review MD/CSV includes up to three raw HML3D captions per example case;
+  - captions are read from
+    `/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D/texts/<case_id>.txt`;
+  - if raw captions are unavailable, the renderer can fall back to the caption
+    cached in the full event-BPE audit;
+  - manual seed JSON remains caption-free.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/render_motion_split_review_artifacts.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/render_motion_split_review_artifacts.py --promotion-queue outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_promotion_queue.json --output-dir outputs/aml_regression_testset_v2/motion_split_proposals_v1`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_split_proposals_v1/manual_split_review_seed_v1.json`
+  - linted `manual_split_review_seed_v1.json` for caption/label/phrase/WordNet/language keys; no hits.
+
+### Motion pattern forest v1
+
+- Motivation:
+  - move from isolated queue review to an actual offline forest draft;
+  - allow multiple roots because action-pattern variation is broad and should
+    not be forced into one global tree;
+  - insert currently accepted split children first, then adjust after real
+    inspection.
+- New script:
+  - `scripts/build_motion_pattern_forest.py`
+- Inputs:
+  - `outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_proposals.json`
+  - `outputs/aml_regression_testset_v2/motion_split_proposals_v1/manual_split_review_seed_v1.json`
+- Main output:
+  - `outputs/aml_regression_testset_v2/motion_pattern_forest_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/motion_pattern_forest_v1/motion_pattern_forest.json`
+  - `outputs/aml_regression_testset_v2/motion_pattern_forest_v1/motion_pattern_forest.md`
+  - `outputs/aml_regression_testset_v2/motion_pattern_forest_v1/motion_pattern_forest_tree.txt`
+- Main forest size:
+  - nodes: `13`
+  - edges: `7`
+  - roots: `6`
+  - max depth: `1`
+  - node kinds: `component=4`, `diagnostic=1`, `pattern_candidate=1`,
+    `pattern_variation_candidate=6`, `variation_parent=1`
+  - edge types: `component=1`, `variation=6`
+- Pending-inclusive diagnostic output:
+  - `outputs/aml_regression_testset_v2/motion_pattern_forest_with_pending_v1/`
+  - nodes: `25`
+  - edges: `19`
+  - pending variations: `12`
+- Current structure:
+  - `motion_node_0003` is a low-body variation parent with six promoted
+    variation children: vertical up, vertical down, right/left leg-forward
+    pose, left/right kick-forward;
+  - `motion_node_0006` is a composite pattern candidate with
+    `motion_node_0002` as a component;
+  - other reviewed components remain separate roots for now.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_motion_pattern_forest.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_motion_pattern_forest.py --draft outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json --split-proposals outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_proposals.json --manual-split-review outputs/aml_regression_testset_v2/motion_split_proposals_v1/manual_split_review_seed_v1.json --output-dir outputs/aml_regression_testset_v2/motion_pattern_forest_v1`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_motion_pattern_forest.py --draft outputs/aml_regression_testset_v2/promoted_motion_tree_draft_v1/promoted_motion_tree_draft.json --split-proposals outputs/aml_regression_testset_v2/motion_split_proposals_v1/motion_split_proposals.json --manual-split-review outputs/aml_regression_testset_v2/motion_split_proposals_v1/manual_split_review_seed_v1.json --output-dir outputs/aml_regression_testset_v2/motion_pattern_forest_with_pending_v1 --include-pending-children`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_pattern_forest_v1/motion_pattern_forest.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/motion_pattern_forest_with_pending_v1/motion_pattern_forest.json`
+
+### Full candidate motion forest v1
+
+- Motivation:
+  - clarify that the earlier `13` / `25` node forest is only a reviewed seed
+    forest, not the full HumanML3D Motion-BPE forest;
+  - build a broader offline forest directly from all full-HML3D Motion-BPE motif
+    tiers, while keeping language aliases and the old AML tree as diagnostics
+    only;
+  - separate structural candidate families from legacy/low-purity diagnostic
+    families before any runtime AML tree update.
+- New script:
+  - `scripts/build_full_candidate_motion_forest.py`
+- Inputs:
+  - `outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.json`
+  - `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/case_bpe_sequences.jsonl`
+- Forest policy:
+  - root nodes are geometry-family nodes grouped by required geometry cluster
+    sets;
+  - leaf nodes are Motion-BPE motifs;
+  - caption aliases, caption keywords, and previous tree family IDs are stored
+    under diagnostics and are not used to create edges;
+  - family status is computed from child motif tiers:
+    `candidate_family`, `mixed_family`, or `diagnostic_family`.
+- Default structural candidate output:
+  - `outputs/aml_regression_testset_v2/full_candidate_motion_forest_v1/`
+  - includes tiers: `named_motion_candidate`, `motion_stable_unnamed`
+  - included motifs: `33`
+  - geometry families: `14`
+  - total nodes: `47`
+  - edges: `33`
+  - total scanned cases: `28823`
+  - unique case coverage: `5882`
+  - coverage ratio: `0.204073`
+  - family status counts: `candidate_family=14`
+- Legacy-inclusive diagnostic output:
+  - `outputs/aml_regression_testset_v2/full_candidate_motion_forest_with_legacy_v1/`
+  - includes tiers: `named_motion_candidate`, `motion_stable_unnamed`,
+    `legacy_aligned_diagnostic`
+  - included motifs: `166`
+  - geometry families: `66`
+  - total nodes: `232`
+  - unique case coverage: `16403`
+  - coverage ratio: `0.569094`
+  - family status counts: `candidate_family=14`, `diagnostic_family=52`
+- All-tier diagnostic output:
+  - `outputs/aml_regression_testset_v2/full_candidate_motion_forest_all_tiers_v1/`
+  - includes all `256` Motion-BPE motifs from the tier artifact
+  - geometry families: `89`
+  - total nodes: `345`
+  - edges: `256`
+  - unique case coverage: `21181`
+  - coverage ratio: `0.734865`
+  - tier counts: `named_motion_candidate=8`, `motion_stable_unnamed=25`,
+    `legacy_aligned_diagnostic=133`, `generic_or_low_purity=90`
+  - family status counts: `candidate_family=11`, `mixed_family=3`,
+    `diagnostic_family=75`
+- Key interpretation:
+  - `25` nodes was the manual seed/pending forest size;
+  - the current full-tier forest exposes the real Motion-BPE scale:
+    `89` geometry-family roots and `256` motif leaves;
+  - the default `47` node output is the cleaner candidate subset for review,
+    while the all-tier `345` node output is the full diagnostic map.
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_full_candidate_motion_forest.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_full_candidate_motion_forest.py --motif-tiers outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.json --case-bpe-sequences outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/case_bpe_sequences.jsonl --output-dir outputs/aml_regression_testset_v2/full_candidate_motion_forest_v1`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_full_candidate_motion_forest.py --motif-tiers outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.json --case-bpe-sequences outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/case_bpe_sequences.jsonl --output-dir outputs/aml_regression_testset_v2/full_candidate_motion_forest_with_legacy_v1 --include-legacy-diagnostic`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_full_candidate_motion_forest.py --motif-tiers outputs/aml_regression_testset_v2/motion_corpus_tree_candidates_v1/motion_bpe_motif_tiers.json --case-bpe-sequences outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/case_bpe_sequences.jsonl --output-dir outputs/aml_regression_testset_v2/full_candidate_motion_forest_all_tiers_v1 --tiers named_motion_candidate,motion_stable_unnamed,legacy_aligned_diagnostic,generic_or_low_purity,language_weak_diagnostic`
+  - `python -m json.tool outputs/aml_regression_testset_v2/full_candidate_motion_forest_v1/full_candidate_motion_forest.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/full_candidate_motion_forest_with_legacy_v1/full_candidate_motion_forest.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/full_candidate_motion_forest_all_tiers_v1/full_candidate_motion_forest.json`
+
+### Multi-channel Motion-BPE extraction design
+
+- Motivation:
+  - the current full-HML3D Event-BPE audit is useful but still flattens
+    concurrent Layer3 events into one sorted sequence;
+  - examples such as arm raise while running, jumping-jack arm spread plus
+    vertical motion, and dance/karate/swimming-like coordination need explicit
+    parallel structure;
+  - the current `256` BPE motifs are a configured merge budget, not evidence
+    that the motion corpus has only `256` reusable subwords.
+- Current single-sequence audit facts:
+  - records: `29228`
+  - original Layer3 event-token occurrences: `393032`
+  - base event-token types: `649`
+  - BPE token occurrences after merge: `326070`
+  - learned merge motif types: `256`
+  - final BPE vocabulary types: `905 = 649 base symbols + 256 merge symbols`
+  - compression ratio: `0.829627`
+  - token granularity: `geometry`
+- New design doc:
+  - `docs/design/multi_channel_motion_bpe_extraction.md`
+- Updated docs:
+  - `docs/design/motion_cluster_bpe_tree_induction.md`
+  - `docs/design/motion_corpus_pattern_tree_mainline.md`
+  - `docs/design/design_overview.md`
+  - `docs/README.md`
+- Extraction design summary:
+  - Step 0: build a HumanML3D corpus index with case ids, joints, captions, and
+    provenance.
+  - Step 1: extract dense body-channel observables from joints.
+  - Step 2: segment observables into channel events with span, direction,
+    magnitude, speed, count, confidence, and source observables.
+  - Step 3: assign normalized event tokens per channel.
+  - Step 4: build temporal overlap graphs over channel events.
+  - Step 5: construct parallel packets from overlapping cross-channel events.
+  - Step 6: create three BPE views: per-channel sequences, packet sequences,
+    and relation triples.
+  - Step 7: learn BPE motifs with sequence, parallel, repetition, and packet
+    sequence merge operators.
+  - Step 8: score merges by support, compression, channel coverage, relation
+    consistency, and numeric consistency; language remains audit-only.
+  - Step 9: run merge-budget and support sweeps instead of treating `256` as
+    final.
+  - Step 10: audit motifs with relation profiles, numeric profiles, examples,
+    caption diagnostics, and legacy diagnostics.
+  - Step 11: group motifs into motion-derived motif families.
+  - Step 12: convert motif families into offline motion pattern forest
+    candidates.
+- Key schema additions:
+  - channel event fields: `channel`, `span`, `direction`, `duration_bin`,
+    `magnitude_bin`, `speed_bin`, `count_bin`, `source_observables`;
+  - rotation-specific handle: `angular_speed_bin`;
+  - locomotion-specific handles: `distance_bin`, `speed_bin`, `path_bin`;
+  - packet fields: `members`, `member_channels`, `packet_symbol`,
+    `relation_summary`;
+  - motif fields: `operator`, `channels`, `relation_profile`,
+    `numeric_profile`.
+- Proposed implementation artifact:
+  - script: `scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - output dir:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/`
+- Proposed output files:
+  - `multi_channel_event_corpus.jsonl`
+  - `channel_event_vocab.json`
+  - `overlap_packet_corpus.jsonl`
+  - `packet_vocab.json`
+  - `multichannel_motion_bpe_vocab.json`
+  - `case_multichannel_bpe_sequences.jsonl`
+  - `motif_audit.json`
+  - `motif_family_candidates.json`
+  - `motion_pattern_forest_candidates.json`
+  - `summary.json`
+  - `audit_report.md`
+- Validation checklist:
+  - compare channel-event counts to the current `393032` Layer3 event baseline;
+  - report how many events become parallel packets;
+  - verify that jumping-jack-like cases produce bimanual + vertical packets;
+  - verify that arm-motion-with-running cases produce root + arm packets;
+  - verify that rotation uses angular-speed bins;
+  - run `256/512/1024/2048` merge sweeps;
+  - compare motif purity, coverage, and compression against the old
+    single-sequence Event-BPE baseline.
+
+### Full-HML3D multi-channel Motion-BPE audit v1
+
+- New script:
+  - `scripts/audit_hml3d_multichannel_motion_bpe.py`
+- Output:
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/`
+- Source:
+  - `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl`
+- Command:
+  - `/usr/bin/time -f 'elapsed=%E maxrss_kb=%M' /mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1 --num-merges 96 --min-pair-count 120 --min-pair-support 60 --write-heavy-corpora`
+- Runtime:
+  - elapsed: `2:11.23`
+  - max RSS: `3312552 KB`
+- Summary:
+  - source records: `29228`
+  - channel events: `393032`
+  - channel event types: `1019`
+  - packets: `87058`
+  - packet types: `25339`
+  - single-member packets: `46355`
+  - parallel packets: `40703`
+  - relation count: `1209868`
+  - relation type counts: `lead_lag=321989`, `parallel=713807`,
+    `same_channel_adjacent=174072`
+  - original multi-view token count: `480090`
+  - learned motifs: `96`
+  - final token count: `348944`
+  - final vocab size: `18981`
+  - compression ratio: `0.72683`
+  - covered cases: `19647 / 29228`
+  - case coverage: `0.672198`
+  - motif families: `43`
+  - forest nodes: `139`
+  - forest edges: `96`
+  - operator counts: `SEQ_CHANNEL_MERGE=86`, `SEQ_PACKET_MERGE=10`
+  - packet motif ratio: `0.104167`
+- Output files:
+  - `summary.json`
+  - `audit_report.md`
+  - `channel_event_vocab.json`
+  - `packet_vocab.json`
+  - `multichannel_motion_bpe_vocab.json`
+  - `case_multichannel_bpe_sequences.jsonl`
+  - `motif_audit.json`
+  - `motif_family_candidates.json`
+  - `motion_pattern_forest_candidates.json`
+  - `multi_channel_event_corpus.jsonl`
+  - `overlap_packet_corpus.jsonl`
+- Line counts:
+  - `multi_channel_event_corpus.jsonl`: `29228`
+  - `overlap_packet_corpus.jsonl`: `29228`
+  - `case_multichannel_bpe_sequences.jsonl`: `106507`
+- Important implementation note:
+  - this symbolic audit is CPU-oriented; GPU is not useful for the current hot
+    path because the work is JSON/dict handling, span-overlap graph building,
+    Counter statistics, and token replacement;
+  - the first heavy relation-view run with `--include-relation-view` and `256`
+    merges was stopped because it stayed CPU-bound for several minutes;
+  - v1 therefore learns over per-channel and packet sequences by default,
+    while still reporting relation counts and writing packet corpora;
+  - BPE learning was optimized to use lightweight symbol sequences and then
+    reconstruct structured token sequences once from the learned merge table.
+- Verification:
+  - `python -m py_compile scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_smoke_v5 --max-records 200 --num-merges 32 --min-pair-count 4 --min-pair-support 3`
+  - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/summary.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/motif_audit.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/motif_family_candidates.json`
+  - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/motion_pattern_forest_candidates.json`
+  - `head -n 1 outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/multi_channel_event_corpus.jsonl | python -m json.tool`
+  - `head -n 1 outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/overlap_packet_corpus.jsonl | python -m json.tool`
+
+### Multi-channel Motion-BPE script cleanup
+
+- Updated:
+  - `scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `docs/design/multi_channel_motion_bpe_extraction.md`
+- Purpose:
+  - make the script easier to tune directly;
+  - keep Motion-BPE motion-only;
+  - cache the expensive channel-event / packet extraction stage.
+- Script behavior:
+  - captions and caption aliases are retained only for examples and naming
+    diagnostics;
+  - hard-coded caption keyword tags were removed from the Motion-BPE audit;
+  - BPE merges and motif-family grouping use motion symbols only.
+- New commands:
+  - self-test:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --self-test`
+  - small cached tuning run:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_v1 --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_cache_v1 --max-records 200 --num-merges 32 --min-pair-count 4 --min-pair-support 3`
+- Debug output:
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_v1/audit_report.md`
+  - cache:
+    - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_cache_v1/`
+- Debug summary:
+  - records: `200`
+  - channel events: `2812`
+  - packets: `600`
+  - parallel packets: `278`
+  - learned motifs: `32`
+  - compression ratio: `0.758499`
+  - motif families: `20`
+  - forest nodes: `52`
+  - second run cache status: `hit`
+- Verification:
+  - `python -m py_compile scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --self-test`
+  - searched the script for the removed feedback keyword/action regex terms;
+    no hits.

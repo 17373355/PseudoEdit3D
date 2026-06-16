@@ -13,6 +13,7 @@ from .aml_pattern_tree import (
     select_primary_pattern_match,
 )
 from .aml_proto_registry import active_proto_id, proto_in_group, registry_map, registry_set
+from .aml_semantic_alias_sidecar import attach_caption_semantic_aliases, caption_alias_audit, recover_caption_alias_actions
 from .coarse_action_materializer import _attach_action_metadata
 from .coarse_axes import build_event_coarse_signature, _in_place_gait_name
 from .coarse_pattern_evidence import (
@@ -432,6 +433,7 @@ def build_coarse_action_program(
     *,
     total_frames: int | None = None,
     max_residual_events: int = 4,
+    caption_hints: list[str] | str | None = None,
 ) -> dict[str, Any]:
     events = _indexed_events(program_or_events)
     signature = build_event_coarse_signature(events, total_frames=total_frames)
@@ -545,10 +547,17 @@ def build_coarse_action_program(
             )
     actions = _apply_semantic_dominance(actions)
     actions = _drop_redundant_fallback_actions(actions)
+    if caption_hints:
+        actions = attach_caption_semantic_aliases(actions, caption_hints)
+        recovered_alias_actions = recover_caption_alias_actions(actions, events, caption_hints)
+        if recovered_alias_actions:
+            actions.extend(recovered_alias_actions)
+            for action in recovered_alias_actions:
+                covered.update(int(x) for x in action.get("covered_event_indices") or [])
     actions = sorted(actions, key=lambda item: (int(item.get("span", [0, 0])[0]), int(item.get("span", [0, 0])[1])))
     actions = _attach_action_metadata(actions)
     residual = [evt for evt in events if int(evt["event_index"]) not in covered]
-    return {
+    result = {
         "version": "coarse_action_program_v2",
         "signature": signature,
         "prototype": prototype,
@@ -559,3 +568,6 @@ def build_coarse_action_program(
         "residual_events": [_event_ref(evt) for evt in residual[:max_residual_events]],
         "residual_event_count": len(residual),
     }
+    if caption_hints:
+        result["caption_semantic_alias_audit"] = caption_alias_audit(actions, caption_hints)
+    return result

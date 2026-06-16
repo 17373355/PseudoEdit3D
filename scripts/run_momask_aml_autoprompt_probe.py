@@ -94,6 +94,17 @@ def main() -> None:
     parser.add_argument('--cond-scale', type=int, default=4)
     parser.add_argument('--reuse-existing', action='store_true')
     parser.add_argument('--verbose-json', action='store_true')
+    parser.add_argument(
+        '--caption-semantic-aliases',
+        action='store_true',
+        help='Use HML3D captions only to name compatible geometry patterns; motion evidence still comes from AML.',
+    )
+    parser.add_argument(
+        '--caption-alias-source',
+        choices=['first', 'all'],
+        default='first',
+        help='Caption source for --caption-semantic-aliases. first matches the displayed reference prompt; all uses every HML3D caption.',
+    )
     args = parser.parse_args()
 
     case_ids = load_case_ids(args.case_ids, args.case_list)
@@ -119,15 +130,23 @@ def main() -> None:
         aml = src.extract_aml_program(joints)
         program = aml['layer3']
         coarse_program = None
+        caption_hints = None
+        if args.caption_semantic_aliases:
+            caption_hints = src.read_prompts(case_id) if args.caption_alias_source == 'all' else src.read_first_prompt(case_id)
         if args.prompt_mode == 'coarse':
             auto_prompt, coarse_program = render_coarse_aml_prompt(
                 program,
                 max_residual_events=args.max_events,
+                caption_hints=caption_hints,
                 return_program=True,
             )
         else:
             auto_prompt = render_aml_prompt(program, max_events=args.max_events)
-            coarse_program = build_coarse_action_program(program, max_residual_events=args.max_events)
+            coarse_program = build_coarse_action_program(
+                program,
+                max_residual_events=args.max_events,
+                caption_hints=caption_hints,
+            )
         gt_prompt = src.read_first_prompt(case_id)
         source_num_frames = int(len(joints))
         generated_num_frames = int((source_num_frames // 4) * 4)
@@ -139,6 +158,8 @@ def main() -> None:
             'selected_hml3d_prompt_for_reference_only': gt_prompt,
             'auto_prompt': auto_prompt,
             'prompt_mode': args.prompt_mode,
+            'caption_semantic_aliases_enabled': bool(args.caption_semantic_aliases),
+            'caption_alias_source': args.caption_alias_source if args.caption_semantic_aliases else None,
             'canonical_actions': (coarse_program or {}).get('canonical_actions') or [],
             'coarse_action_program': coarse_program,
             'aml': aml,
@@ -176,6 +197,8 @@ def main() -> None:
                 'gpu_id': str(args.gpu_id),
                 'time_steps': int(args.time_steps),
                 'cond_scale': int(args.cond_scale),
+                'caption_semantic_aliases_enabled': bool(args.caption_semantic_aliases),
+                'caption_alias_source': args.caption_alias_source if args.caption_semantic_aliases else None,
             },
         }
         summary.append(row)

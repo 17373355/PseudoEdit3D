@@ -16,6 +16,9 @@ Current target groups:
 
 Current AML mainline is documented in:
 
+- `docs/design/motion_corpus_pattern_tree_mainline.md`
+- `docs/design/motion_cluster_bpe_tree_induction.md`
+- `docs/design/text_bpe_wordnet_naming_layer.md`
 - `docs/design/aml_architecture_coverage.md`
 - `docs/design/motion_subword_design.md`
 - `docs/design/aml_edit_call_graph.md`
@@ -66,3 +69,12 @@ No active file should import from this folder.
 - `scripts/iterate_mined_pairs.py` -> `legacy/old_stage1_iterative_refinement/scripts/iterate_mined_pairs.py`
   - reason: command-line wrapper for the old mined-pair iterative refinement loop
   - replacement: no active replacement; keep for historical Stage 1 experiments only
+
+### 2026-06-15
+
+- `docs/design/motion_bpe_baseline.md` -> `legacy/motion_bpe_baseline/docs/design/motion_bpe_baseline.md`
+  - reason: old Layer2 BPE baseline framing is superseded by the full-HML3D Layer3 event-BPE audit and the corpus-derived pattern-tree mainline
+  - replacement: `docs/design/motion_corpus_pattern_tree_mainline.md`, `docs/design/motion_cluster_bpe_tree_induction.md`, and `scripts/audit_hml3d_layer3_event_bpe.py`
+- `scripts/learn_motion_bpe.py` -> `legacy/motion_bpe_baseline/scripts/learn_motion_bpe.py`
+  - reason: old case-list Layer2 submotion BPE script is not imported by active AML scripts and does not produce the new full-corpus tree-induction artifacts
+  - replacement: `scripts/audit_hml3d_layer3_event_bpe.py`

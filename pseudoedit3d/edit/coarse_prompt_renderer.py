@@ -252,6 +252,11 @@ def _clause_from_spec(signature: dict[str, Any], action: dict[str, Any], spec: d
 
 
 def _action_clause(signature: dict[str, Any], action: dict[str, Any]) -> str | None:
+    semantic_alias = action.get('semantic_alias')
+    if isinstance(semantic_alias, dict):
+        clause = str(semantic_alias.get('clause') or '')
+        if clause:
+            return clause
     spec = _renderer_spec_for(action).get('clause') or _renderer_specs().get('default_clause') or {}
     return _clause_from_spec(signature, action, dict(spec)) if isinstance(spec, dict) else None
 
@@ -275,6 +280,10 @@ def _semantic_status(action: dict[str, Any]) -> str:
 def _action_salience(action: dict[str, Any]) -> float:
     specs = _renderer_specs()
     score = float(_renderer_spec_for(action).get('salience', specs.get('default_salience', 0.25)))
+    if isinstance(action.get('semantic_alias'), dict):
+        priority = int((action.get('semantic_alias') or {}).get('priority') or 0)
+        score = max(score, 0.86)
+        score += min(0.10, max(0, priority - 70) * 0.002)
     if action.get('probe_visible') is False:
         score -= 1.0
     status = _semantic_status(action)
@@ -367,10 +376,15 @@ def render_coarse_aml_prompt(
     max_probe_clauses: int = _DEFAULT_MAX_PROBE_CLAUSES,
     max_residual_clauses: int = _DEFAULT_MAX_RESIDUAL_CLAUSES,
     max_words: int = _DEFAULT_MAX_WORDS,
+    caption_hints: list[str] | str | None = None,
     return_program: bool = False,
 ) -> str | tuple[str, dict[str, Any]]:
     """Render a MoMask-compatible prompt from coarse AML prototypes plus residuals."""
-    coarse = build_coarse_action_program(program, max_residual_events=max_residual_events)
+    coarse = build_coarse_action_program(
+        program,
+        max_residual_events=max_residual_events,
+        caption_hints=caption_hints,
+    )
     signature = coarse.get('signature') or {}
     action_rows: list[tuple[dict[str, Any], str, float]] = []
     for action in sorted(coarse.get('coarse_actions') or [], key=_probe_sort_key):

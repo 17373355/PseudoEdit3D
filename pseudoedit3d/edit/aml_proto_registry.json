@@ -291,6 +291,51 @@
       "BIMANUAL_ACTION"
     ]
   },
+  "sparse_event_emitters": {
+    "residual_translating_gait_segment": {
+      "source_super_family": "WHOLE_BODY_LOCOMOTION",
+      "cluster_prefix": "LOCO_",
+      "exclude_cluster_prefix": "LOCO_TURN_",
+      "min_magnitude": 0.35,
+      "pattern_kind": "residual_translating_gait_segment",
+      "base_confidence": 0.46,
+      "metrics": {
+        "distance_m": "magnitude",
+        "speed": "event_speed"
+      }
+    },
+    "residual_turn_segment": {
+      "source_super_family": "WHOLE_BODY_LOCOMOTION",
+      "cluster_prefix": "LOCO_TURN_",
+      "min_magnitude": 30.0,
+      "pattern_kind": "residual_turn_segment",
+      "base_confidence": 0.46,
+      "suppress_when_near_rotation_driver": true,
+      "rotation_driver_min_magnitude": 45.0,
+      "rotation_driver_min_overlap": 0.25,
+      "rotation_driver_max_gap": 4,
+      "metrics": {
+        "angle_deg": "magnitude",
+        "angle_bin": "cluster_id"
+      }
+    },
+    "residual_rotation_segment": {
+      "source_super_family": "WHOLE_BODY_ROTATION",
+      "min_magnitude": 45.0,
+      "pattern_kind": "residual_turn_segment",
+      "base_confidence": 0.50,
+      "covered_context": {
+        "super_family": "WHOLE_BODY_LOCOMOTION",
+        "cluster_prefix": "LOCO_TURN_",
+        "min_overlap": 0.25,
+        "max_gap": 4
+      },
+      "metrics": {
+        "angle_deg": "magnitude",
+        "angle_bin": "cluster_id"
+      }
+    }
+  },
   "condition_schema": {
     "default_required_approx_slots": [
       "span"

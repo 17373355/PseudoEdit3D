@@ -50,6 +50,10 @@ def _emitter_proto_id(name: str, default: str = "") -> str:
     return str(proto_id)
 
 
+def _sparse_event_emitter_specs() -> dict[str, dict[str, Any]]:
+    return _registry_map("sparse_event_emitters")
+
+
 def _vertical_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [evt for evt in events if evt.get("super_family") == "WHOLE_BODY_VERTICAL"]
 
@@ -910,76 +914,93 @@ def _semantic_candidate_actions(events: list[dict[str, Any]], covered: set[int])
     )
     return out
 
+
+def _event_matches_sparse_spec(evt: dict[str, Any], spec: dict[str, Any]) -> bool:
+    super_family = spec.get("source_super_family")
+    if super_family and str(evt.get("super_family", "")) != str(super_family):
+        return False
+    cluster = str(evt.get("cluster_id", ""))
+    cluster_prefix = spec.get("cluster_prefix")
+    if cluster_prefix and not cluster.startswith(str(cluster_prefix)):
+        return False
+    exclude_prefix = spec.get("exclude_cluster_prefix")
+    if exclude_prefix and cluster.startswith(str(exclude_prefix)):
+        return False
+    min_magnitude = spec.get("min_magnitude")
+    if min_magnitude is not None and _magnitude(evt) < float(min_magnitude):
+        return False
+    return True
+
+
+def _has_rotation_driver(evt: dict[str, Any], events: list[dict[str, Any]], spec: dict[str, Any]) -> bool:
+    if not spec.get("suppress_when_near_rotation_driver"):
+        return False
+    min_magnitude = float(spec.get("rotation_driver_min_magnitude") or 45.0)
+    min_overlap = float(spec.get("rotation_driver_min_overlap") or 0.25)
+    max_gap = int(spec.get("rotation_driver_max_gap") or 4)
+    return any(
+        other.get("super_family") == "WHOLE_BODY_ROTATION"
+        and _magnitude(other) >= min_magnitude
+        and (_overlap_ratio(evt, other) >= min_overlap or _gap(evt, other) <= max_gap)
+        for other in events
+    )
+
+
+def _covered_context_indices(evt: dict[str, Any], events: list[dict[str, Any]], spec: dict[str, Any]) -> set[int]:
+    covered = {int(evt["event_index"])}
+    context = spec.get("covered_context")
+    if not isinstance(context, dict):
+        return covered
+    for other in events:
+        if context.get("super_family") and str(other.get("super_family", "")) != str(context["super_family"]):
+            continue
+        cluster_prefix = context.get("cluster_prefix")
+        if cluster_prefix and not str(other.get("cluster_id", "")).startswith(str(cluster_prefix)):
+            continue
+        min_overlap = float(context.get("min_overlap") or 0.0)
+        max_gap = int(context.get("max_gap") or 0)
+        if _overlap_ratio(evt, other) >= min_overlap or _gap(evt, other) <= max_gap:
+            covered.add(int(other["event_index"]))
+    return covered
+
+
+def _sparse_metric_ctx(evt: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
+    ctx: dict[str, Any] = {
+        "pattern_kind": str(spec.get("pattern_kind", "")),
+        "direction": str(evt.get("direction", "unknown")),
+        "confidence": float(spec.get("base_confidence") or 0.46),
+    }
+    for key, source in (spec.get("metrics") or {}).items():
+        source = str(source)
+        if source == "magnitude":
+            value = _magnitude(evt)
+            ctx[str(key)] = round(value, 2) if str(key).endswith("_deg") else round(value, 4)
+        elif source == "event_speed":
+            ctx[str(key)] = _speed_from_event(evt)
+        elif source == "cluster_id":
+            ctx[str(key)] = str(evt.get("cluster_id", ""))
+    return ctx
+
+
 def _secondary_actions(events: list[dict[str, Any]], covered: set[int]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
+    specs = _sparse_event_emitter_specs()
     for evt in events:
         idx = int(evt["event_index"])
         if idx in covered:
             continue
-        family = evt.get("super_family")
-        cluster = str(evt.get("cluster_id", ""))
-        if family == "WHOLE_BODY_LOCOMOTION" and cluster.startswith("LOCO_") and not cluster.startswith("LOCO_TURN_") and _magnitude(evt) >= 0.35:
-            action = _action_from_sparse_match(
-                {
-                    "pattern_kind": "residual_translating_gait_segment",
-                    "direction": str(evt.get("direction", "unknown")),
-                    "confidence": 0.46,
-                    "speed": _speed_from_event(evt),
-                    "distance_m": round(_magnitude(evt), 4),
-                },
-                [evt],
-            )
-            if action is None:
+        for spec in specs.values():
+            if not _event_matches_sparse_spec(evt, spec):
                 continue
-            action["span"] = list(_span(evt))
-            action["covered_event_indices"] = [idx]
-            actions.append(action)
-            covered.add(idx)
-        elif family == "WHOLE_BODY_LOCOMOTION" and cluster.startswith("LOCO_TURN_") and _magnitude(evt) >= 30.0:
-            has_rotation_driver = any(
-                other.get("super_family") == "WHOLE_BODY_ROTATION"
-                and _magnitude(other) >= 45.0
-                and (_overlap_ratio(evt, other) >= 0.25 or _gap(evt, other) <= 4)
-                for other in events
-            )
-            if has_rotation_driver:
-                continue
-            action = _action_from_sparse_match(
-                {
-                    "pattern_kind": "residual_turn_segment",
-                    "direction": str(evt.get("direction", "unknown")),
-                    "confidence": 0.46,
-                    "angle_deg": round(_magnitude(evt), 2),
-                    "angle_bin": cluster,
-                },
-                [evt],
-            )
-            if action is None:
-                continue
-            action["span"] = list(_span(evt))
-            action["covered_event_indices"] = [idx]
-            actions.append(action)
-            covered.add(idx)
-        elif family == "WHOLE_BODY_ROTATION" and _magnitude(evt) >= 45.0:
-            local_cover = {idx}
-            for other in events:
-                if other.get("super_family") == "WHOLE_BODY_LOCOMOTION" and str(other.get("cluster_id", "")).startswith("LOCO_TURN_"):
-                    if _overlap_ratio(evt, other) >= 0.25 or _gap(evt, other) <= 4:
-                        local_cover.add(int(other["event_index"]))
-            action = _action_from_sparse_match(
-                {
-                    "pattern_kind": "residual_turn_segment",
-                    "direction": str(evt.get("direction", "unknown")),
-                    "confidence": 0.50,
-                    "angle_deg": round(_magnitude(evt), 2),
-                    "angle_bin": str(evt.get("cluster_id", "")),
-                },
-                [evt],
-            )
+            if _has_rotation_driver(evt, events, spec):
+                break
+            local_cover = _covered_context_indices(evt, events, spec)
+            action = _action_from_sparse_match(_sparse_metric_ctx(evt, spec), [evt])
             if action is None:
                 continue
             action["span"] = list(_span(evt))
             action["covered_event_indices"] = sorted(local_cover)
             actions.append(action)
             covered.update(local_cover)
+            break
     return actions

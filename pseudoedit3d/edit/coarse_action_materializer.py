@@ -307,6 +307,7 @@ def _canonical_action(action: dict[str, Any]) -> dict[str, Any]:
         "pattern_node_id",
         "pattern_path",
         "pattern_taxonomy_parent_id",
+        "semantic_alias",
     ):
         if action.get(key) is not None:
             slots[key] = action.get(key)

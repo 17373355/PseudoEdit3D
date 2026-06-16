@@ -4,10 +4,21 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from .coarse_event_utils import _duration, _event_sort_key, _magnitude, _span
+from .unmapped_geometry_policy import classify_unlinked_geometry_record
 
 
 UNMAPPED_FAMILY_ID = "__AML_UNMAPPED_GEOMETRY__"
 CONTEXT_ONLY_FAMILY_ID = "__AML_CONTEXT_ONLY_GEOMETRY__"
+CONTEXT_FRAGMENT_FAMILY_ID = "__AML_CONTEXT_FRAGMENT_GEOMETRY__"
+IGNORED_NOISE_FAMILY_ID = "__AML_IGNORED_NOISE_GEOMETRY__"
+PSEUDO_FAMILY_IDS = frozenset(
+    {
+        UNMAPPED_FAMILY_ID,
+        CONTEXT_ONLY_FAMILY_ID,
+        CONTEXT_FRAGMENT_FAMILY_ID,
+        IGNORED_NOISE_FAMILY_ID,
+    }
+)
 
 
 def geometry_cluster_id(event: dict[str, Any]) -> str:
@@ -95,6 +106,91 @@ def _geometry_event_record(event: dict[str, Any], links: list[dict[str, Any]]) -
     return record
 
 
+def _attach_unmapped_policies(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    linked_events = [event for event in events if event.get("aml_links")]
+    out: list[dict[str, Any]] = []
+    for event in events:
+        copied = dict(event)
+        if not copied.get("aml_links"):
+            copied["unmapped_policy"] = classify_unlinked_geometry_record(copied, linked_events)
+        out.append(copied)
+    return out
+
+
+def _unmapped_disposition(event: dict[str, Any]) -> str | None:
+    policy = event.get("unmapped_policy")
+    if not isinstance(policy, dict):
+        return None
+    return str(policy.get("recommended_disposition") or "")
+
+
+def _unmapped_classification(event: dict[str, Any]) -> str | None:
+    policy = event.get("unmapped_policy")
+    if not isinstance(policy, dict):
+        return None
+    return str(policy.get("classification") or "")
+
+
+def _event_link_profile(event: dict[str, Any]) -> dict[str, Any]:
+    links = list(event.get("aml_links") or [])
+    direct_links = [link for link in links if str(link.get("directness")) == "source"]
+    context_links = [link for link in links if str(link.get("directness")) != "source"]
+    if not links:
+        classification = _unmapped_classification(event)
+        disposition = _unmapped_disposition(event)
+        if disposition == "ignore_noise":
+            return {
+                "bucket": "ignored_noise",
+                "pseudo_family_id": IGNORED_NOISE_FAMILY_ID,
+                "classification": classification,
+                "links": links,
+                "direct_links": direct_links,
+                "context_links": context_links,
+            }
+        if disposition == "mark_context_only":
+            return {
+                "bucket": "context_fragment",
+                "pseudo_family_id": CONTEXT_FRAGMENT_FAMILY_ID,
+                "classification": classification,
+                "links": links,
+                "direct_links": direct_links,
+                "context_links": context_links,
+            }
+        return {
+            "bucket": "unresolved_unmapped",
+            "pseudo_family_id": UNMAPPED_FAMILY_ID,
+            "classification": classification,
+            "links": links,
+            "direct_links": direct_links,
+            "context_links": context_links,
+        }
+    if not direct_links:
+        return {
+            "bucket": "context_only",
+            "pseudo_family_id": CONTEXT_ONLY_FAMILY_ID,
+            "classification": None,
+            "links": links,
+            "direct_links": direct_links,
+            "context_links": context_links,
+        }
+    return {
+        "bucket": "direct",
+        "pseudo_family_id": None,
+        "classification": None,
+        "links": links,
+        "direct_links": direct_links,
+        "context_links": context_links,
+    }
+
+
+def _semantic_family_counter(family_counter: Counter[str]) -> Counter[str]:
+    return Counter({family: count for family, count in family_counter.items() if family not in PSEUDO_FAMILY_IDS})
+
+
+def _pseudo_family_counter(family_counter: Counter[str]) -> Counter[str]:
+    return Counter({family: count for family, count in family_counter.items() if family in PSEUDO_FAMILY_IDS})
+
+
 def _cluster_summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for event in events:
@@ -105,35 +201,56 @@ def _cluster_summaries(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         status_counter: Counter[str] = Counter()
         unlinked = 0
         context_only = 0
+        context_fragment = 0
+        ignored_noise = 0
+        unresolved_unmapped = 0
+        unmapped_class_counter: Counter[str] = Counter()
         for event in group:
-            links = list(event.get("aml_links") or [])
-            direct_links = [link for link in links if str(link.get("directness")) == "source"]
-            if not links:
+            profile = _event_link_profile(event)
+            bucket = str(profile["bucket"])
+            classification = profile.get("classification")
+            if classification:
+                unmapped_class_counter[str(classification)] += 1
+            if bucket != "direct":
+                family_counter[str(profile["pseudo_family_id"])] += 1
+            if bucket in {"ignored_noise", "context_fragment", "unresolved_unmapped"}:
                 unlinked += 1
-                family_counter[UNMAPPED_FAMILY_ID] += 1
+                if bucket == "ignored_noise":
+                    ignored_noise += 1
+                elif bucket == "context_fragment":
+                    context_fragment += 1
+                else:
+                    unresolved_unmapped += 1
                 continue
-            if not direct_links:
+            if bucket == "context_only":
                 context_only += 1
-                family_counter[CONTEXT_ONLY_FAMILY_ID] += 1
                 continue
-            for link in direct_links:
+            for link in profile["direct_links"]:
                 family_counter[str(link.get("family_id") or "UNKNOWN")] += 1
                 status_counter[str(link.get("status") or "unknown")] += 1
+        semantic_counter = _semantic_family_counter(family_counter)
+        pseudo_counter = _pseudo_family_counter(family_counter)
         summaries.append(
             {
                 "geometry_cluster_id": cluster_id,
                 "event_count": len(group),
                 "event_indices": [int(event["event_index"]) for event in group],
                 "unlinked_event_count": int(unlinked),
+                "unresolved_unmapped_event_count": int(unresolved_unmapped),
+                "context_fragment_event_count": int(context_fragment),
+                "ignored_noise_event_count": int(ignored_noise),
                 "context_only_event_count": int(context_only),
-                "unmapped_event_count": int(unlinked),
+                "unmapped_event_count": int(unresolved_unmapped),
+                "unmapped_classification_counts": unmapped_class_counter.most_common(),
                 "named_event_count": int(len(group) - unlinked),
                 "direct_named_event_count": int(len(group) - unlinked - context_only),
                 "family_counts": family_counter.most_common(),
+                "semantic_family_counts": semantic_counter.most_common(),
+                "pseudo_family_counts": pseudo_counter.most_common(),
                 "status_counts": status_counter.most_common(),
                 "stable_family_ids": sorted(
                     family
-                    for family in family_counter
+                    for family in semantic_counter
                     if any(
                         str(link.get("family_id")) == family and str(link.get("status")) == "stable"
                         for event in group
@@ -155,9 +272,10 @@ def build_geometry_signature(
         _geometry_event_record(event, links_by_event.get(int(event["event_index"]), []))
         for event in _layer3_events(layer3)
     ]
+    events = _attach_unmapped_policies(events)
     cluster_ids = sorted({str(event["geometry_cluster_id"]) for event in events})
     return {
-        "schema_version": "aml_geometry_signature_v1",
+        "schema_version": "aml_geometry_signature_v2",
         "event_count": len(events),
         "cluster_count": len(cluster_ids),
         "cluster_ids": cluster_ids,
@@ -186,7 +304,11 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
     cluster_event_counts: Counter[str] = Counter()
     cluster_case_support: dict[str, set[str]] = defaultdict(set)
     cluster_unlinked_events: Counter[str] = Counter()
+    cluster_unresolved_unmapped_events: Counter[str] = Counter()
     cluster_context_only_events: Counter[str] = Counter()
+    cluster_context_fragment_events: Counter[str] = Counter()
+    cluster_ignored_noise_events: Counter[str] = Counter()
+    cluster_unmapped_classifications: dict[str, Counter[str]] = defaultdict(Counter)
     cluster_unknown_links: Counter[str] = Counter()
     cluster_context_links: Counter[str] = Counter()
     cluster_context_family_counts: dict[str, Counter[str]] = defaultdict(Counter)
@@ -198,29 +320,38 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
     for record in records:
         case_id = str(record.get("case_id") or "")
         signature = record.get("geometry_signature") or {}
-        for event in signature.get("events") or []:
+        events = _attach_unmapped_policies(list(signature.get("events") or []))
+        for event in events:
             cluster_id = str(event.get("geometry_cluster_id") or "UNKNOWN")
             total_events += 1
             cluster_event_counts[cluster_id] += 1
             cluster_case_support[cluster_id].add(case_id)
             cluster_examples[cluster_id].append({"case_id": case_id, "event_index": event.get("event_index")})
-            links = list(event.get("aml_links") or [])
-            direct_links = [link for link in links if str(link.get("directness")) == "source"]
-            context_links = [link for link in links if str(link.get("directness")) != "source"]
-            cluster_context_links[cluster_id] += len(context_links)
-            for link in context_links:
+            profile = _event_link_profile(event)
+            cluster_context_links[cluster_id] += len(profile["context_links"])
+            for link in profile["context_links"]:
                 family_id = str(link.get("family_id") or "UNKNOWN")
                 cluster_context_family_counts[cluster_id][family_id] += 1
                 context_family_cluster_counts[family_id][cluster_id] += 1
-            if not links:
+            classification = profile.get("classification")
+            if classification:
+                cluster_unmapped_classifications[cluster_id][str(classification)] += 1
+            bucket = str(profile["bucket"])
+            if bucket != "direct":
+                cluster_family_counts[cluster_id][str(profile["pseudo_family_id"])] += 1
+            if bucket in {"ignored_noise", "context_fragment", "unresolved_unmapped"}:
                 cluster_unlinked_events[cluster_id] += 1
-                cluster_family_counts[cluster_id][UNMAPPED_FAMILY_ID] += 1
+                if bucket == "ignored_noise":
+                    cluster_ignored_noise_events[cluster_id] += 1
+                elif bucket == "context_fragment":
+                    cluster_context_fragment_events[cluster_id] += 1
+                else:
+                    cluster_unresolved_unmapped_events[cluster_id] += 1
                 continue
-            if not direct_links:
+            if bucket == "context_only":
                 cluster_context_only_events[cluster_id] += 1
-                cluster_family_counts[cluster_id][CONTEXT_ONLY_FAMILY_ID] += 1
                 continue
-            for link in direct_links:
+            for link in profile["direct_links"]:
                 family_id = str(link.get("family_id") or "UNKNOWN")
                 status = str(link.get("status") or "unknown")
                 cluster_family_counts[cluster_id][family_id] += 1
@@ -233,37 +364,44 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
     one_to_many_geometry_clusters: list[dict[str, Any]] = []
     unmapped_geometry_clusters: list[dict[str, Any]] = []
     context_only_geometry_clusters: list[dict[str, Any]] = []
+    context_fragment_geometry_clusters: list[dict[str, Any]] = []
+    ignored_noise_geometry_clusters: list[dict[str, Any]] = []
     aml_unable_to_name_clusters: list[dict[str, Any]] = []
     for cluster_id in cluster_event_counts:
         family_counter = cluster_family_counts.get(cluster_id, Counter())
-        named_families = [
-            family
-            for family in family_counter
-            if family not in {UNMAPPED_FAMILY_ID, CONTEXT_ONLY_FAMILY_ID}
-        ]
+        semantic_counter = _semantic_family_counter(family_counter)
+        pseudo_counter = _pseudo_family_counter(family_counter)
+        named_families = list(semantic_counter)
         status_counter = cluster_status_counts.get(cluster_id, Counter())
         event_count = int(cluster_event_counts[cluster_id])
         support = len(cluster_case_support[cluster_id])
         unlinked_count = int(cluster_unlinked_events[cluster_id])
+        unresolved_unmapped_count = int(cluster_unresolved_unmapped_events[cluster_id])
         context_only_count = int(cluster_context_only_events[cluster_id])
+        context_fragment_count = int(cluster_context_fragment_events[cluster_id])
+        ignored_noise_count = int(cluster_ignored_noise_events[cluster_id])
         unknown_count = int(cluster_unknown_links[cluster_id])
         base = {
             "geometry_cluster_id": cluster_id,
             "event_count": event_count,
             "case_support": support,
             "family_counts": family_counter.most_common(),
+            "semantic_family_counts": semantic_counter.most_common(),
+            "pseudo_family_counts": pseudo_counter.most_common(),
             "status_counts": status_counter.most_common(),
             "covered_context_link_count": int(cluster_context_links[cluster_id]),
             "context_family_counts": cluster_context_family_counts[cluster_id].most_common(),
+            "unmapped_classification_counts": cluster_unmapped_classifications[cluster_id].most_common(),
             "example_case_ids": _case_examples(cluster_examples[cluster_id]),
         }
-        if unlinked_count:
+        if unresolved_unmapped_count:
             unmapped_geometry_clusters.append(
                 {
                     **base,
                     "unlinked_event_count": unlinked_count,
-                    "unmapped_event_count": unlinked_count,
-                    "unmapped_share": round(unlinked_count / max(1, event_count), 4),
+                    "unresolved_unmapped_event_count": unresolved_unmapped_count,
+                    "unmapped_event_count": unresolved_unmapped_count,
+                    "unmapped_share": round(unresolved_unmapped_count / max(1, event_count), 4),
                 }
             )
         if context_only_count:
@@ -274,15 +412,34 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
                     "context_only_share": round(context_only_count / max(1, event_count), 4),
                 }
             )
-        if unlinked_count or unknown_count:
+        if context_fragment_count:
+            context_fragment_geometry_clusters.append(
+                {
+                    **base,
+                    "unlinked_event_count": unlinked_count,
+                    "context_fragment_event_count": context_fragment_count,
+                    "context_fragment_share": round(context_fragment_count / max(1, event_count), 4),
+                }
+            )
+        if ignored_noise_count:
+            ignored_noise_geometry_clusters.append(
+                {
+                    **base,
+                    "unlinked_event_count": unlinked_count,
+                    "ignored_noise_event_count": ignored_noise_count,
+                    "ignored_noise_share": round(ignored_noise_count / max(1, event_count), 4),
+                }
+            )
+        if unresolved_unmapped_count or unknown_count:
             aml_unable_to_name_clusters.append(
                 {
                     **base,
                     "unlinked_event_count": unlinked_count,
-                    "unmapped_event_count": unlinked_count,
+                    "unresolved_unmapped_event_count": unresolved_unmapped_count,
+                    "unmapped_event_count": unresolved_unmapped_count,
                     "unknown_link_count": unknown_count,
-                    "unable_to_name_count": unlinked_count + unknown_count,
-                    "unable_to_name_share": round((unlinked_count + unknown_count) / max(1, event_count), 4),
+                    "unable_to_name_count": unresolved_unmapped_count + unknown_count,
+                    "unable_to_name_share": round((unresolved_unmapped_count + unknown_count) / max(1, event_count), 4),
                 }
             )
         if len(named_families) > 1:
@@ -291,6 +448,8 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
             len(named_families) == 1
             and not unlinked_count
             and not context_only_count
+            and not context_fragment_count
+            and not ignored_noise_count
             and status_counter
             and set(status_counter) == {"stable"}
         ):
@@ -323,7 +482,7 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
     ]
 
     return {
-        "schema_version": "aml_geometry_sidecar_summary_v2",
+        "schema_version": "aml_geometry_sidecar_summary_v3",
         "num_cases": len(records),
         "total_geometry_events": int(total_events),
         "geometry_cluster_counts": cluster_event_counts.most_common(top_n),
@@ -357,6 +516,14 @@ def summarize_geometry_sidecars(records: list[dict[str, Any]], *, top_n: int = 4
         "context_only_geometry_clusters": sorted(
             context_only_geometry_clusters,
             key=lambda item: (-float(item["context_only_share"]), -int(item["context_only_event_count"]), str(item["geometry_cluster_id"])),
+        )[:top_n],
+        "context_fragment_geometry_clusters": sorted(
+            context_fragment_geometry_clusters,
+            key=lambda item: (-float(item["context_fragment_share"]), -int(item["context_fragment_event_count"]), str(item["geometry_cluster_id"])),
+        )[:top_n],
+        "ignored_noise_geometry_clusters": sorted(
+            ignored_noise_geometry_clusters,
+            key=lambda item: (-float(item["ignored_noise_share"]), -int(item["ignored_noise_event_count"]), str(item["geometry_cluster_id"])),
         )[:top_n],
         "aml_unable_to_name_clusters": sorted(
             aml_unable_to_name_clusters,

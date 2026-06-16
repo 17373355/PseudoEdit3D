@@ -10,6 +10,24 @@ The current evaluation is split into three conceptual layers:
 
 The current work mainly focuses on the first two.
 
+## Datasets
+
+This table records the dataset sizes used by the current AML / AutoPrompt
+experiments. These numbers are working snapshots for experiment planning and
+should be updated whenever an exporter, filtering rule, or split changes.
+
+| Dataset | Current local source | Motion unit counted | Motion units | Text files / chunks | Raw text strings | Split counts | Notes |
+| --- | --- | --- | ---: | ---: | ---: | --- | --- |
+| HumanML3D / MoMask local copy | `/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D` | MoMask `new_joint_vecs/*.npy` motion vector | `29228` | `29232` text files | `87384` caption lines | train `23384`, val `1460`, test `4384`, train_val `24844` | Current MoMask-compatible training/eval source. Most text files contain `3` captions; observed per-file counts are `1:16`, `2:314`, `3:28868`, `4:34`. `new_joints/` is not the main count here because this local copy primarily uses processed `new_joint_vecs`. |
+| Embody3D DAYLIFE subset | `/mnt/data/home/guoruoxi/code/embody-3d/datasets/daylife` plus `embody_3d__20251016__DAYLIFE_{text,smplx}.zip` | person-level 10s movement chunk with complete SMPL-X and `describe_person_movement` | `14118` | `14118` movement chunks | `42071` movement strings | train `12666`, val `775`, test `677` chunks | Export snapshot from `/mnt/data/home/guoruoxi/code/PseudoEdit3D/outputs/embody3d_exports/daylife_v1/summary.json`: `347` captures, `1302` person-sequences, `1302` complete SMPL-X, `1154` person text JSONs, `148` person-sequences without person text. Most chunks contain `3` movement descriptions; observed accepted per-chunk counts are `1:92`, `2:107`, `3:13913`, `4:5`, `6:1`. |
+| Embody3D SCENARIOS / acting subset | `/mnt/data/home/guoruoxi/code/embody-3d/datasets/acting` plus `embody_3d__20251016__SCENARIOS_{text,smplx}.zip` | person-level 10s movement chunk with complete SMPL-X and `describe_person_movement` | `14458` | `14458` movement chunks | `43228` movement strings | train `13205`, val `592`, test `661` chunks | Export snapshot from `/mnt/data/home/guoruoxi/code/PseudoEdit3D/outputs/embody3d_exports/scenarios_acting_v1/summary.json`: `355` captures, `1369` person-sequences, `1369` complete SMPL-X, `1187` person text JSONs, `182` person-sequences without person text, `307` holistic text JSONs. Most chunks contain `3` movement descriptions; observed accepted per-chunk counts are `1:32`, `2:89`, `3:14330`, `4:7`. The downloaded `SCENARIOS` zips unpack under `acting/`. |
+
+For Experiment 2, Embody3D subsets should be treated as dataset B only after a
+formal exporter creates a MoMask/HumanML3D-compatible split. Their
+`describe_person_movement` annotations are useful as text-conditioned baselines
+and audit references, but the motion-only AutoPrompt path must not consume them
+as the input condition.
+
 ## 实验 1：HumanML3D 重标注基准
 
 在相同的 MoMask 架构下进行比较。这里保持相同的 tokenizer / decoder family，但使用不同的 text-conditioned transformer 监督信号：

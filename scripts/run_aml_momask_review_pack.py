@@ -160,6 +160,8 @@ def write_master_index(output_root: Path, rows: list[dict[str, Any]], args: argp
         f"- max events: `{args.max_events}`",
         f"- time steps: `{args.time_steps}`",
         f"- cond scale: `{args.cond_scale}`",
+        f"- caption semantic aliases: `{bool(args.caption_semantic_aliases)}`",
+        f"- caption alias source: `{args.caption_alias_source if args.caption_semantic_aliases else 'none'}`",
         f"- cases: `{total_cases}`",
         f"- GIFs: `{total_gifs}`",
         f"- generation skipped: `{bool(args.skip_generation)}`",
@@ -208,6 +210,17 @@ def main() -> None:
     parser.add_argument("--cond-scale", type=int, default=4)
     parser.add_argument("--skip-generation", action="store_true")
     parser.add_argument("--reuse-existing", action="store_true")
+    parser.add_argument(
+        "--caption-semantic-aliases",
+        action="store_true",
+        help="Use HML3D captions only to name compatible AML geometry patterns during AutoPrompt generation.",
+    )
+    parser.add_argument(
+        "--caption-alias-source",
+        choices=["first", "all"],
+        default="first",
+        help="Caption source for --caption-semantic-aliases.",
+    )
     parser.add_argument("--skip-visualization", action="store_true")
     parser.add_argument("--skip-kinematic", action="store_true")
     parser.add_argument("--fps", type=int, default=10)
@@ -262,6 +275,9 @@ def main() -> None:
             probe_cmd.append("--skip-generation")
         if args.reuse_existing:
             probe_cmd.append("--reuse-existing")
+        if args.caption_semantic_aliases:
+            probe_cmd.append("--caption-semantic-aliases")
+            probe_cmd.extend(["--caption-alias-source", args.caption_alias_source])
         _run(probe_cmd)
 
         if not args.skip_visualization:

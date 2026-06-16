@@ -122,11 +122,20 @@ def _table(headers: list[str], rows: list[list[Any]]) -> str:
 
 
 def _top_family_counts(item: dict[str, Any], limit: int = 4) -> str:
-    return ", ".join(f"{family}:{count}" for family, count in (item.get("family_counts") or [])[:limit])
+    counts = item.get("semantic_family_counts") or item.get("family_counts") or []
+    return ", ".join(f"{family}:{count}" for family, count in counts[:limit])
+
+
+def _top_pseudo_family_counts(item: dict[str, Any], limit: int = 4) -> str:
+    return ", ".join(f"{family}:{count}" for family, count in (item.get("pseudo_family_counts") or [])[:limit])
 
 
 def _top_context_counts(item: dict[str, Any], limit: int = 4) -> str:
     return ", ".join(f"{family}:{count}" for family, count in (item.get("context_family_counts") or [])[:limit])
+
+
+def _top_unmapped_class_counts(item: dict[str, Any], limit: int = 4) -> str:
+    return ", ".join(f"{name}:{count}" for name, count in (item.get("unmapped_classification_counts") or [])[:limit])
 
 
 def _write_markdown(summary: dict[str, Any], output: Path, top_n: int) -> None:
@@ -154,6 +163,7 @@ def _write_markdown(summary: dict[str, Any], output: Path, top_n: int) -> None:
             item["unable_to_name_count"],
             item["unable_to_name_share"],
             _top_family_counts(item),
+            _top_pseudo_family_counts(item),
             ", ".join(item.get("example_case_ids") or []),
         ]
         for item in (summary.get("aml_unable_to_name_clusters") or [])[:top_n]
@@ -168,6 +178,28 @@ def _write_markdown(summary: dict[str, Any], output: Path, top_n: int) -> None:
             ", ".join(item.get("example_case_ids") or []),
         ]
         for item in (summary.get("context_only_geometry_clusters") or [])[:top_n]
+    ]
+    context_fragment_rows = [
+        [
+            item["geometry_cluster_id"],
+            item["event_count"],
+            item["context_fragment_event_count"],
+            item["context_fragment_share"],
+            _top_unmapped_class_counts(item),
+            ", ".join(item.get("example_case_ids") or []),
+        ]
+        for item in (summary.get("context_fragment_geometry_clusters") or [])[:top_n]
+    ]
+    ignored_noise_rows = [
+        [
+            item["geometry_cluster_id"],
+            item["event_count"],
+            item["ignored_noise_event_count"],
+            item["ignored_noise_share"],
+            _top_unmapped_class_counts(item),
+            ", ".join(item.get("example_case_ids") or []),
+        ]
+        for item in (summary.get("ignored_noise_geometry_clusters") or [])[:top_n]
     ]
     lines = [
         "# AML Geometry Sidecar Summary",
@@ -199,11 +231,23 @@ def _write_markdown(summary: dict[str, Any], output: Path, top_n: int) -> None:
         "",
         _table(["geometry_cluster", "events", "context_only", "share", "context_families", "examples"], context_only_rows),
         "",
+        "## Context-Fragment Geometry",
+        "",
+        "Unlinked events here are close to already named AML evidence. They are tracked as context fragments, not new semantic families.",
+        "",
+        _table(["geometry_cluster", "events", "context_fragments", "share", "classifications", "examples"], context_fragment_rows),
+        "",
+        "## Ignored Noise Geometry",
+        "",
+        "Unlinked events here are below the current semantic evidence threshold and are tracked as noise, not AML naming failures.",
+        "",
+        _table(["geometry_cluster", "events", "ignored_noise", "share", "classifications", "examples"], ignored_noise_rows),
+        "",
         "## AML Unable To Name Geometry",
         "",
-        "Events here have no AML link, or only unknown direct links. Context-only events are listed separately above.",
+        "Events here remain unresolved after removing context-only, context-fragment, and ignored-noise geometry.",
         "",
-        _table(["geometry_cluster", "events", "unable", "share", "family_counts", "examples"], unnamed_rows),
+        _table(["geometry_cluster", "events", "unable", "share", "semantic_families", "pseudo_families", "examples"], unnamed_rows),
         "",
     ]
     output.write_text("\n".join(lines), encoding="utf-8")

@@ -1,0 +1,356 @@
+{
+  "version": "aml_semantic_alias_sidecar_v1",
+  "description": "Caption-assisted naming rules for AML review prompts. These rules may name an already-detected geometry pattern, but must not create motion evidence by themselves.",
+  "rules": [
+    {
+      "alias_id": "jumping_jack",
+      "label": "jumping jack",
+      "clause": "does jumping jacks",
+      "caption_patterns": [
+        "\\bjumping\\s+jacks?\\b"
+      ],
+      "compatible_families": [
+        "BILATERAL_RHYTHMIC_COORDINATION"
+      ],
+      "min_action_count": 3,
+      "priority": 100,
+      "confidence": 0.86
+    },
+    {
+      "alias_id": "jump_rope",
+      "label": "jump rope",
+      "clause": "jumps rope in place",
+      "caption_patterns": [
+        "\\bjump\\s+rope\\b",
+        "\\bskipping\\s+rope\\b"
+      ],
+      "compatible_families": [
+        "BILATERAL_RHYTHMIC_COORDINATION",
+        "IN_PLACE_GAIT",
+        "VERTICAL_JUMP"
+      ],
+      "min_action_count": 2,
+      "priority": 98,
+      "confidence": 0.78
+    },
+    {
+      "alias_id": "arm_circle_or_windmill",
+      "label": "arm circle",
+      "clause": "swings one arm in a circular motion",
+      "caption_patterns": [
+        "\\bwindmills?\\b",
+        "\\bspins?\\s+(the\\s+)?(left|right)?\\s*arm\\b",
+        "\\barm\\s+[^.]{0,40}\\b(clockwise|anti-?clockwise|counter-?clockwise)\\b",
+        "\\b(clockwise|anti-?clockwise|counter-?clockwise)\\s+[^.]{0,40}\\barm\\b"
+      ],
+      "compatible_families": [
+        "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+        "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+        "UNILATERAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 96,
+      "confidence": 0.74,
+      "min_event_magnitude": 0.04
+    },
+    {
+      "alias_id": "sit_down_stand_up",
+      "label": "sit down and stand up",
+      "clause": "sits down and stands back up",
+      "caption_patterns": [
+        "\\bsits?\\s+down\\b.*\\bstands?\\s+(back\\s+)?up\\b",
+        "\\bstands?\\s+(back\\s+)?up\\b.*\\bsits?\\s+down\\b"
+      ],
+      "compatible_families": [
+        "SIT_STAND_CYCLE_CANDIDATE",
+        "STAND_UP_CANDIDATE",
+        "SIT_DOWN_CANDIDATE",
+        "LOW_BODY_HOLD_PROXY",
+        "SQUAT_HOLD"
+      ],
+      "priority": 94,
+      "confidence": 0.76
+    },
+    {
+      "alias_id": "sit_down",
+      "label": "sit down",
+      "clause": "sits down into a low seated posture",
+      "caption_patterns": [
+        "\\bsits?\\s+down\\b",
+        "\\bsitting\\b",
+        "\\bsat\\b"
+      ],
+      "compatible_families": [
+        "SIT_DOWN_CANDIDATE",
+        "SIT_STAND_CYCLE_CANDIDATE",
+        "LOW_BODY_HOLD_PROXY",
+        "SQUAT_HOLD"
+      ],
+      "priority": 90,
+      "confidence": 0.72
+    },
+    {
+      "alias_id": "hand_to_face_or_ear",
+      "label": "hand near face or ear",
+      "clause": "holds one hand near the face or ear",
+      "caption_patterns": [
+        "\\bphone\\b",
+        "\\bear\\b",
+        "\\bface\\b",
+        "\\bto\\s+(his|her|their)?\\s*head\\b",
+        "\\bnear\\s+(his|her|their)?\\s*head\\b",
+        "\\btouch(?:es|ing)?\\s+(his|her|their)?\\s*head\\b"
+      ],
+      "compatible_families": [
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH",
+        "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+        "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+        "UNILATERAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 88,
+      "confidence": 0.70
+    },
+    {
+      "alias_id": "kneel_or_fall_to_knees",
+      "label": "kneel or fall to knees",
+      "clause": "drops down toward the knees",
+      "caption_patterns": [
+        "\\b(on|to)\\s+(his|her|their)?\\s*knees\\b",
+        "\\bkneels?\\b",
+        "\\bfalls?\\s+to\\s+(his|her|their)?\\s*knees\\b",
+        "\\bgets?\\s+down\\s+on\\s+(his|her|their)?\\s*knees\\b"
+      ],
+      "compatible_families": [
+        "LOW_BODY_HOLD_PROXY",
+        "SQUAT_HOLD",
+        "LOW_BODY_REPETITION",
+        "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+        "SIT_DOWN_CANDIDATE",
+        "SIT_STAND_CYCLE_CANDIDATE"
+      ],
+      "priority": 87,
+      "confidence": 0.70
+    },
+    {
+      "alias_id": "swim_like_motion",
+      "label": "swim-like motion",
+      "clause": "makes a swim-like arm-and-body motion",
+      "caption_patterns": [
+        "\\bswims?\\b",
+        "\\bswimming\\b"
+      ],
+      "negative_caption_patterns": [
+        "\\bfly\\b",
+        "\\bflying\\b"
+      ],
+      "compatible_families": [
+        "BILATERAL_RHYTHMIC_COORDINATION",
+        "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+        "TORSO_HUNCHED_FORWARD",
+        "BIMANUAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 86,
+      "confidence": 0.72
+    },
+    {
+      "alias_id": "fly_like_motion",
+      "label": "fly-like motion",
+      "clause": "moves with a flying-like arm-and-body motion",
+      "caption_patterns": [
+        "\\bflying\\b",
+        "\\bfly\\b"
+      ],
+      "compatible_families": [
+        "BILATERAL_RHYTHMIC_COORDINATION",
+        "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+        "TORSO_HUNCHED_FORWARD",
+        "BIMANUAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 85,
+      "confidence": 0.70
+    },
+    {
+      "alias_id": "martial_arts",
+      "label": "martial arts",
+      "clause": "performs a martial-arts striking motion",
+      "caption_patterns": [
+        "\\bkarate\\b",
+        "\\bmartial\\b",
+        "\\bfighting\\b",
+        "\\bpunch(?:es|ing)?\\b",
+        "\\bcombat\\b"
+      ],
+      "compatible_families": [
+        "LEFT_LEG_KICK_FORWARD",
+        "RIGHT_LEG_KICK_FORWARD",
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH",
+        "BIMANUAL_HANDS_CLOSE",
+        "TURN_SEGMENT",
+        "ROTATION_DOMINANT"
+      ],
+      "priority": 84,
+      "confidence": 0.72
+    },
+    {
+      "alias_id": "duck_under_obstacle",
+      "label": "duck under obstacle",
+      "clause": "ducks under an obstacle",
+      "caption_patterns": [
+        "\\bducks?\\s+under\\b",
+        "\\bunderneath\\b",
+        "\\bunder\\s+(a\\s+)?(bar|fence|obstacle|something)\\b"
+      ],
+      "compatible_families": [
+        "LOW_BODY_HOLD_PROXY",
+        "SQUAT_HOLD",
+        "TORSO_HUNCHED_FORWARD",
+        "CLIMB_UP_OVER_PROXY"
+      ],
+      "priority": 83,
+      "confidence": 0.72
+    },
+    {
+      "alias_id": "climb_over_obstacle",
+      "label": "climb over obstacle",
+      "clause": "climbs up and over an obstacle",
+      "caption_patterns": [
+        "\\bclimbs?\\s+(up\\s+)?(and\\s+)?over\\b",
+        "\\bclimbs?\\s+(a\\s+)?ladder\\b"
+      ],
+      "compatible_families": [
+        "CLIMB_UP_OVER_PROXY"
+      ],
+      "priority": 82,
+      "confidence": 0.78
+    },
+    {
+      "alias_id": "dumbbell_lift",
+      "label": "dumbbell lift",
+      "clause": "bends the legs while lifting weights",
+      "caption_patterns": [
+        "\\bdumbbells?\\b",
+        "\\bdumbells?\\b",
+        "\\bweights?\\b"
+      ],
+      "compatible_families": [
+        "LOW_BODY_REPETITION",
+        "LOW_BODY_REPETITION_WITH_ARM_LIFT",
+        "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+        "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+        "BIMANUAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 80,
+      "confidence": 0.70
+    },
+    {
+      "alias_id": "cheer_dance",
+      "label": "cheer or dance",
+      "clause": "cheers and dances with rhythmic arm motion",
+      "caption_patterns": [
+        "\\bcheer(?:s|ing)?\\b",
+        "\\bdanc(?:e|es|ing)\\b",
+        "\\bclapp(?:ing)?\\b",
+        "\\bclaps?\\b"
+      ],
+      "negative_caption_patterns": [
+        "\\bballroom\\b",
+        "\\btiny\\s+steps?\\b",
+        "\\bhands?\\s+over\\s+(his|her|their)?\\s*head\\b"
+      ],
+      "compatible_families": [
+        "BILATERAL_RHYTHMIC_COORDINATION",
+        "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+        "BIMANUAL_HANDS_CLOSE",
+        "BIMANUAL_ARM_MIME_CANDIDATE",
+        "CIRCULAR_WALK_PATH"
+      ],
+      "priority": 78,
+      "confidence": 0.72
+    },
+    {
+      "alias_id": "ballroom_dance_path",
+      "label": "ballroom dance path",
+      "clause": "walks in a ballroom-like circular path",
+      "caption_patterns": [
+        "\\bballroom\\b"
+      ],
+      "compatible_families": [
+        "CIRCULAR_WALK_PATH",
+        "TRANSLATING_GAIT",
+        "TURN_SEGMENT",
+        "ROTATION_DOMINANT"
+      ],
+      "priority": 77,
+      "confidence": 0.72
+    },
+    {
+      "alias_id": "ballet_dance",
+      "label": "ballet dance",
+      "clause": "performs a ballet-like dance pose",
+      "caption_patterns": [
+        "\\bballet\\b"
+      ],
+      "compatible_families": [
+        "DANCE_LEG_POSE_CANDIDATE",
+        "BILATERAL_RHYTHMIC_GESTURE_CANDIDATE",
+        "CIRCULAR_WALK_PATH"
+      ],
+      "priority": 77,
+      "confidence": 0.76
+    },
+    {
+      "alias_id": "cartwheel",
+      "label": "cartwheel",
+      "clause": "does cartwheel-like inverted acrobatic motions",
+      "caption_patterns": [
+        "\\bcartwheels?\\b",
+        "\\bhandsprings?\\b",
+        "\\bbackflips?\\b"
+      ],
+      "compatible_families": [
+        "ACROBATIC_SEQUENCE_CANDIDATE",
+        "CARTWHEEL_CANDIDATE",
+        "INVERTED_ACROBATICS_CANDIDATE"
+      ],
+      "priority": 76,
+      "confidence": 0.78
+    },
+    {
+      "alias_id": "basketball_dribble",
+      "label": "basketball dribble",
+      "clause": "moves while dribbling a basketball",
+      "caption_patterns": [
+        "\\bdribbl(?:e|es|ing)\\b",
+        "\\bbasketball\\b"
+      ],
+      "compatible_families": [
+        "TRANSLATING_GAIT",
+        "TRANSLATING_GAIT_SEGMENT",
+        "CIRCULAR_WALK_PATH",
+        "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+        "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+        "BIMANUAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 74,
+      "confidence": 0.70
+    },
+    {
+      "alias_id": "tennis_like",
+      "label": "tennis-like",
+      "clause": "makes a tennis-like swinging motion",
+      "caption_patterns": [
+        "\\btennis\\b"
+      ],
+      "compatible_families": [
+        "LEFT_ARM_PERIODIC_GESTURE_PROXY",
+        "RIGHT_ARM_PERIODIC_GESTURE_PROXY",
+        "LEFT_HAND_RAISED_HIGH",
+        "RIGHT_HAND_RAISED_HIGH",
+        "BIMANUAL_ARM_MIME_CANDIDATE"
+      ],
+      "priority": 72,
+      "confidence": 0.70
+    }
+  ]
+}
