@@ -18,7 +18,7 @@ This board shows the full project process from corpus mining to training.
 | --- | --- | --- | --- | --- |
 | G0. Legacy cleanup | keep active scripts readable | `[~] implemented, needs final review` | `docs/design/script_inventory.md`, `legacy/README.md` | confirm no active script imports from `legacy/` |
 | G1. HumanML3D Layer3 corpus | convert full HML3D motion into symbolic event records | `[~] implemented` | `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl` | check whether missing targets need new observables |
-| G2. Multi-channel Motion-BPE | learn channel motifs and cross-channel coordination motifs | `[~] v3 arm/body-level observable debug complete` | `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v3_arm_body_no_high_3k/` | add remaining general observables for strike/reach, sway, and full-body spread-jump composition |
+| G2. Multi-channel Motion-BPE | learn channel motifs and cross-channel coordination motifs | `[~] v4 coord-role 3k sanity complete` | `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_3k/` | review whether composition candidates should be promoted or kept as components |
 | G3. Motion candidate forest | group motion-derived motifs into reviewable family nodes | `[~] composition forest v0 built` | `outputs/aml_regression_testset_v2/hml3d_composition_pattern_forest_v0_structure_groups/` | review structure groups before promotion |
 | G4. Manual pseudo-GT audit | test known weak targets without creating rules | `[~] self-reviewed, needs user spot-check` | `outputs/aml_regression_testset_v2/manual_text_target_audits_v0/manual_text_target_self_review.md` | user spot-check `cartwheel`, `sit`, `swim` split decisions |
 | G5. Caption/WordNet naming | attach language names to existing motion nodes | `[~] implemented v0` | `outputs/aml_regression_testset_v2/hml3d_caption_wordnet_name_candidates_v0/` | filter low-quality n-grams and classify phrase types |
@@ -36,9 +36,9 @@ Implemented but not fully reviewed:
 - Full HumanML3D Layer3 corpus exists.
 - Multi-channel Motion-BPE v1 exists.
 - Multi-channel Motion-BPE v2 all-confusions observable refinement exists.
-- Multi-channel Motion-BPE v3 adds raw-joint unilateral arm trajectory sidecar
-  events for orbit cycles and large arm arcs, plus body-level sidecar events
-  for low-body sustained states and high/low transition cycles.
+- Multi-channel Motion-BPE v3/v4 adds raw-joint sidecar events for:
+  arm orbit/large-arc trajectories, reach/retract, hand-to-head proximity,
+  leg lateral spread/repeat, and body-level low/high transition cycles.
 - Multi-channel Motion-BPE v2 composition-score coordination selection exists.
 - v1/v2 dense candidate forests and promotion self-reviews exist.
 - Manual registry audit exists for 14 text targets.
@@ -201,18 +201,74 @@ schema.
       - Current check: `006986` emits low-high-low sit/stand/sit structure;
         `007581` emits high-low-high sit/stand structure; `003020` and
         `003191` no longer emit generic high-state noise.
-    - bilateral spread-jump composition for jumping-jack-like motion;
-    - lateral sway/rocking periodicity;
-    - strike/punch reach-and-retract cycles.
+    - `[~]` hand-to-head/face proximity.
+      - Implemented as raw-joint sidecar events:
+        `LEFT_ARM_PROXIMITY/*_HAND_APPROACH_HEAD`,
+        `*_HAND_NEAR_HEAD_HOLD`, `*_HAND_LEAVE_HEAD`, and
+        `*_HAND_NEAR_HEAD_REPEATED`.
+      - This is a geometry observable for hand-near-head/face contact-like
+        motion, not a semantic label such as drinking, phone, or face-touch.
+    - `[~]` leg lateral spread/repeat.
+      - Implemented as raw-joint sidecar events:
+        `LEFT_LEG_LATERAL/*_LEG_LATERAL_REPEAT`,
+        `*_LEG_LATERAL_ABDUCT`, `*_LEG_LATERAL_ADDUCT`, and
+        `*_LEG_LATERAL_OUT_*`.
+      - The signal is baseline-relative foot displacement along the body
+        lateral axis, so normal standing/walking should not dominate BPE.
+    - `[~]` bilateral spread-jump evidence for jumping-jack-like motion.
+      - Current evidence is not a named jumping-jack node yet. It is a
+        composable structure: bilateral large arm arcs/orbits + bilateral leg
+        lateral repeats + vertical/body-level rhythm.
+    - `[~]` lateral sway/rocking periodicity.
+      - Current evidence comes from alternating left/right leg lateral repeats;
+        root/torso sway still needs a cleaner direct observable.
+    - `[~]` strike/punch reach-and-retract cycles.
+      - Current evidence comes from arm reach/retract sidecars. It should be
+        composed with torso/root context before promotion.
+  - v4 debug artifact:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_micro_sidecar_failure_probe/`
+  - v4 3k sanity artifact:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_micro_sidecar_3k/`
+  - Current check:
+    `003082`, `011643`, `014607`, and `M008014` expose spread-jump evidence;
+    `007581` exposes sit/stand plus hand-to-head approach/hold/leave;
+    `008692` exposes right-arm orbit cycles; `003020` exposes lateral repeat;
+    `000576` no longer emits leg-lateral noise in the failure probe.
+  - v4 micro-event 3k sanity metrics:
+    `channel_event_count` increases from 43350 to 50113; `channel_event_type_count`
+    increases from 1833 to 2062; `forest_node_count` stays controlled
+    (73 -> 76). New sidecar counts are: arm reach/retract 1901,
+    hand proximity 2389, leg lateral 2473. Compression gets slightly worse
+    (`channel_bpe_output_ratio` 0.765 -> 0.796), so the next issue is merge
+    policy, not adding more one-off observables.
 
 - [~] Improve multichannel BPE merge policy.
   - Current artifact:
-    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_composition_score_full/`
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_3k/`
+  - Debug artifact:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_failure_probe/`
   - Review check: compare v1 vs v2 on compression, motif purity, target audit recall,
     and false-positive rate.
-  - Current result: structure-score selection reduces impure coordination
-    candidates from 6 to 2 and removes gait/path coactivations, but it remains
-    conservative and does not yet recover new full-action nodes.
+  - Current result:
+    - Coordination mining now uses high-signal raw-joint events and high-signal
+      channel motifs as seeds instead of only selected `<CHM_*>` motifs.
+    - Coactivation signatures are role-level structures such as
+      `left_arm:arm_large_arc + right_arm:arm_large_arc +
+      bimanual:bilateral_arm_vertical_cycle + left/right_leg:leg_lateral_repeat`,
+      while exact geometry remains as evidence.
+    - On the 17-case failure probe, coordination motifs increase from 1 to 12
+      and recover interpretable structures for jumping-jack-like arm/leg/vertical
+      coordination, right-arm orbit, martial-like low-body/hand/leg coordination,
+      and sit/stand body-level transitions.
+    - On the 3k sanity run, coordination motifs increase from 3 to 21,
+      `forest_node_count` increases from 76 to 106, and `case_coverage` increases
+      from 0.534 to 0.592. Families are now tagged by motion scope:
+      14 `stable_component_candidate`, 21 `component_candidate`, and
+      7 `composition_candidate`.
+    - Current limitation: many high-support motifs are valid components
+      rather than full semantic actions. Promotion should therefore use
+      `motion_scope`, caption/WordNet naming, and visual spot checks instead of
+      support alone.
 
 - [~] Audit missed full-pattern coactivations.
   - Artifact:

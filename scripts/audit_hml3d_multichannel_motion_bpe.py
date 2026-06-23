@@ -59,7 +59,7 @@ import numpy as np
 DEFAULT_SOURCE_CORPUS = Path("outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl")
 DEFAULT_OUTPUT_DIR = Path("outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1")
 DEFAULT_HML3D_ROOT = Path("/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D")
-CACHE_SCHEMA_VERSION = "hml3d_multichannel_record_cache_v3_arm_trajectory"
+CACHE_SCHEMA_VERSION = "hml3d_multichannel_record_cache_v4_micro_event_sidecars"
 
 CHANNEL_ORDER = [
     "root_locomotion",
@@ -123,7 +123,15 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
     arm_sidecar_enabled = _use_arm_trajectory_sidecar(args)
     body_sidecar_enabled = _use_body_level_sidecar(args)
     arm_reach_sidecar_enabled = _use_arm_reach_sidecar(args)
-    raw_joint_sidecar_enabled = arm_sidecar_enabled or body_sidecar_enabled or arm_reach_sidecar_enabled
+    hand_proximity_sidecar_enabled = _use_hand_proximity_sidecar(args)
+    leg_lateral_sidecar_enabled = _use_leg_lateral_sidecar(args)
+    raw_joint_sidecar_enabled = (
+        arm_sidecar_enabled
+        or body_sidecar_enabled
+        or arm_reach_sidecar_enabled
+        or hand_proximity_sidecar_enabled
+        or leg_lateral_sidecar_enabled
+    )
     return {
         "source_signature": _source_signature(Path(args.source_corpus)),
         "max_records": args.max_records,
@@ -132,6 +140,8 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         "observable_refinement": str(getattr(args, "observable_refinement", "v1")),
         "arm_trajectory_sidecar": arm_sidecar_enabled,
         "arm_reach_sidecar": arm_reach_sidecar_enabled,
+        "hand_proximity_sidecar": hand_proximity_sidecar_enabled,
+        "leg_lateral_sidecar": leg_lateral_sidecar_enabled,
         "body_level_sidecar": body_sidecar_enabled,
         "hml3d_joints3d": str(Path(getattr(args, "hml3d_root", DEFAULT_HML3D_ROOT)) / "joints3d.pth") if raw_joint_sidecar_enabled else "",
         "arm_span_gap": int(getattr(args, "arm_span_gap", 6)),
@@ -151,6 +161,18 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         "arm_reach_min_peak": float(getattr(args, "arm_reach_min_peak", 0.24)),
         "arm_reach_retract_ratio": float(getattr(args, "arm_reach_retract_ratio", 0.55)),
         "arm_reach_min_forward_component": float(getattr(args, "arm_reach_min_forward_component", 0.10)),
+        "hand_head_proximity_threshold": float(getattr(args, "hand_head_proximity_threshold", 0.30)),
+        "hand_head_min_run": int(getattr(args, "hand_head_min_run", 6)),
+        "hand_head_hold_min_duration": int(getattr(args, "hand_head_hold_min_duration", 10)),
+        "hand_head_transition_window": int(getattr(args, "hand_head_transition_window", 14)),
+        "hand_head_min_delta": float(getattr(args, "hand_head_min_delta", 0.14)),
+        "hand_head_merge_gap": int(getattr(args, "hand_head_merge_gap", 4)),
+        "leg_lateral_threshold": float(getattr(args, "leg_lateral_threshold", 0.16)),
+        "leg_lateral_min_run": int(getattr(args, "leg_lateral_min_run", 5)),
+        "leg_lateral_hold_min_duration": int(getattr(args, "leg_lateral_hold_min_duration", 10)),
+        "leg_lateral_transition_window": int(getattr(args, "leg_lateral_transition_window", 10)),
+        "leg_lateral_min_delta": float(getattr(args, "leg_lateral_min_delta", 0.12)),
+        "leg_lateral_merge_gap": int(getattr(args, "leg_lateral_merge_gap", 4)),
         "body_low_threshold": float(getattr(args, "body_low_threshold", 0.52)),
         "body_high_threshold": float(getattr(args, "body_high_threshold", 0.58)),
         "body_level_min_run": int(getattr(args, "body_level_min_run", 5)),
@@ -185,6 +207,18 @@ def _use_arm_reach_sidecar(args: argparse.Namespace) -> bool:
     return str(getattr(args, "observable_refinement", "v1")) == "v3"
 
 
+def _use_hand_proximity_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_hand_proximity_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+
+
+def _use_leg_lateral_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_leg_lateral_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+
+
 def _load_hml3d_joints_pack(hml3d_root: Path) -> dict[str, Any]:
     import torch
 
@@ -211,6 +245,18 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         for event in (record.get("channel_events") or [])
         if "raw_joint_reach" in set(event.get("observable_refinement_tags") or [])
     )
+    hand_proximity_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_hand_proximity" in set(event.get("observable_refinement_tags") or [])
+    )
+    leg_lateral_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_leg_lateral" in set(event.get("observable_refinement_tags") or [])
+    )
     packet_count = sum(len(record.get("packets") or []) for record in records)
     parallel_packet_count = sum(
         1
@@ -227,6 +273,8 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "channel_event_count": channel_event_count,
         "arm_trajectory_sidecar_event_count": arm_sidecar_event_count,
         "arm_reach_sidecar_event_count": arm_reach_sidecar_event_count,
+        "hand_proximity_sidecar_event_count": hand_proximity_sidecar_event_count,
+        "leg_lateral_sidecar_event_count": leg_lateral_sidecar_event_count,
         "body_level_sidecar_event_count": body_sidecar_event_count,
         "packet_count": packet_count,
         "parallel_packet_count": parallel_packet_count,
@@ -255,7 +303,13 @@ def _load_or_build_multichannel_records(args: argparse.Namespace) -> tuple[list[
     source_records = _read_jsonl(source_path, max_records=args.max_records)
     joints_pack = (
         _load_hml3d_joints_pack(Path(args.hml3d_root))
-        if (_use_arm_trajectory_sidecar(args) or _use_arm_reach_sidecar(args) or _use_body_level_sidecar(args))
+        if (
+            _use_arm_trajectory_sidecar(args)
+            or _use_arm_reach_sidecar(args)
+            or _use_hand_proximity_sidecar(args)
+            or _use_leg_lateral_sidecar(args)
+            or _use_body_level_sidecar(args)
+        )
         else None
     )
     records = [build_multichannel_record(record, args, joints_pack=joints_pack) for record in source_records]
@@ -1038,6 +1092,74 @@ ARM_TRAJECTORY_SIDES = {
     },
 }
 
+HAND_PROXIMITY_SIDES = {
+    "left": {
+        "side_prefix": "LA",
+        "super_family": "LEFT_ARM_PROXIMITY",
+        "part": "left_arm",
+        "wrist_joint": 20,
+    },
+    "right": {
+        "side_prefix": "RA",
+        "super_family": "RIGHT_ARM_PROXIMITY",
+        "part": "right_arm",
+        "wrist_joint": 21,
+    },
+}
+
+LEG_LATERAL_SIDES = {
+    "left": {
+        "side_prefix": "LL",
+        "super_family": "LEFT_LEG_LATERAL",
+        "part": "left_leg",
+        "foot_joint": 10,
+        "ankle_joint": 7,
+    },
+    "right": {
+        "side_prefix": "RL",
+        "super_family": "RIGHT_LEG_LATERAL",
+        "part": "right_leg",
+        "foot_joint": 11,
+        "ankle_joint": 8,
+    },
+}
+
+
+def _event_from_raw_signal(
+    *,
+    start_event_index: int,
+    side_prefix: str,
+    super_family: str,
+    part: str,
+    cluster_stem: str,
+    direction: str,
+    role: str,
+    span: list[int],
+    magnitude: float,
+    unit: str,
+    optional_semantic_name: str,
+    motion_signature: dict[str, Any],
+    tags: list[str],
+) -> dict[str, Any]:
+    return {
+        "event_index": start_event_index,
+        "token": "",
+        "geometry_cluster_id": f"{super_family}/{side_prefix}_{cluster_stem}",
+        "part": part,
+        "super_family": super_family,
+        "cluster_id": f"{side_prefix}_{cluster_stem}",
+        "direction": direction,
+        "role": role,
+        "span": [int(span[0]), int(span[1])],
+        "duration": int(span[1]) - int(span[0]) + 1,
+        "magnitude": round(abs(float(magnitude)), 4),
+        "unit": unit,
+        "count": 1,
+        "optional_semantic_name": optional_semantic_name,
+        "motion_signature": motion_signature,
+        "observable_refinement_tags": tags,
+    }
+
 
 def _as_numpy_joints(value: Any) -> np.ndarray | None:
     if value is None:
@@ -1417,6 +1539,378 @@ def _build_arm_reach_sidecar_events(
     return rows
 
 
+def _body_height(joints: np.ndarray) -> np.ndarray:
+    ankle_y = (joints[:, 7, 1] + joints[:, 8, 1]) * 0.5
+    head_y = joints[:, 15, 1]
+    return np.maximum(head_y - ankle_y, 1e-6)
+
+
+def _hand_proximity_signal(joints: np.ndarray, side: str) -> np.ndarray:
+    spec = HAND_PROXIMITY_SIDES[side]
+    wrist = joints[:, int(spec["wrist_joint"])]
+    head = joints[:, 15]
+    normalized_distance = np.linalg.norm(wrist - head, axis=1) / _body_height(joints)
+    return _smooth_signal(normalized_distance.astype(np.float32), window=5)
+
+
+def _hand_proximity_transition_events(
+    signal: np.ndarray,
+    runs: list[list[int]],
+    spec: dict[str, Any],
+    args: argparse.Namespace,
+    start_event_index: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    window = int(args.hand_head_transition_window)
+    min_delta = float(args.hand_head_min_delta)
+    threshold = float(args.hand_head_proximity_threshold)
+    hold_min = int(args.hand_head_hold_min_duration)
+    for run in runs:
+        run_start, run_end = [int(item) for item in run]
+        local = signal[run_start : run_end + 1]
+        if local.size == 0:
+            continue
+        close_value = float(local.min())
+        hold_cluster = "HAND_NEAR_HEAD_HOLD" if run_end - run_start + 1 >= hold_min else "HAND_NEAR_HEAD_BRIEF"
+        rows.append(
+            _event_from_raw_signal(
+                start_event_index=start_event_index + len(rows),
+                side_prefix=str(spec["side_prefix"]),
+                super_family=str(spec["super_family"]),
+                part=str(spec["part"]),
+                cluster_stem=hold_cluster,
+                direction="near_head",
+                role="state",
+                span=[run_start, run_end],
+                magnitude=max(0.0, threshold - close_value),
+                unit="ratio",
+                optional_semantic_name="hand_near_head",
+                motion_signature={
+                    "dominant_axis": "wrist_to_head_distance_normalized",
+                    "repeat_mode": "state",
+                    "phase_template": hold_cluster.lower(),
+                    "context_mode": "raw_joint_hand_proximity_sidecar",
+                    "tempo_bucket": "medium",
+                    "coupled_with_locomotion": False,
+                    "min_distance_ratio": round(close_value, 4),
+                    "threshold_ratio": round(threshold, 4),
+                },
+                tags=["raw_joint_hand_proximity", "hand_proximity_sidecar", "hand_near_head_state"],
+            )
+        )
+        before_start = max(0, run_start - window)
+        if run_start > before_start:
+            before_value = float(signal[before_start:run_start].max())
+            delta = before_value - close_value
+            if delta >= min_delta:
+                rows.append(
+                    _event_from_raw_signal(
+                        start_event_index=start_event_index + len(rows),
+                        side_prefix=str(spec["side_prefix"]),
+                        super_family=str(spec["super_family"]),
+                        part=str(spec["part"]),
+                        cluster_stem="HAND_APPROACH_HEAD",
+                        direction="toward_head",
+                        role="transition",
+                        span=[before_start, run_start],
+                        magnitude=delta,
+                        unit="ratio",
+                        optional_semantic_name="hand_approach_head",
+                        motion_signature={
+                            "dominant_axis": "wrist_to_head_distance_normalized",
+                            "repeat_mode": "transition",
+                            "phase_template": "hand_approach_head",
+                            "context_mode": "raw_joint_hand_proximity_sidecar",
+                            "tempo_bucket": "medium",
+                            "coupled_with_locomotion": False,
+                            "start_distance_ratio": round(before_value, 4),
+                            "end_distance_ratio": round(close_value, 4),
+                        },
+                        tags=["raw_joint_hand_proximity", "hand_proximity_sidecar", "hand_to_head_transition"],
+                    )
+                )
+        after_end = min(signal.size - 1, run_end + window)
+        if after_end > run_end:
+            after_value = float(signal[run_end + 1 : after_end + 1].max())
+            delta = after_value - close_value
+            if delta >= min_delta:
+                rows.append(
+                    _event_from_raw_signal(
+                        start_event_index=start_event_index + len(rows),
+                        side_prefix=str(spec["side_prefix"]),
+                        super_family=str(spec["super_family"]),
+                        part=str(spec["part"]),
+                        cluster_stem="HAND_LEAVE_HEAD",
+                        direction="away_from_head",
+                        role="transition",
+                        span=[run_end, after_end],
+                        magnitude=delta,
+                        unit="ratio",
+                        optional_semantic_name="hand_leave_head",
+                        motion_signature={
+                            "dominant_axis": "wrist_to_head_distance_normalized",
+                            "repeat_mode": "transition",
+                            "phase_template": "hand_leave_head",
+                            "context_mode": "raw_joint_hand_proximity_sidecar",
+                            "tempo_bucket": "medium",
+                            "coupled_with_locomotion": False,
+                            "start_distance_ratio": round(close_value, 4),
+                            "end_distance_ratio": round(after_value, 4),
+                        },
+                        tags=["raw_joint_hand_proximity", "hand_proximity_sidecar", "hand_from_head_transition"],
+                    )
+                )
+    return rows
+
+
+def _build_hand_proximity_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    threshold = float(args.hand_head_proximity_threshold)
+    min_run = int(args.hand_head_min_run)
+    merge_gap = int(args.hand_head_merge_gap)
+    min_delta = float(args.hand_head_min_delta)
+    for side, spec in HAND_PROXIMITY_SIDES.items():
+        signal = _hand_proximity_signal(joints, side)
+        runs = _runs_from_mask(signal <= threshold, min_run=min_run)
+        runs = _merge_frame_spans([(int(start), int(end)) for start, end in runs], gap=merge_gap)
+        if not runs:
+            continue
+        if float(np.percentile(signal, 90) - np.percentile(signal, 10)) < min_delta:
+            continue
+        if len(runs) >= 2:
+            span = [int(runs[0][0]), int(runs[-1][1])]
+            local = signal[span[0] : span[1] + 1]
+            rows.append(
+                _event_from_raw_signal(
+                    start_event_index=len(events) + len(rows),
+                    side_prefix=str(spec["side_prefix"]),
+                    super_family=str(spec["super_family"]),
+                    part=str(spec["part"]),
+                    cluster_stem="HAND_NEAR_HEAD_REPEATED",
+                    direction="near_head_repeated",
+                    role="composed",
+                    span=span,
+                    magnitude=float(np.percentile(signal, 90) - np.percentile(signal, 10)),
+                    unit="ratio",
+                    optional_semantic_name="repeated_hand_near_head",
+                    motion_signature={
+                        "dominant_axis": "wrist_to_head_distance_normalized",
+                        "repeat_mode": "repeated_state",
+                        "phase_template": "hand_near_head_repeated",
+                        "context_mode": "raw_joint_hand_proximity_sidecar",
+                        "tempo_bucket": "medium",
+                        "coupled_with_locomotion": False,
+                        "count": len(runs),
+                        "min_distance_ratio": round(float(local.min()), 4),
+                        "max_distance_ratio": round(float(local.max()), 4),
+                        "threshold_ratio": round(threshold, 4),
+                    },
+                    tags=["raw_joint_hand_proximity", "hand_proximity_sidecar", "hand_near_head_repeated"],
+                )
+            )
+            rows[-1]["count"] = len(runs)
+            continue
+        rows.extend(_hand_proximity_transition_events(signal, runs, spec, args, start_event_index=len(events) + len(rows)))
+    return rows
+
+
+def _body_lateral_axes(joints: np.ndarray) -> np.ndarray:
+    left_hip = joints[:, 1]
+    right_hip = joints[:, 2]
+    across = right_hip - left_hip
+    across[:, 1] = 0.0
+    norm = np.linalg.norm(across, axis=1, keepdims=True)
+    fallback = np.zeros_like(across)
+    fallback[:, 0] = 1.0
+    return np.where(norm > 1e-6, across / np.maximum(norm, 1e-6), fallback)
+
+
+def _leg_lateral_signal(joints: np.ndarray, side: str) -> np.ndarray:
+    spec = LEG_LATERAL_SIDES[side]
+    pelvis = joints[:, 0]
+    foot = (joints[:, int(spec["foot_joint"])] + joints[:, int(spec["ankle_joint"])]) * 0.5
+    lateral_axis = _body_lateral_axes(joints)
+    sign = -1.0 if side == "left" else 1.0
+    lateral = np.einsum("ij,ij->i", foot - pelvis, lateral_axis) * sign
+    smoothed = _smooth_signal(lateral.astype(np.float32), window=5)
+    baseline = float(np.percentile(smoothed, 20))
+    return np.maximum(smoothed - baseline, 0.0).astype(np.float32)
+
+
+def _leg_lateral_events_from_signal(
+    signal: np.ndarray,
+    runs: list[list[int]],
+    spec: dict[str, Any],
+    args: argparse.Namespace,
+    start_event_index: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    window = int(args.leg_lateral_transition_window)
+    min_delta = float(args.leg_lateral_min_delta)
+    hold_min = int(args.leg_lateral_hold_min_duration)
+    for run in runs:
+        run_start, run_end = [int(item) for item in run]
+        local = signal[run_start : run_end + 1]
+        if local.size == 0:
+            continue
+        peak = float(local.max())
+        cluster = "LEG_LATERAL_OUT_HOLD" if run_end - run_start + 1 >= hold_min else "LEG_LATERAL_OUT_BRIEF"
+        rows.append(
+            _event_from_raw_signal(
+                start_event_index=start_event_index + len(rows),
+                side_prefix=str(spec["side_prefix"]),
+                super_family=str(spec["super_family"]),
+                part=str(spec["part"]),
+                cluster_stem=cluster,
+                direction="outward",
+                role="state",
+                span=[run_start, run_end],
+                magnitude=peak,
+                unit="m",
+                optional_semantic_name="leg_lateral_out",
+                motion_signature={
+                    "dominant_axis": "foot_relative_to_pelvis_body_lateral",
+                    "repeat_mode": "state",
+                    "phase_template": cluster.lower(),
+                    "context_mode": "raw_joint_leg_lateral_sidecar",
+                    "tempo_bucket": "medium",
+                    "coupled_with_locomotion": False,
+                    "peak_lateral_m": round(peak, 4),
+                },
+                tags=["raw_joint_leg_lateral", "leg_lateral_sidecar", "leg_lateral_state"],
+            )
+        )
+        before_start = max(0, run_start - window)
+        if run_start > before_start:
+            before_value = float(signal[before_start:run_start].min())
+            delta = peak - before_value
+            if delta >= min_delta:
+                rows.append(
+                    _event_from_raw_signal(
+                        start_event_index=start_event_index + len(rows),
+                        side_prefix=str(spec["side_prefix"]),
+                        super_family=str(spec["super_family"]),
+                        part=str(spec["part"]),
+                        cluster_stem="LEG_LATERAL_ABDUCT",
+                        direction="outward",
+                        role="transition",
+                        span=[before_start, run_start],
+                        magnitude=delta,
+                        unit="m",
+                        optional_semantic_name="leg_lateral_abduct",
+                        motion_signature={
+                            "dominant_axis": "foot_relative_to_pelvis_body_lateral",
+                            "repeat_mode": "transition",
+                            "phase_template": "leg_lateral_abduct",
+                            "context_mode": "raw_joint_leg_lateral_sidecar",
+                            "tempo_bucket": "medium",
+                            "coupled_with_locomotion": False,
+                            "start_lateral_m": round(before_value, 4),
+                            "peak_lateral_m": round(peak, 4),
+                        },
+                        tags=["raw_joint_leg_lateral", "leg_lateral_sidecar", "leg_lateral_abduction"],
+                    )
+                )
+        after_end = min(signal.size - 1, run_end + window)
+        if after_end > run_end:
+            after_value = float(signal[run_end + 1 : after_end + 1].min())
+            delta = peak - after_value
+            if delta >= min_delta:
+                rows.append(
+                    _event_from_raw_signal(
+                        start_event_index=start_event_index + len(rows),
+                        side_prefix=str(spec["side_prefix"]),
+                        super_family=str(spec["super_family"]),
+                        part=str(spec["part"]),
+                        cluster_stem="LEG_LATERAL_ADDUCT",
+                        direction="inward",
+                        role="transition",
+                        span=[run_end, after_end],
+                        magnitude=delta,
+                        unit="m",
+                        optional_semantic_name="leg_lateral_adduct",
+                        motion_signature={
+                            "dominant_axis": "foot_relative_to_pelvis_body_lateral",
+                            "repeat_mode": "transition",
+                            "phase_template": "leg_lateral_adduct",
+                            "context_mode": "raw_joint_leg_lateral_sidecar",
+                            "tempo_bucket": "medium",
+                            "coupled_with_locomotion": False,
+                            "peak_lateral_m": round(peak, 4),
+                            "end_lateral_m": round(after_value, 4),
+                        },
+                        tags=["raw_joint_leg_lateral", "leg_lateral_sidecar", "leg_lateral_adduction"],
+                    )
+                )
+    return rows
+
+
+def _build_leg_lateral_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    threshold = float(args.leg_lateral_threshold)
+    min_run = int(args.leg_lateral_min_run)
+    merge_gap = int(args.leg_lateral_merge_gap)
+    min_delta = float(args.leg_lateral_min_delta)
+    for side, spec in LEG_LATERAL_SIDES.items():
+        signal = _leg_lateral_signal(joints, side)
+        runs = _runs_from_mask(signal >= threshold, min_run=min_run)
+        runs = _merge_frame_spans([(int(start), int(end)) for start, end in runs], gap=merge_gap)
+        if not runs:
+            continue
+        if float(np.percentile(signal, 90) - np.percentile(signal, 10)) < min_delta:
+            continue
+        if len(runs) >= 2:
+            span = [int(runs[0][0]), int(runs[-1][1])]
+            local = signal[span[0] : span[1] + 1]
+            rows.append(
+                _event_from_raw_signal(
+                    start_event_index=len(events) + len(rows),
+                    side_prefix=str(spec["side_prefix"]),
+                    super_family=str(spec["super_family"]),
+                    part=str(spec["part"]),
+                    cluster_stem="LEG_LATERAL_REPEAT",
+                    direction="out_in_repeated",
+                    role="composed",
+                    span=span,
+                    magnitude=float(local.max()),
+                    unit="m",
+                    optional_semantic_name="repeated_leg_lateral_motion",
+                    motion_signature={
+                        "dominant_axis": "foot_relative_to_pelvis_body_lateral",
+                        "repeat_mode": "repeated_lateral",
+                        "phase_template": "leg_lateral_repeat",
+                        "context_mode": "raw_joint_leg_lateral_sidecar",
+                        "tempo_bucket": "medium",
+                        "coupled_with_locomotion": False,
+                        "count": len(runs),
+                        "peak_lateral_m": round(float(local.max()), 4),
+                        "range_lateral_m": round(float(np.percentile(signal, 90) - np.percentile(signal, 10)), 4),
+                    },
+                    tags=["raw_joint_leg_lateral", "leg_lateral_sidecar", "leg_lateral_repeated"],
+                )
+            )
+            rows[-1]["count"] = len(runs)
+            continue
+        rows.extend(_leg_lateral_events_from_signal(signal, runs, spec, args, start_event_index=len(events) + len(rows)))
+    return rows
+
+
 def _runs_from_mask(mask: np.ndarray, min_run: int) -> list[list[int]]:
     indices = np.where(mask)[0]
     if indices.size == 0:
@@ -1615,6 +2109,10 @@ def build_channel_events(
         source_events = source_events + _build_arm_trajectory_sidecar_events(record, source_events, args, joints_pack)
     if args is not None and _use_arm_reach_sidecar(args):
         source_events = source_events + _build_arm_reach_sidecar_events(record, source_events, args, joints_pack)
+    if args is not None and _use_hand_proximity_sidecar(args):
+        source_events = source_events + _build_hand_proximity_sidecar_events(record, source_events, args, joints_pack)
+    if args is not None and _use_leg_lateral_sidecar(args):
+        source_events = source_events + _build_leg_lateral_sidecar_events(record, source_events, args, joints_pack)
     if args is not None and _use_body_level_sidecar(args):
         source_events = source_events + _build_body_level_sidecar_events(record, source_events, args, joints_pack)
     for local_idx, event in enumerate(source_events):
@@ -2051,6 +2549,145 @@ def _channel_units_by_case(channel_sequences: dict[str, list[dict[str, Any]]]) -
     return by_case
 
 
+COORDINATION_SEED_TAGS = {
+    "raw_joint_trajectory",
+    "raw_joint_reach",
+    "raw_joint_hand_proximity",
+    "raw_joint_leg_lateral",
+    "raw_joint_body_level",
+}
+
+COORDINATION_SEED_CLUSTER_HINTS = {
+    "RAISE_SPREAD_VERTICAL",
+    "BI_RAISE_SPREAD",
+    "BI_RAISE",
+    "HANDS_CLOSE_VERTICAL",
+    "BI_HANDS_CLOSE",
+    "BILATERAL_VERTICAL_ARM_CYCLE",
+    "ARM_ORBIT",
+    "LARGE_ARM_ARC",
+    "ARM_REACH",
+    "ARM_RETRACT",
+    "HAND_NEAR_HEAD",
+    "HAND_APPROACH_HEAD",
+    "HAND_LEAVE_HEAD",
+    "LEG_LATERAL",
+    "LOW_BODY",
+    "SQUAT",
+    "WB_LEVEL",
+    "LEG_FORWARD_HOLD_POSE",
+    "LEG_FORWARD_KICK_IMPULSE",
+    "LEG_FORWARD_HOP_OR_KICK_IMPULSE",
+    "JUMP_UP_IMPULSE",
+    "WB_VERT_UP",
+    "WB_VERT_DOWN",
+    "ACROBAT",
+}
+
+
+def _is_coordination_seed_unit(unit: dict[str, Any]) -> bool:
+    tags = {str(tag) for tag in unit.get("observable_refinement_tags") or []}
+    if tags & COORDINATION_SEED_TAGS:
+        return True
+    geometry = {str(item) for item in unit.get("geometry_clusters") or []}
+    return any(any(hint in item for hint in COORDINATION_SEED_CLUSTER_HINTS) for item in geometry)
+
+
+def _contains_any(items: set[str], needles: set[str]) -> bool:
+    return any(any(needle in item for needle in needles) for item in items)
+
+
+def _coordination_role(unit: dict[str, Any]) -> str:
+    geometry = {str(item) for item in unit.get("geometry_clusters") or []}
+    raw_geometry = {str(item) for item in unit.get("raw_geometry_clusters") or []}
+    all_geometry = geometry | raw_geometry
+    tags = {str(tag) for tag in unit.get("observable_refinement_tags") or []}
+    channel = str((unit.get("channels") or ["other"])[0])
+
+    if "raw_joint_body_level" in tags or _contains_any(all_geometry, {"WB_LEVEL"}):
+        if _contains_any(all_geometry, {"HIGH_LOW_HIGH_CYCLE", "LOW_HIGH_LOW_CYCLE"}):
+            return "body_level_cycle"
+        if _contains_any(all_geometry, {"DESCEND_TO_LOW"}):
+            return "body_level_down"
+        if _contains_any(all_geometry, {"RISE_FROM_LOW"}):
+            return "body_level_up"
+        if _contains_any(all_geometry, {"LOW_BRIEF"}):
+            return "body_level_low_hold"
+        return "body_level_change"
+    if "raw_joint_hand_proximity" in tags or _contains_any(all_geometry, {"HAND_NEAR_HEAD", "HAND_APPROACH_HEAD", "HAND_LEAVE_HEAD"}):
+        if _contains_any(all_geometry, {"HAND_APPROACH_HEAD"}):
+            return "hand_approach_head"
+        if _contains_any(all_geometry, {"HAND_LEAVE_HEAD"}):
+            return "hand_leave_head"
+        if _contains_any(all_geometry, {"HAND_NEAR_HEAD_REPEATED"}):
+            return "hand_near_head_repeat"
+        return "hand_near_head"
+    if "raw_joint_leg_lateral" in tags or _contains_any(all_geometry, {"LEG_LATERAL"}):
+        if _contains_any(all_geometry, {"LEG_LATERAL_REPEAT"}):
+            return "leg_lateral_repeat"
+        if _contains_any(all_geometry, {"LEG_LATERAL_ADDUCT"}):
+            return "leg_lateral_adduct"
+        if _contains_any(all_geometry, {"LEG_LATERAL_ABDUCT"}):
+            return "leg_lateral_abduct"
+        return "leg_lateral"
+    if "raw_joint_trajectory" in tags or _contains_any(all_geometry, {"ARM_ORBIT", "LARGE_ARM_ARC"}):
+        if _contains_any(all_geometry, {"ARM_ORBIT"}):
+            return "arm_orbit_cycle"
+        if _contains_any(all_geometry, {"LARGE_ARM_ARC"}):
+            return "arm_large_arc"
+        return "arm_trajectory"
+    if "raw_joint_reach" in tags or _contains_any(all_geometry, {"ARM_REACH", "ARM_RETRACT"}):
+        if _contains_any(all_geometry, {"ARM_RETRACT"}):
+            return "arm_retract"
+        if _contains_any(all_geometry, {"ARM_REACH"}):
+            return "arm_reach"
+        return "arm_reach_change"
+    if _contains_any(all_geometry, {"RAISE_SPREAD_VERTICAL", "BILATERAL_VERTICAL_ARM_CYCLE", "BI_RAISE_SPREAD", "BI_RAISE"}):
+        return "bilateral_arm_vertical_cycle"
+    if _contains_any(all_geometry, {"HANDS_CLOSE_VERTICAL", "BI_HANDS_CLOSE"}):
+        return "hands_close"
+    if _contains_any(all_geometry, {"LOW_BODY_DOWN_UP_CYCLE"}):
+        return "low_body_cycle"
+    if _contains_any(all_geometry, {"LOW_BODY_RISE_FROM_LOW", "WB_LEVEL_RISE_FROM_LOW"}):
+        return "low_body_rise"
+    if _contains_any(all_geometry, {"LOW_BODY", "SQUAT"}):
+        return "low_body_posture"
+    if _contains_any(all_geometry, {"LEG_FORWARD_KICK_IMPULSE", "LEG_FORWARD_HOP_OR_KICK_IMPULSE"}):
+        return "leg_forward_impulse"
+    if _contains_any(all_geometry, {"LEG_FORWARD_HOLD_POSE"}):
+        return "leg_forward_hold"
+    if _contains_any(all_geometry, {"JUMP_UP_IMPULSE"}):
+        return "vertical_impulse"
+    if _contains_any(all_geometry, {"VERT_GAIT_BOUNCE"}):
+        return "vertical_gait_bounce"
+    if _contains_any(all_geometry, {"VERT_LOW_BODY_DESCENT"}):
+        return "vertical_low_body_descent"
+    if _contains_any(all_geometry, {"VERT"}):
+        return "vertical_change"
+    if _contains_any(all_geometry, {"ACROBAT", "INVERSION"}):
+        return "inversion_or_acrobatics"
+    if channel == "root_rotation" or _contains_any(all_geometry, {"WB_ROT"}):
+        return "root_turn"
+    if channel == "root_locomotion" or _contains_any(all_geometry, {"LOCO"}):
+        return "root_translation"
+    if _contains_any(all_geometry, {"LOCO_ARM_SWING"}):
+        return "arm_swing_context"
+    return "generic_motion"
+
+
+def _coordination_role_priority(unit: dict[str, Any]) -> float:
+    role = _coordination_role(unit)
+    if role in {"arm_orbit_cycle", "arm_large_arc", "bilateral_arm_vertical_cycle", "leg_lateral_repeat", "body_level_cycle"}:
+        return 4.0
+    if role in {"hand_near_head_repeat", "hand_approach_head", "hand_leave_head", "leg_forward_impulse", "vertical_impulse", "low_body_cycle"}:
+        return 3.0
+    if role in {"hand_near_head", "arm_reach", "arm_retract", "leg_forward_hold", "body_level_down", "body_level_up", "low_body_posture"}:
+        return 2.0
+    if role in {"root_translation", "root_turn", "vertical_gait_bounce", "arm_swing_context"}:
+        return 0.5
+    return 1.0
+
+
 def _coactivation_symbol(units: list[dict[str, Any]]) -> str:
     parts = []
     for unit in sorted(units, key=lambda item: (CHANNEL_RANK.get((item.get("channels") or ["other"])[0], 999), str(item.get("symbol") or ""))):
@@ -2064,10 +2701,42 @@ def _coactivation_signature(units: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for unit in sorted(units, key=lambda item: (CHANNEL_RANK.get((item.get("channels") or ["other"])[0], 999), str(item.get("symbol") or ""))):
         channel = str((unit.get("channels") or ["other"])[0])
-        clusters = sorted(str(cluster) for cluster in (unit.get("geometry_clusters") or []) if cluster)
-        cluster_key = "&".join(clusters[:4]) if clusters else "unknown_geometry"
-        parts.append(f"{channel}:{cluster_key}")
+        parts.append(f"{channel}:{_coordination_role(unit)}")
     return "COORD_SIG[" + "+".join(parts) + "]"
+
+
+def _coactivation_pair_score(anchor: dict[str, Any], candidate: dict[str, Any]) -> float:
+    overlap = _overlap_ratio(anchor, candidate)
+    if overlap <= 0.0:
+        return -1.0
+    span = candidate.get("span") or [0, 0]
+    duration = max(1, int(span[1]) - int(span[0]) + 1)
+    return overlap * 10.0 + _coordination_role_priority(candidate) - 0.001 * duration
+
+
+def _representative_cross_channel_members(
+    anchor: dict[str, Any],
+    candidates: list[dict[str, Any]],
+    *,
+    parallel_overlap_min: float,
+) -> list[dict[str, Any]]:
+    anchor_channel = str((anchor.get("channels") or ["other"])[0])
+    best_by_channel: dict[str, tuple[float, dict[str, Any]]] = {anchor_channel: (_coordination_role_priority(anchor), anchor)}
+    for candidate in candidates:
+        channel = str((candidate.get("channels") or ["other"])[0])
+        if channel == anchor_channel:
+            continue
+        if _overlap_ratio(anchor, candidate) < parallel_overlap_min:
+            continue
+        score = _coactivation_pair_score(anchor, candidate)
+        if score < 0.0:
+            continue
+        current = best_by_channel.get(channel)
+        if current is None or score > current[0]:
+            best_by_channel[channel] = (score, candidate)
+    members = [item[1] for item in best_by_channel.values()]
+    members.sort(key=lambda item: (CHANNEL_RANK.get((item.get("channels") or ["other"])[0], 999), int((item.get("span") or [0, 0])[0]), str(item.get("symbol") or "")))
+    return members
 
 
 def _build_coactivation_units(
@@ -2077,41 +2746,21 @@ def _build_coactivation_units(
 ) -> dict[str, list[dict[str, Any]]]:
     out: dict[str, list[dict[str, Any]]] = {}
     for case_id, units in _channel_units_by_case(channel_sequences).items():
-        candidates = [unit for unit in units if str(unit.get("symbol") or "").startswith("<CHM_")]
-        parent: dict[int, int] = {idx: idx for idx in range(len(candidates))}
-
-        def find(x: int) -> int:
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
-        def union(a: int, b: int) -> None:
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[rb] = ra
-
-        for i, left in enumerate(candidates):
-            left_channels = set(left.get("channels") or [])
-            for j in range(i + 1, len(candidates)):
-                right = candidates[j]
-                if left_channels & set(right.get("channels") or []):
-                    continue
-                if _overlap_ratio(left, right) >= parallel_overlap_min:
-                    union(i, j)
-
-        groups: dict[int, list[dict[str, Any]]] = defaultdict(list)
-        for idx, unit in enumerate(candidates):
-            groups[find(idx)].append(unit)
-
+        candidates = [unit for unit in units if _is_coordination_seed_unit(unit)]
         coacts: list[dict[str, Any]] = []
-        for idx, members in enumerate(groups.values(), start=1):
+        seen: set[tuple[str, int, int]] = set()
+        for anchor in sorted(candidates, key=lambda unit: (-_coordination_role_priority(unit), int((unit.get("span") or [0, 0])[0]), str(unit.get("symbol") or ""))):
+            members = _representative_cross_channel_members(anchor, candidates, parallel_overlap_min=parallel_overlap_min)
             channels = sorted({channel for unit in members for channel in (unit.get("channels") or [])}, key=lambda ch: CHANNEL_RANK.get(ch, 999))
             if len(channels) < 2:
                 continue
             span = [min(int((unit.get("span") or [0, 0])[0]) for unit in members), max(int((unit.get("span") or [0, 0])[1]) for unit in members)]
             member_symbol = _coactivation_symbol(members)
             signature = _coactivation_signature(members)
+            dedupe_key = (signature, span[0] // 8, span[1] // 8)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
             coacts.append(
                 {
                     "symbol": signature,
@@ -2126,8 +2775,9 @@ def _build_coactivation_units(
                     "observable_refinement_tags": sorted({str(tag) for unit in members for tag in (unit.get("observable_refinement_tags") or [])}),
                     "relation_types": ["coactivation"],
                     "member_symbols": [str(unit.get("symbol") or "") for unit in members],
+                    "member_roles": [f"{str((unit.get('channels') or ['other'])[0])}:{_coordination_role(unit)}" for unit in members],
                     "member_coactivation_symbol": member_symbol,
-                    "coactivation_id": f"{case_id}:coact{idx:04d}",
+                    "coactivation_id": f"{case_id}:coact{len(coacts) + 1:04d}",
                 }
             )
         coacts.sort(key=lambda unit: (int(unit["span"][0]), int(unit["span"][1]), str(unit["symbol"])))
@@ -2214,6 +2864,11 @@ def _coordination_structure_features(
     arm_vertical = "vertical_coupled" in tags and has_upper
     bimanual_vertical = any("RAISE_SPREAD_VERTICAL" in item or "HANDS_CLOSE_VERTICAL" in item for item in geometry)
     high_pose = any("HIGH_POSE" in item for item in geometry)
+    arm_trajectory = "raw_joint_trajectory" in tags or any("ARM_ORBIT" in item or "LARGE_ARM_ARC" in item for item in geometry)
+    arm_reach = "raw_joint_reach" in tags or any("ARM_REACH" in item or "ARM_RETRACT" in item for item in geometry)
+    hand_proximity = "raw_joint_hand_proximity" in tags or any("HAND_NEAR_HEAD" in item or "HAND_APPROACH_HEAD" in item or "HAND_LEAVE_HEAD" in item for item in geometry)
+    leg_lateral = "raw_joint_leg_lateral" in tags or any("LEG_LATERAL" in item for item in geometry)
+    body_level = "raw_joint_body_level" in tags or any("WB_LEVEL" in item for item in geometry)
 
     score = math.log1p(max(0, support_cases))
     score += 0.35 * len(channels)
@@ -2236,6 +2891,18 @@ def _coordination_structure_features(
         score += 0.80
     if high_pose and (has_vertical or low_body):
         score += 0.50
+    if arm_trajectory and (has_lower or has_vertical or body_level):
+        score += 1.20
+    if arm_reach and (has_torso or has_root or has_lower or body_level):
+        score += 0.90
+    if hand_proximity and body_level:
+        score += 1.30
+    if leg_lateral and has_upper:
+        score += 1.25
+    if leg_lateral and has_vertical:
+        score += 0.90
+    if body_level and has_upper:
+        score += 0.90
     if gait_like:
         score -= 2.00
     if gait_like and not (has_upper or has_torso or low_body or leg_non_gait or vertical_impulse or bimanual_vertical):
@@ -2262,6 +2929,11 @@ def _coordination_structure_features(
         "arm_vertical": arm_vertical,
         "bimanual_vertical": bimanual_vertical,
         "high_pose": high_pose,
+        "arm_trajectory": arm_trajectory,
+        "arm_reach": arm_reach,
+        "hand_proximity": hand_proximity,
+        "leg_lateral": leg_lateral,
+        "body_level": body_level,
         "count": int(count),
         "support_cases": int(support_cases),
         "symbol": symbol,
@@ -2430,12 +3102,15 @@ def audit_motifs(records: list[dict[str, Any]], merges: list[dict[str, Any]], se
         top_alias, top_alias_count = alias_counter.most_common(1)[0] if alias_counter else ("", 0)
         alias_purity = 0.0 if top_alias == "__NO_CAPTION_ALIAS__" else top_alias_count / max(1, len(support_cases))
         merge = merge_map[motif_id]
+        parent_signature = str((merge.get("parents") or [""])[0])
+        motion_role_signature = parent_signature if parent_signature.startswith("COORD_SIG[") else ""
         rows.append(
             {
                 "motif_id": motif_id,
                 "step": int(merge.get("step") or 0),
                 "operator": merge.get("operator"),
                 "parents": merge.get("parents") or [],
+                "motion_role_signature": motion_role_signature,
                 "selection_score": merge.get("selection_score"),
                 "selection_features": merge.get("selection_features"),
                 "occurrences": len(motif_occs),
@@ -2470,6 +3145,48 @@ def _required_ids(items: list[dict[str, Any]], *, max_items: int = 4, min_relati
     return sorted(kept[:max_items])
 
 
+def _family_motion_scope(operator: str, required_channels: list[str], role_signature: str) -> str:
+    channels = set(required_channels)
+    zones = {_channel_zone(channel) for channel in channels}
+    if operator != "COORDINATION_MERGE":
+        if len(channels) == 1:
+            return f"local_{next(iter(zones or {'other'}))}_component"
+        return "sequential_component"
+
+    has_upper = "upper" in zones
+    has_lower = "lower" in zones
+    has_vertical = "vertical" in zones
+    has_torso = "torso" in zones
+    has_root = "root" in zones
+    role = role_signature.lower()
+
+    if "whole_body_state" in channels and (has_torso or "body_level" in role or "low_body" in role):
+        return "body_level_posture_transition"
+    if has_upper and has_lower and (has_vertical or has_torso or has_root or "body_level" in role):
+        return "whole_body_coordination"
+    if has_upper and has_lower:
+        return "upper_lower_coordination_component"
+    if has_upper and has_vertical:
+        return "upper_vertical_coordination_component"
+    if has_lower and has_vertical:
+        return "lower_vertical_coordination_component"
+    if has_upper:
+        return "upper_body_coordination_component"
+    if has_lower:
+        return "lower_body_coordination_component"
+    return "coordination_component"
+
+
+def _family_status(motion_scope: str, support_sum: int) -> str:
+    if support_sum < 24:
+        return "diagnostic_family"
+    if motion_scope in {"whole_body_coordination", "body_level_posture_transition"}:
+        return "composition_candidate"
+    if support_sum >= 80:
+        return "stable_component_candidate"
+    return "component_candidate"
+
+
 def build_motif_families(motif_rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     group_meta: dict[str, dict[str, Any]] = {}
@@ -2478,12 +3195,14 @@ def build_motif_families(motif_rows: list[dict[str, Any]]) -> dict[str, Any]:
         required_channels = _required_ids(motif.get("channels") or [], max_items=6, min_relative_count=0.35)
         relation_types = _required_ids(motif.get("relation_profile") or [], max_items=3, min_relative_count=0.35)
         operator = str(motif.get("operator") or "")
+        role_signature = str(motif.get("motion_role_signature") or "")
+        structure_key = role_signature if role_signature else "+".join(required_clusters or ["none"])
         key = "|".join(
             [
                 f"op={operator}",
                 "channels=" + "+".join(required_channels or ["none"]),
                 "relations=" + "+".join(relation_types or ["none"]),
-                "clusters=" + "+".join(required_clusters or ["none"]),
+                "structure=" + structure_key,
             ]
         )
         grouped[key].append(motif)
@@ -2492,6 +3211,7 @@ def build_motif_families(motif_rows: list[dict[str, Any]]) -> dict[str, Any]:
             "required_channels": required_channels,
             "required_relation_types": relation_types,
             "required_geometry_clusters": required_clusters,
+            "motion_role_signature": role_signature,
         }
 
     families: list[dict[str, Any]] = []
@@ -2512,12 +3232,19 @@ def build_motif_families(motif_rows: list[dict[str, Any]]) -> dict[str, Any]:
             alias = str(row.get("top_caption_alias") or "")
             if alias:
                 alias_counter[alias] += int(row.get("support_cases") or 0)
+        motion_scope = _family_motion_scope(
+            str(group_meta[key].get("operator") or ""),
+            list(group_meta[key].get("required_channels") or []),
+            str(group_meta[key].get("motion_role_signature") or ""),
+        )
+        status = _family_status(motion_scope, support_sum)
         families.append(
             {
                 "family_id": f"multichannel_motif_family_{idx:04d}",
                 "schema_version": "multichannel_motif_family_candidate_v1",
                 "motion_family_key": key,
-                "status": "candidate_family" if support_sum >= 80 else "diagnostic_family",
+                "status": status,
+                "motion_scope": motion_scope,
                 "motif_count": len(rows),
                 "support_cases_sum": support_sum,
                 "occurrences_sum": occurrence_sum,
@@ -2561,6 +3288,7 @@ def build_pattern_forest_candidates(family_payload: dict[str, Any], motif_rows: 
                 "node_id": family_id,
                 "node_kind": "motif_family",
                 "status": family.get("status"),
+                "motion_scope": family.get("motion_scope"),
                 "motion_family_key": family.get("motion_family_key"),
                 "support_cases_sum": family.get("support_cases_sum"),
                 "occurrences_sum": family.get("occurrences_sum"),
@@ -2579,6 +3307,7 @@ def build_pattern_forest_candidates(family_payload: dict[str, Any], motif_rows: 
                     "node_id": motif_node_id,
                     "node_kind": "motif_leaf",
                     "status": "candidate" if int(motif.get("support_cases") or 0) >= 80 else "diagnostic",
+                    "motion_role_signature": motif.get("motion_role_signature"),
                     "motif_id": motif_id,
                     "operator": motif.get("operator"),
                     "support_cases": motif.get("support_cases"),
@@ -2691,6 +3420,18 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         for event in (record.get("channel_events") or [])
         if "raw_joint_reach" in set(event.get("observable_refinement_tags") or [])
     )
+    hand_proximity_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_hand_proximity" in set(event.get("observable_refinement_tags") or [])
+    )
+    leg_lateral_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_leg_lateral" in set(event.get("observable_refinement_tags") or [])
+    )
     packet_count = sum(len(record.get("packets") or []) for record in records)
     parallel_packet_count = sum(1 for record in records for packet in (record.get("packets") or []) if packet.get("packet_type") == "parallel")
     relation_count = sum(int(record.get("relation_count", len(record.get("relations") or []))) for record in records)
@@ -2725,6 +3466,8 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         "channel_event_count": channel_event_count,
         "arm_trajectory_sidecar_event_count": arm_sidecar_event_count,
         "arm_reach_sidecar_event_count": arm_reach_sidecar_event_count,
+        "hand_proximity_sidecar_event_count": hand_proximity_sidecar_event_count,
+        "leg_lateral_sidecar_event_count": leg_lateral_sidecar_event_count,
         "body_level_sidecar_event_count": body_level_sidecar_event_count,
         "channel_event_type_count": len(base_vocab),
         "packet_count": packet_count,
@@ -2805,6 +3548,20 @@ class MotionBpeSelfTest:
             "arm_reach_min_peak": 0.24,
             "arm_reach_retract_ratio": 0.55,
             "arm_reach_min_forward_component": 0.10,
+            "disable_hand_proximity_sidecar": False,
+            "hand_head_proximity_threshold": 0.30,
+            "hand_head_min_run": 6,
+            "hand_head_hold_min_duration": 10,
+            "hand_head_transition_window": 14,
+            "hand_head_min_delta": 0.14,
+            "hand_head_merge_gap": 4,
+            "disable_leg_lateral_sidecar": False,
+            "leg_lateral_threshold": 0.16,
+            "leg_lateral_min_run": 5,
+            "leg_lateral_hold_min_duration": 10,
+            "leg_lateral_transition_window": 10,
+            "leg_lateral_min_delta": 0.12,
+            "leg_lateral_merge_gap": 4,
             "disable_body_level_sidecar": False,
             "body_low_threshold": 0.52,
             "body_high_threshold": 0.58,
@@ -2953,8 +3710,8 @@ def write_report(
     lines.append(f"- `node_count`: `{(forest_payload.get('summary') or {}).get('node_count', 0)}`")
     lines.append(f"- `edge_count`: `{(forest_payload.get('summary') or {}).get('edge_count', 0)}`")
     lines.append("")
-    lines.append("| family | status | support sum | motifs | required channels | required relations | required geometry | top aliases |")
-    lines.append("| --- | --- | ---: | ---: | --- | --- | --- | --- |")
+    lines.append("| family | status | motion scope | support sum | motifs | required channels | required relations | required geometry | top aliases |")
+    lines.append("| --- | --- | --- | ---: | ---: | --- | --- | --- | --- |")
     for family in (family_payload.get("families") or [])[:80]:
         definition = family.get("motion_definition") or {}
         channels = ", ".join(definition.get("required_channels") or [])
@@ -2965,7 +3722,7 @@ def write_report(
             for item in ((family.get("naming_diagnostics") or {}).get("top_caption_aliases") or [])[:4]
         )
         lines.append(
-            f"| `{family['family_id']}` | `{family.get('status')}` | {family.get('support_cases_sum')} | {family.get('motif_count')} | {channels} | {relations} | {geometry} | {aliases} |"
+            f"| `{family['family_id']}` | `{family.get('status')}` | `{family.get('motion_scope')}` | {family.get('support_cases_sum')} | {family.get('motif_count')} | {channels} | {relations} | {geometry} | {aliases} |"
         )
     lines.append("")
     lines.append("## Top Motifs")
@@ -3160,6 +3917,20 @@ def main() -> None:
     parser.add_argument("--arm-reach-min-peak", type=float, default=0.24, help="Minimum peak body-forward wrist offset for arm reach/retract candidates.")
     parser.add_argument("--arm-reach-retract-ratio", type=float, default=0.55, help="Minimum retract/extend ratio to classify an arm reach as reach-retract.")
     parser.add_argument("--arm-reach-min-forward-component", type=float, default=0.10, help="Minimum forward extension and retraction component for arm reach/retract candidates.")
+    parser.add_argument("--disable-hand-proximity-sidecar", action="store_true", help="Disable v3 raw-joint hand-to-head proximity sidecar events.")
+    parser.add_argument("--hand-head-proximity-threshold", type=float, default=0.30, help="Normalized wrist-to-head distance threshold for hand-near-head states.")
+    parser.add_argument("--hand-head-min-run", type=int, default=6, help="Minimum consecutive frames for hand-near-head state.")
+    parser.add_argument("--hand-head-hold-min-duration", type=int, default=10, help="Minimum duration for a sustained hand-near-head hold.")
+    parser.add_argument("--hand-head-transition-window", type=int, default=14, help="Frames before/after a hand-near-head state used to emit approach/leave transitions.")
+    parser.add_argument("--hand-head-min-delta", type=float, default=0.14, help="Minimum normalized distance change for hand approach/leave-head transitions.")
+    parser.add_argument("--hand-head-merge-gap", type=int, default=4, help="Merge hand-near-head runs separated by at most this many frames.")
+    parser.add_argument("--disable-leg-lateral-sidecar", action="store_true", help="Disable v3 raw-joint leg lateral spread/adduction sidecar events.")
+    parser.add_argument("--leg-lateral-threshold", type=float, default=0.16, help="Minimum baseline-relative body-lateral foot displacement for leg-out state.")
+    parser.add_argument("--leg-lateral-min-run", type=int, default=5, help="Minimum consecutive frames for a leg-lateral state.")
+    parser.add_argument("--leg-lateral-hold-min-duration", type=int, default=10, help="Minimum duration for a sustained leg-lateral hold.")
+    parser.add_argument("--leg-lateral-transition-window", type=int, default=10, help="Frames before/after leg-out state used to emit abduct/adduct transitions.")
+    parser.add_argument("--leg-lateral-min-delta", type=float, default=0.12, help="Minimum lateral displacement change for leg abduct/adduct transitions.")
+    parser.add_argument("--leg-lateral-merge-gap", type=int, default=4, help="Merge leg-lateral runs separated by at most this many frames.")
     parser.add_argument("--disable-body-level-sidecar", action="store_true", help="Disable v3 raw-joint body-level sidecar events.")
     parser.add_argument("--body-low-threshold", type=float, default=0.52, help="Normalized pelvis-height threshold for low body-level state.")
     parser.add_argument("--body-high-threshold", type=float, default=0.58, help="Normalized pelvis-height threshold for high stand-like body-level state.")
