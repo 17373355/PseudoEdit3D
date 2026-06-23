@@ -1,0 +1,183 @@
+{
+  "schema_version": "aml_pattern_forest_v0_review_policy",
+  "description": "Reviewed v0 policy for building an offline AML motion pattern forest. This is not runtime matching logic.",
+  "source_review": "outputs/aml_regression_testset_v2/manual_text_target_audits_v0/manual_text_target_self_review.json",
+  "roots": [
+    {
+      "node_id": "root_coordination_patterns",
+      "name": "coordination_patterns",
+      "description": "Multi-channel motion patterns with coupled body parts."
+    },
+    {
+      "node_id": "root_acrobatics_inversion",
+      "name": "acrobatics_inversion",
+      "description": "Whole-body inverted or acrobatic motion structures."
+    },
+    {
+      "node_id": "root_posture_transitions",
+      "name": "posture_transitions",
+      "description": "Transitions between standing, low-body, seated, or floor-like states."
+    },
+    {
+      "node_id": "root_floor_prone_or_mime",
+      "name": "floor_prone_or_mime",
+      "description": "Floor/prone states and upper-body mime patterns that need review."
+    },
+    {
+      "node_id": "root_component_library",
+      "name": "component_library",
+      "description": "Reusable components that must not be named as full actions by themselves."
+    },
+    {
+      "node_id": "root_pending_observables",
+      "name": "pending_observables",
+      "description": "Targets blocked by missing observables or object/environment relations."
+    }
+  ],
+  "nodes": [
+    {
+      "node_id": "pattern_jumping_jack_full_coordination",
+      "parent_node_id": "root_coordination_patterns",
+      "status": "accepted",
+      "scope": "full_pattern",
+      "accepted_name": "jumping_jack_full_coordination",
+      "language_aliases": ["jumping jack", "star jump"],
+      "description": "Bimanual raise-spread coordinated with vertical down/up cycles.",
+      "source_targets": ["jumping_jack"],
+      "include_statuses": ["seed_promoted_motif", "promote_family_variant_candidate"],
+      "symbol_contains_any": ["<COM_0036>", "COORD_SIG[whole_body_vertical:WHOLE_BODY_VERTICAL/WB_VERT_DOWN&WHOLE_BODY_VERTICAL/WB_VERT_UP+left_arm:LEFT_ARM_POSTURE/LA_HAND_HIGH+right_arm:RIGHT_ARM_POSTURE/RA_HAND_HIGH]"]
+    },
+    {
+      "node_id": "pattern_cartwheel_inverted_acrobatics",
+      "parent_node_id": "root_acrobatics_inversion",
+      "status": "accepted",
+      "scope": "full_pattern_candidate",
+      "accepted_name": "cartwheel_inverted_acrobatics_candidate",
+      "language_aliases": ["cartwheel"],
+      "description": "Explicit whole-body inverted/cartwheel candidate. Low-body hold proxies are excluded.",
+      "source_targets": ["cartwheel"],
+      "include_statuses": ["promote_family_variant_candidate", "review_family_variant_candidate"],
+      "symbol_contains_any": ["WB_CARTWHEEL_CANDIDATE"]
+    },
+    {
+      "node_id": "pattern_sit_down_transition",
+      "parent_node_id": "root_posture_transitions",
+      "status": "review_candidate",
+      "scope": "transition_pattern",
+      "accepted_name": "sit_down_transition_candidate",
+      "language_aliases": ["sit down"],
+      "description": "Long downward vertical transition. This is not a full sitting cycle.",
+      "source_targets": ["sit"],
+      "include_statuses": ["review_family_variant_candidate"],
+      "symbol_contains_any": ["WB_VERT_DOWN"]
+    },
+    {
+      "node_id": "pattern_stand_up_transition_pending",
+      "parent_node_id": "root_posture_transitions",
+      "status": "pending_composition",
+      "scope": "transition_pattern_candidate",
+      "accepted_name": "stand_up_transition_pending",
+      "language_aliases": ["stand up", "get up"],
+      "description": "Requires a composed low-before -> vertical rise -> terminal standing packet before promotion.",
+      "source_targets": ["stand_up"],
+      "include_statuses": ["diagnostic_family_variant_candidate"],
+      "symbol_contains_any": ["WB_VERT_UP", "WB_SQUAT_HOLD"]
+    },
+    {
+      "node_id": "pattern_swim_prone_floor_candidate",
+      "parent_node_id": "root_floor_prone_or_mime",
+      "status": "review_candidate",
+      "scope": "floor_or_prone_pattern_candidate",
+      "accepted_name": "swim_like_prone_or_floor_candidate",
+      "language_aliases": ["swim", "swimming"],
+      "description": "Prone/floor or inverted proxies for swim-like motions; needs split review.",
+      "source_targets": ["swim"],
+      "include_statuses": ["diagnostic_family_variant_candidate", "review_family_variant_candidate"],
+      "symbol_contains_any": ["WB_LOW_BODY_HOLD", "WB_INVERTED_ROTATION_CANDIDATE", "WB_SQUAT_HOLD+torso:TORSO_POSTURE/TORSO_HUNCHED_FORWARD"]
+    },
+    {
+      "node_id": "component_swim_bimanual_hands_close",
+      "parent_node_id": "root_floor_prone_or_mime",
+      "status": "component",
+      "scope": "upper_body_component",
+      "accepted_name": "bimanual_hands_close_component",
+      "language_aliases": ["swim stroke mime", "hands close"],
+      "description": "Bimanual hands-close component seen in swim-like captions; not enough as a full swim node.",
+      "source_targets": ["swim"],
+      "include_statuses": ["promote_family_variant_candidate", "reject_noisy_variant_candidate"],
+      "symbol_contains_any": ["BI_HANDS_CLOSE"]
+    },
+    {
+      "node_id": "component_bimanual_raise_spread",
+      "parent_node_id": "root_component_library",
+      "status": "component",
+      "scope": "upper_body_component",
+      "accepted_name": "bimanual_raise_spread_component",
+      "language_aliases": ["raise and spread both arms"],
+      "description": "Reusable bimanual raise-spread component; not a full jumping jack without lower-body/vertical coordination.",
+      "source_targets": ["jumping_jack", "jump_rope"],
+      "include_statuses": ["diagnostic_family_variant_candidate", "reject_noisy_variant_candidate"],
+      "symbol_contains_any": ["BI_RAISE_SPREAD"]
+    },
+    {
+      "node_id": "component_low_body_hold",
+      "parent_node_id": "root_component_library",
+      "status": "component",
+      "scope": "posture_component",
+      "accepted_name": "low_body_hold_component",
+      "language_aliases": ["low body hold", "crouched low pose"],
+      "description": "Low-body hold component that appears in cartwheel, kneel, sit, swim and other contexts.",
+      "source_targets": ["cartwheel", "kneel", "sit", "swim"],
+      "include_statuses": ["diagnostic_family_variant_candidate", "promote_family_variant_candidate", "review_family_variant_candidate", "reject_noisy_variant_candidate"],
+      "symbol_contains_any": ["WB_LOW_BODY_HOLD"]
+    },
+    {
+      "node_id": "component_squat_hold",
+      "parent_node_id": "root_component_library",
+      "status": "component",
+      "scope": "posture_component",
+      "accepted_name": "squat_or_low_posture_component",
+      "language_aliases": ["squat hold", "low posture"],
+      "description": "Squat/low-posture component. It should not name cartwheel, sit, or kneel by itself.",
+      "source_targets": ["cartwheel", "kneel", "sit", "stand_up", "swim"],
+      "include_statuses": ["diagnostic_family_variant_candidate", "promote_family_variant_candidate", "review_family_variant_candidate", "reject_noisy_variant_candidate"],
+      "symbol_contains_any": ["WB_SQUAT_HOLD"]
+    },
+    {
+      "node_id": "component_torso_hunched_forward",
+      "parent_node_id": "root_component_library",
+      "status": "component",
+      "scope": "torso_component",
+      "accepted_name": "torso_hunched_forward_component",
+      "language_aliases": ["hunch forward", "ducking posture"],
+      "description": "Torso hunch component. It needs environment/context evidence to become duck-under.",
+      "source_targets": ["duck_under", "swim"],
+      "include_statuses": ["review_family_variant_candidate", "reject_noisy_variant_candidate"],
+      "symbol_contains_any": ["TORSO_HUNCHED_FORWARD"]
+    },
+    {
+      "node_id": "component_fast_small_turn",
+      "parent_node_id": "root_component_library",
+      "status": "component",
+      "scope": "root_rotation_component",
+      "accepted_name": "fast_small_turn_component",
+      "language_aliases": ["quick small turn"],
+      "description": "Small fast turn component. It can support martial or sport actions but cannot name them alone.",
+      "source_targets": ["karate_or_martial", "tennis"],
+      "include_statuses": ["diagnostic_family_variant_candidate", "reject_noisy_variant_candidate"],
+      "symbol_contains_any": ["WB_ROT_LEFT_SMALL", "WB_ROT_RIGHT_SMALL"]
+    },
+    {
+      "node_id": "pending_object_environment_style_labels",
+      "parent_node_id": "root_pending_observables",
+      "status": "blocked_by_observable_gap",
+      "scope": "language_label_group",
+      "accepted_name": "object_environment_style_labels_pending",
+      "language_aliases": ["basketball", "tennis", "climb", "duck under", "ballet", "dance", "jump rope", "karate", "kneel"],
+      "description": "These labels are not rejected as research targets; they are blocked as full motion-tree nodes until better observables exist.",
+      "source_targets": ["basketball", "tennis", "climb", "duck_under", "ballet", "dance", "jump_rope", "karate_or_martial", "kneel"],
+      "include_statuses": [],
+      "symbol_contains_any": []
+    }
+  ]
+}

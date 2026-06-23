@@ -1,0 +1,927 @@
+# AML Pattern Node Schema v0
+
+This document describes the first reviewed motion pattern forest:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_v0/
+```
+
+The forest is an offline vocabulary artifact. It is not runtime matching logic
+and does not encode case-specific action rules.
+
+## Build Command
+
+```bash
+python scripts/build_aml_pattern_forest_v0.py
+```
+
+Inputs:
+
+- `configs/aml_pattern_forest_v0_review_policy.json`
+- `outputs/aml_regression_testset_v2/manual_text_target_audits_v0/*/pattern_family_proposal.json`
+- `outputs/aml_regression_testset_v2/manual_text_target_audits_v0/manual_text_target_self_review.json`
+
+Outputs:
+
+- `aml_pattern_forest.json`: full forest with source examples.
+- `aml_pattern_forest_compact.json`: compact program-facing forest.
+- `aml_pattern_forest_tree.txt`: human-readable tree.
+- `aml_pattern_forest_review.md`: review report.
+- `summary.json`: counts.
+
+## Node Fields
+
+- `node_id`: stable node identifier.
+- `node_kind`: `root` or `pattern_node`.
+- `status`: review state.
+- `scope`: how the node may be used.
+- `accepted_name`: current human-readable name.
+- `language_aliases`: caption/WordNet naming hints only.
+- `description`: short review rationale.
+- `source_targets`: manual audit targets that support this node.
+- `evidence`: support and precision/recall summary from review artifacts.
+- `motion_summary`: channels and geometry clusters observed in source variants.
+- `source_symbols`: compact source symbols and metrics.
+
+## Status Semantics
+
+- `accepted`: can enter the first condition vocabulary as a reviewed pattern.
+- `review_candidate`: can be exposed for manual review and ablation, but should
+  not be treated as a final full-action label.
+- `component`: reusable motion component; can be part of a composed condition,
+  but must not be named as a complete action by itself.
+- `pending_composition`: needs a composed sequence/transition rule in Motion-BPE
+  v2 before promotion.
+- `blocked_by_observable_gap`: current motion observables cannot support this
+  language label as a full motion node.
+
+## Scope Semantics
+
+- `full_pattern`: accepted full pattern.
+- `full_pattern_candidate`: accepted structural candidate with limited support.
+- `transition_pattern`: partial transition pattern, not necessarily a full
+  semantic action cycle.
+- `transition_pattern_candidate`: transition that still needs composition.
+- `floor_or_prone_pattern_candidate`: likely needs split by support state.
+- `upper_body_component`, `posture_component`, `torso_component`,
+  `root_rotation_component`: reusable components only.
+- `language_label_group`: names blocked by missing observables.
+
+## Current v0 Tree
+
+```text
+coordination_patterns
+  jumping_jack_full_coordination                 accepted full_pattern
+
+acrobatics_inversion
+  cartwheel_inverted_acrobatics_candidate        accepted full_pattern_candidate
+
+posture_transitions
+  sit_down_transition_candidate                  review_candidate transition_pattern
+  stand_up_transition_pending                    pending_composition transition_pattern_candidate
+
+floor_prone_or_mime
+  swim_like_prone_or_floor_candidate             review_candidate floor_or_prone_pattern_candidate
+  bimanual_hands_close_component                 component upper_body_component
+
+component_library
+  bimanual_raise_spread_component                component upper_body_component
+  low_body_hold_component                        component posture_component
+  squat_or_low_posture_component                 component posture_component
+  torso_hunched_forward_component                component torso_component
+  fast_small_turn_component                      component root_rotation_component
+
+pending_observables
+  object_environment_style_labels_pending        blocked_by_observable_gap language_label_group
+```
+
+## Condition Schema Use
+
+The next condition-schema pass should use:
+
+- `accepted` nodes as positive vocabulary entries.
+- `review_candidate` nodes as optional review/ablation entries.
+- `component` nodes as building blocks inside composed conditions.
+- `pending_composition` nodes as Motion-BPE v2 requirements.
+- `blocked_by_observable_gap` nodes only as a TODO list for new observables.
+
+Do not train full-action labels directly from `component` or
+`blocked_by_observable_gap` nodes.
+
+## Dense Candidate Forest
+
+The reviewed v0 tree is intentionally conservative. The broader full-HML3D
+candidate pool is exported separately:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_candidates_v0_dense/
+```
+
+Build command:
+
+```bash
+python scripts/build_aml_pattern_forest_dense_v0.py
+```
+
+This dense forest currently contains:
+
+```text
+87 motif families
+231 motif leaves
+323 total nodes
+```
+
+Dense statuses mean:
+
+- `coordination_candidate`: multi-channel candidate; inspect first for future
+  full-pattern promotion.
+- `component_candidate`: single-channel sequence candidate; usually enters the
+  component library, not the full action vocabulary.
+- `named_candidate`: has caption-name evidence, but the name is only diagnostic.
+- `diagnostic_candidate`: low-support or uncertain candidate; keep as evidence.
+- `reviewed_*`: leaf already linked to the conservative reviewed v0 tree.
+
+The dense forest is the promotion pool. The reviewed tree is the current
+condition-vocabulary seed.
+
+## Composition Pattern Forest v0
+
+The current full-HML3D motion-derived candidate forest is:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_composition_pattern_forest_v0_structure_groups/
+```
+
+Build command:
+
+```bash
+python scripts/build_hml3d_composition_pattern_forest_v0.py \
+  --output-dir outputs/aml_regression_testset_v2/hml3d_composition_pattern_forest_v0_structure_groups
+```
+
+Inputs:
+
+- `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl`
+- `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_composition_score_full/case_multichannel_bpe_sequences.jsonl`
+
+Outputs:
+
+- `composition_pattern_forest.json`: full four-level forest with examples.
+- `composition_pattern_forest_compact.json`: compact forest for inspection.
+- `composition_pattern_forest_tree.txt`: readable hierarchy.
+- `composition_pattern_forest_report.md`: ranked family report.
+- `summary.json`: counts.
+
+Current result:
+
+```text
+29228 caption-indexed cases
+34453 all-channel coactivation transactions
+3752 closed itemsets
+64 structure groups
+379 composition families
+1219 exported variants
+```
+
+Hierarchy:
+
+```text
+composition_root
+  structure_group
+    composition_family
+      composition_variant
+```
+
+The structure group is the main review unit. It is generated from normalized
+motion roles such as `bimanual_raise_spread_vertical_coordination` or
+`low_body_torso_transition`. Caption aliases are stored as
+`caption_name_candidates` only; they do not create the tree and should not be
+used as runtime matching rules.
+
+Recommended review order:
+
+1. Open `composition_pattern_forest_tree.txt`.
+2. Review the `full-body composition candidates` root first.
+3. For each `structure_group`, decide whether the motion structure is a
+   potential full pattern, transition, component, or diagnostic context.
+4. Use `composition_pattern_forest_report.md` only after a structure group looks
+   promising; it lists examples and variants.
+5. Promote only reviewed structure groups/families into the AML condition
+   vocabulary. Do not promote raw variants directly.
+
+## Promotion Review Table
+
+Dense candidates are not promoted directly. The current promotion review table
+is exported here:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_promotion_review_v0/
+```
+
+Build command:
+
+```bash
+python scripts/build_aml_pattern_promotion_review_v0.py
+```
+
+Outputs:
+
+- `promotion_review_table.json`: complete review rows with examples.
+- `promotion_review_table.md`: readable ranked audit report.
+- `promotion_review_table.csv`: compact spreadsheet-style checklist.
+- `summary.json`: recommendation counts.
+
+Current result:
+
+```text
+87 dense families
+1 already_reviewed
+15 composition_review
+44 component_review
+5 name_only_review
+22 diagnostic_keep
+```
+
+Promotion labels mean:
+
+- `already_reviewed`: already linked to the conservative v0 forest.
+- `composition_review`: frequent multi-channel coordination, but examples and
+  names are too diffuse for direct promotion.
+- `component_review`: reusable local component candidate, not a complete action
+  name.
+- `name_only_review`: caption aliases are informative, but the motion structure
+  alone is insufficient.
+- `diagnostic_keep`: keep as mining evidence only.
+
+The important design point is that `composition_review` is not a promotion. It
+marks a candidate that may become useful after purity checks, split/merge, or
+better observables. Direct promotion still requires reviewed motion evidence,
+not just high support or a caption alias.
+
+## Promotion Self-Review
+
+The current text/structure self-review result is:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_promotion_review_v0/promotion_self_review.md
+```
+
+Build command:
+
+```bash
+python scripts/review_aml_pattern_promotion_table_v0.py
+```
+
+Current result:
+
+```text
+87 reviewed dense families
+1 keep_accepted_reference
+15 downgrade_to_component
+44 keep_component
+5 keep_name_alignment_only
+22 keep_diagnostic
+0 needs_visual_review
+```
+
+The key conclusion is conservative: the dense forest does not currently add a
+new full-action pattern beyond the already reviewed jumping-jack coordination
+reference. The 15 multi-channel `composition_review` rows are useful, but they
+should enter the component library or Motion-BPE v2 TODOs, not the full pattern
+tree.
+
+The strongest repeated issue is observable conflation:
+
+- `LEFT_LEG_ACTION/LL_KICK_FORWARD` and
+  `RIGHT_LEG_ACTION/RL_KICK_FORWARD` often describe normal gait leg swing.
+- Whole-body vertical up/down often describes gait bounce, path changes, or
+  low-amplitude support changes.
+- Arm periodic clusters are too generic without path shape, symmetry,
+  object-mime, and coupling evidence.
+
+Motion-BPE v2 should split these components before trying to promote denser
+full-action nodes.
+
+## Motion-BPE v2 Observable Refinement
+
+The all-confusions v2 pass implements the split requested by the promotion
+self-review. It does not add action names or case-specific rules. It only
+refines coarse Layer3 geometry labels into more explicit structural roles before
+Motion-BPE runs.
+
+Build command:
+
+```bash
+python scripts/audit_hml3d_multichannel_motion_bpe.py \
+  --num-merges 256 \
+  --min-pair-count 80 \
+  --min-pair-support 40 \
+  --channel-merge-ratio 0.5 \
+  --observable-refinement v2 \
+  --write-heavy-corpora \
+  --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_all_confusions_full \
+  --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_all_confusions_full_cache \
+  --rebuild-cache
+```
+
+Main outputs:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_all_confusions_full/
+outputs/aml_regression_testset_v2/aml_pattern_forest_candidates_v2_all_confusions_dense/
+outputs/aml_regression_testset_v2/aml_pattern_forest_promotion_review_v2_all_confusions/
+```
+
+The v2 refinement handles the confusion sources identified in the v1 promotion
+review:
+
+- leg-forward events are split into gait swing, hold-pose, impulse-like, and
+  unresolved forward-leg evidence.
+- root locomotion is split into weak root drift, path fragment, gait context,
+  and translation context.
+- root turns are split by angle, tempo, and path/isolated role.
+- vertical events are split into gait bounce, low-body transition, arm-raise
+  coordination, jump-up impulse, salient descent, and generic vertical cycles.
+- low-body posture is split into descent hold, rise from low, down-up cycle,
+  sustained hold, locomotion context, and leg-extension context.
+- torso motion is split by low-body, locomotion, vertical, sustained, and
+  periodic context.
+- arm periodic/posture events are split by bilateral symmetry, vertical
+  coupling, locomotion coupling, bimanual context, high-pose hold, and transient
+  high-pose roles.
+- bimanual events are split by vertical, locomotion, low-body, and hand-high
+  context.
+
+Current v1 vs v2 comparison:
+
+```text
+v1:
+  channel_event_type_count: 1019
+  learned_motif_count: 231
+  motif_family_count: 87
+  coordination_merges: 39
+  case_coverage: 0.702238
+  promotion self-review: 15 composition rows downgraded to components
+
+v2 all-confusions:
+  channel_event_type_count: 2253
+  learned_motif_count: 135
+  motif_family_count: 53
+  coordination_merges: 7
+  case_coverage: 0.583105
+  promotion self-review: 6 composition rows downgraded to components
+```
+
+Interpretation: v2 deliberately reduces dense full-pattern candidates. The
+coarser v1 labels allowed frequent but impure combinations to look stable. After
+splitting the confusing observables, many candidates become explicit
+component/context evidence instead of misleading full-action nodes. This is a
+cleanup step before improving the merge policy, not the final pattern forest.
+
+The v2 promotion self-review result is:
+
+```text
+53 reviewed dense families
+6 downgrade_to_component
+41 keep_component
+6 keep_name_alignment_only
+0 needs_visual_review
+```
+
+The next Motion-BPE step should not add action-specific rules. It should improve
+the merge policy so clean component/context tokens can compose into higher-level
+motifs when their coactivation is actually stable.
+
+## Composition-Score Coordination Selection
+
+After v2 observable refinement, the next audit adds a structure-aware
+coordination selection policy:
+
+```bash
+python scripts/audit_hml3d_multichannel_motion_bpe.py \
+  --num-merges 256 \
+  --min-pair-count 80 \
+  --min-pair-support 40 \
+  --channel-merge-ratio 0.5 \
+  --observable-refinement v2 \
+  --coordination-selection structure_score \
+  --coordination-min-structure-score 5.0 \
+  --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_composition_score_full \
+  --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_all_confusions_full_cache
+```
+
+This does not change the channel-BPE stage. It changes only which overlapping
+channel motifs are promoted into `<COM_*>` coordination motifs. The score favors
+cross-channel structure such as upper-body plus vertical/low-body/torso context,
+and penalizes pure gait/path/drift coactivation.
+
+Current result:
+
+```text
+v2 all-confusions support selection:
+  coordination_merges: 7
+  composition_review rows: 6
+
+v2 composition-score selection:
+  coordination_merges: 2
+  composition_review rows: 2
+  self-review: both downgraded to upper-body components
+  needs_visual_review: 0
+```
+
+Interpretation: structure-score selection correctly removes the dominant
+gait-leg and gait-bounce coactivations from the coordination candidate set. The
+remaining coordination motifs are still upper-body components, not full action
+patterns. This means the next issue is recall/composition, not false-positive
+cleanup: the system must inspect unpromoted coactivation candidates and discover
+whether full patterns are missing because the channel motifs do not overlap
+cleanly, the threshold is too strict, or the current geometry lacks required
+channels.
+
+## Coactivation Recall Audit
+
+The recall audit checks why full patterns are missing. It is diagnostic only:
+HumanML3D text targets are pseudo-GT labels for analysis, not rules for
+Motion-BPE or runtime AML.
+
+Build command:
+
+```bash
+python scripts/audit_hml3d_coactivation_recall_v0.py
+```
+
+Main output:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_coactivation_recall_audit_all_units/
+```
+
+Comparison command for the current Motion-BPE coordination stage:
+
+```bash
+python scripts/audit_hml3d_coactivation_recall_v0.py \
+  --coactivation-source channel_motifs \
+  --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_coactivation_recall_audit_channel_motifs
+```
+
+Existing comparison artifact from the first pass:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_coactivation_recall_audit/
+```
+
+Current result:
+
+```text
+channel_motifs view:
+  coactivation symbols: 2096
+  selected coordination symbols: 2
+  diagnosis: most targets collapse to selected upper-body components
+
+all_units view:
+  coactivation symbols: 21935
+  selected coordination symbols: 2
+  diagnosis counts:
+    component_only_best_match: 3
+    selected_component_not_full_pattern: 6
+    target_fragmented_across_many_coactivations: 3
+    text_label_motion_diverse_or_ambiguous: 2
+```
+
+The key example is `jumping_jack`:
+
+```text
+pseudo-GT cases: 368
+target cases with any all-unit coactivation: 357
+best unselected candidate:
+  geometry:
+    WHOLE_BODY_VERTICAL/WB_VERT_ARM_RAISE_COUPLED
+    LEFT_ARM_POSTURE/LA_BILATERAL_HIGH_POSE_VERTICAL_CONTEXT
+    RIGHT_ARM_POSTURE/RA_BILATERAL_HIGH_POSE_VERTICAL_CONTEXT
+    BIMANUAL_PERIODIC/BI_RAISE_SPREAD_VERTICAL_CONTEXT
+  support: 67 cases
+  target hits: 65
+  precision: 0.970149
+  recall: 0.17663
+  structure_score: 10.719508
+```
+
+This explains why full pattern nodes did not emerge from the current BPE
+setting:
+
+- Full-pattern evidence exists for some targets at the all-channel unit level.
+- The current coordination stage only composes learned per-channel `<CHM_*>`
+  motifs, so many clean base-event coactivations never become coordination
+  candidates.
+- Text labels such as `sit`, `stand_up`, `climb`, `tennis`, and `basketball`
+  remain motion-diverse or object/environment-heavy; they should not be directly
+  promoted as full motion nodes from text pseudo-GT.
+
+The next algorithmic step is composition-BPE or closed coactivation mining above
+channel units. It should propose higher-level composition candidates while
+keeping their component provenance, rather than adding action-specific proxy
+rules.
+
+## Composable AML Pattern Program v0
+
+The program-facing artifact is:
+
+```text
+outputs/aml_regression_testset_v2/aml_composable_pattern_program_v0/
+```
+
+Build command:
+
+```bash
+python scripts/export_aml_composable_pattern_program_v0.py
+```
+
+Outputs:
+
+- `aml_composable_pattern_program.json`: full program tree with match
+  signatures and condition entries.
+- `aml_composable_pattern_program_compact.json`: compact tree for inspection.
+- `aml_composable_pattern_program_tree.txt`: readable hierarchy.
+- `aml_composable_pattern_search_index.json`: inverted index by channel, zone,
+  event family, cluster id, geometry role, and semantic level.
+- `aml_condition_vocabulary.json`: draft condition entries for structure groups
+  and families.
+
+Current result:
+
+```text
+1666 program nodes
+443 condition entries
+4 roots
+64 structure groups
+379 composition families
+1219 variants
+```
+
+The purpose of this tree is not just naming. It is a searchable program for
+aligning an input 3D motion to human-interpretable structure:
+
+```text
+motion evidence
+-> tree search
+-> semantic level decision
+-> editable condition handle
+```
+
+This lets the system decide whether a motion span is closer to a whole-body
+pattern, a composed multi-part pattern, a transition, or a local component. The
+same hierarchy also defines edit scope: whole-body edits such as jumping farther,
+multi-part edits such as coordinating both arms faster, and local edits such as
+raising the left hand higher.
+
+Important fields:
+
+- `semantic_level`: `whole_body_pattern_candidate`, `multi_part_coordination`,
+  `transition`, `component`, `local_component`, or `diagnostic_context`.
+- `edit_scope`: `whole_body`, `multi_part`, `upper_body_or_arm`,
+  `lower_body_or_leg`, `root_or_body`, or `local`.
+- `composition_policy`: whether the node may bind as a full pattern, composed
+  subpattern, transition, reusable component, local edit handle, or diagnostic.
+- `match_signature`: structural evidence used for tree search: channels, zones,
+  event families, cluster ids, geometry roles, and overlap thresholds.
+- `edit_handles`: editable dimensions such as span, count, vertical amplitude,
+  body level, leg extension, arm height, arm symmetry, root direction, distance,
+  turn angle, and turn direction.
+
+Condition ids:
+
+- `condition_id` is the reusable structural condition type, for example
+  `AMLCP_BIMANUAL_RAISE_SPREAD_VERTICAL_COORDINATION`.
+- `condition_entry_id` is the unique program-node condition entry and should be
+  used when a manifest selects a specific tree node.
+
+Runtime loading:
+
+```python
+from pseudoedit3d.edit import (
+    condition_vocabulary,
+    load_composable_pattern_program,
+    search_program_nodes,
+)
+
+program = load_composable_pattern_program()
+conditions = condition_vocabulary(
+    program,
+    scopes=["full_composition_candidate"],
+    review_statuses=["review_candidate"],
+)
+hits = search_program_nodes(
+    program,
+    channels=["bimanual", "whole_body_vertical"],
+    zones=["upper", "vertical"],
+    cluster_ids=["BI_RAISE_SPREAD", "WB_VERT_UP"],
+    event_families=["BIMANUAL_PERIODIC", "WHOLE_BODY_VERTICAL"],
+)
+```
+
+The `pseudoedit3d.edit` package now lazy-loads public exports, so inspecting the
+program does not require importing heavy numeric dependencies.
+
+## Tree Search Debug v0
+
+The current motion-to-tree debug bridge is:
+
+```bash
+python scripts/search_aml_composable_pattern_program_v0.py --max-cases 250
+```
+
+Output:
+
+```text
+outputs/aml_regression_testset_v2/aml_composable_pattern_program_search_v0/
+```
+
+Files:
+
+- `case_tree_search_results.json`: per-case classification and top windows.
+- `window_tree_search_results.json`: per-window structural evidence and hits.
+- `search_report.md`: readable case summary.
+- `summary.json`: aggregate counts.
+
+This script does not use captions as matching rules. It loads multichannel
+Motion-BPE channel units, rebuilds all-unit coactivation windows, extracts
+motion evidence, and searches the program tree.
+
+Latest 250-case debug result:
+
+```text
+250 channel cases
+192 cases with coactivation windows
+58 cases without coactivation windows
+340 searched windows
+37 whole-body/full-composition candidate cases
+26 composed multi-part cases
+29 transition cases
+32 component-dominant cases
+68 diagnostic/ambiguous cases
+58 unmatched/local-only cases
+```
+
+Selected review examples can be searched with:
+
+```bash
+python scripts/search_aml_composable_pattern_program_v0.py \
+  --case-ids 003082,003191,007581,008692,009072,011643,011797,014607,M010447 \
+  --output-dir outputs/aml_regression_testset_v2/aml_composable_pattern_program_search_v0_review_examples
+```
+
+Current limitation:
+
+- Tree search is recall-oriented. It can place a motion span onto likely tree
+  levels, but it is not yet a final condition manifest.
+- Broad diagnostic nodes still appear. Case-level classification prioritizes
+  editable semantic levels over diagnostic score, but the next matcher pass
+  should add temporal coverage, node specificity, and sibling suppression.
+- Variant nodes remain debug evidence. Default condition search returns only
+  `structure_group` and `composition_family` nodes.
+
+## Program Condition Manifest v0
+
+The tree search output can now be converted into the existing AML
+`selected_conditions` contract:
+
+```bash
+python scripts/export_aml_program_condition_manifest_v0.py
+python scripts/audit_aml_condition_contract.py \
+  --selected-jsonl outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0/selected_conditions.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0/contract_audit
+```
+
+Default debug/composable output:
+
+```text
+outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0/
+```
+
+Current result:
+
+```text
+250 cases
+156 train-ready cases
+94 empty-selected cases
+377 selected conditions
+544 deferred diagnostic/weak conditions
+contract status: pass
+```
+
+This default uses `--max-selected-per-span 2`, so one span may retain a
+whole-body/composed node plus a local component. It is useful for inspecting
+compositionality, but it still contains sibling overlap.
+
+Strict training-oriented output:
+
+```bash
+python scripts/export_aml_program_condition_manifest_v0.py \
+  --max-selected-per-span 1 \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_strict_span1
+```
+
+Current strict result:
+
+```text
+250 cases
+156 train-ready cases
+94 empty-selected cases
+236 selected conditions
+544 deferred diagnostic/weak conditions
+0 duplicate selected conditions per span
+contract status: pass
+```
+
+The recommended first condition-encoder smoke test should use the strict
+`span1` manifest. Keep the default `span2` manifest for compositional audit.
+
+Audit-filtered train-clean output:
+
+```bash
+python scripts/audit_aml_program_condition_manifest_v0.py \
+  --manifest-jsonl outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_strict_span1/selected_conditions.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_strict_span1/audit
+
+python scripts/filter_aml_program_condition_manifest_v0.py
+
+python scripts/audit_aml_condition_contract.py \
+  --selected-jsonl outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_train_clean/selected_conditions.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_train_clean/contract_audit
+```
+
+Current train-clean result:
+
+```text
+250 cases
+40 train-ready cases
+210 empty-selected cases
+50 selected train-candidate conditions
+730 deferred conditions
+contract status: pass
+quality audit: all selected conditions are train_candidate
+```
+
+The train-clean manifest is intentionally conservative. It removes broad
+generic/component-only conditions from the hard-positive training set and keeps
+them as deferred diagnostics. Captions are used only as audit hints, never as
+runtime matching rules.
+
+Batch schema export:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python \
+  scripts/export_aml_condition_batch_schema.py \
+  --input-jsonl outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_strict_span1/contract_audit/train_ready_selected_conditions.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_batch_schema_v0_strict_span1 \
+  --max-conditions 8
+```
+
+Current strict batch:
+
+```text
+156 cases
+236 selected conditions
+max conditions: 8
+span coverage: 1.0
+truncated cases: 0
+```
+
+Train-clean batch export:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python \
+  scripts/export_aml_condition_batch_schema.py \
+  --input-jsonl outputs/aml_regression_testset_v2/aml_program_condition_manifest_v0_train_clean/contract_audit/train_ready_selected_conditions.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_batch_schema_v0_train_clean \
+  --max-conditions 8
+```
+
+Current train-clean batch:
+
+```text
+40 cases
+50 selected conditions
+max conditions: 8
+span coverage: 1.0
+truncated cases: 0
+score mean: 0.8179
+```
+
+The batch now carries three token granularities:
+
+- `family_id`: unique program-family condition entry, fine but sparse.
+- `condition_id`: shared structural condition type.
+- `motion_structure_id`: shared motion-structure label.
+
+Current train-clean vocabulary sizes:
+
+```text
+family_vocab: 35 including pad/unk
+condition_vocab: 16 including pad/unk
+motion_structure_vocab: 16 including pad/unk
+```
+
+## Condition Encoder Smoke v0
+
+The first condition-encoder smoke uses the train-clean batch only. It checks
+data alignment and overfitting, not final generation quality.
+
+Motion batch export:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python \
+  scripts/export_aml_condition_motion_batch.py \
+  --condition-batch-dir outputs/aml_regression_testset_v2/aml_program_condition_batch_schema_v0_train_clean \
+  --output-dir outputs/aml_regression_testset_v2/aml_program_condition_motion_batch_v0_train_clean
+```
+
+Current motion batch result:
+
+```text
+40 cases
+joints shape: [40, 200, 22, 3]
+valid frames: 6046
+frame mismatches: 0
+truncated cases: 0
+alignment status: pass
+```
+
+Loader smoke:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python \
+  scripts/smoke_aml_condition_motion_loader.py \
+  --condition-batch-dir outputs/aml_regression_testset_v2/aml_program_condition_batch_schema_v0_train_clean \
+  --motion-batch-dir outputs/aml_regression_testset_v2/aml_program_condition_motion_batch_v0_train_clean \
+  --output-dir outputs/aml_regression_testset_v2/aml_condition_encoder_smoke_v0_train_clean/loader_smoke \
+  --batch-size 8 \
+  --num-workers 0
+```
+
+Current loader result:
+
+```text
+status: pass
+dataset: 40
+batches: 5
+samples: 40
+conditions: 50
+valid frames: 6046
+```
+
+Overfit smoke:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python \
+  scripts/train_aml_condition_encoder_smoke.py \
+  --epochs 500 \
+  --batch-size 50 \
+  --device auto
+```
+
+Current overfit result:
+
+```text
+device: cuda
+condition rows: 50
+initial normalized MSE: 0.986822
+final normalized MSE: 0.001878
+loss reduction: 0.9981
+status: pass
+```
+
+The overfit target is a span-level motion geometry summary: root displacement,
+root path length, vertical range, mean/max joint displacement, body-part
+displacement, and speed. This is a sanity check that condition family, span, and
+slot tensors are aligned with the motion batch. It does not show that AML
+conditions can generalize or drive a motion generator yet.
+
+Split smoke:
+
+```bash
+/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python \
+  scripts/train_aml_condition_encoder_smoke.py \
+  --mode row_split \
+  --token-source family \
+  --epochs 400 \
+  --batch-size 32 \
+  --val-fraction 0.25 \
+  --device auto \
+  --output-dir outputs/aml_regression_testset_v2/aml_condition_encoder_smoke_v0_train_clean/row_split_family_v2
+```
+
+Current split conclusion:
+
+```text
+row_split family token: warn, eval MSE 1.3146, global-mean MSE 1.1143
+row_split condition token: warn, eval MSE 1.8015, global-mean MSE 1.4312
+row_split structure token: warn, eval MSE 1.8015, global-mean MSE 1.4312
+case_split: warn, eval MSE 3.0867, 7 validation tokens unseen
+```
+
+The split result is the important audit finding. The current train-clean set is
+good enough to verify schema alignment, but it is too small and under-specified
+for generalization. The next condition-data pass should add more reviewed
+conditions and fill real numeric residues instead of only training a larger
+encoder on the same 50 rows.

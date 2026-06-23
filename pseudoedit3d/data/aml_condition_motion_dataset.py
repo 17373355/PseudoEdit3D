@@ -58,6 +58,12 @@ class AMLConditionMotionDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         row = self.index_rows[index]
+        condition_id = self.condition_npz["condition_id"] if "condition_id" in self.condition_npz.files else self.condition_npz["family_id"]
+        motion_structure_id = (
+            self.condition_npz["motion_structure_id"]
+            if "motion_structure_id" in self.condition_npz.files
+            else condition_id
+        )
         sample: dict[str, Any] = {
             "case_id": str(row.get("case_id") or ""),
             "case_index": torch.tensor(int(self.condition_npz["case_index"][index]), dtype=torch.long),
@@ -68,6 +74,8 @@ class AMLConditionMotionDataset(Dataset):
             "condition_mask": torch.from_numpy(self.condition_npz["condition_mask"][index].astype(np.float32, copy=False)),
             "condition_action_index": torch.from_numpy(self.condition_npz["action_index"][index].astype(np.int64, copy=False)),
             "condition_family_id": torch.from_numpy(self.condition_npz["family_id"][index].astype(np.int64, copy=False)),
+            "condition_condition_id": torch.from_numpy(condition_id[index].astype(np.int64, copy=False)),
+            "condition_motion_structure_id": torch.from_numpy(motion_structure_id[index].astype(np.int64, copy=False)),
             "condition_status_id": torch.from_numpy(self.condition_npz["status_id"][index].astype(np.int64, copy=False)),
             "condition_score": torch.from_numpy(self.condition_npz["score"][index].astype(np.float32, copy=False)),
             "condition_weight": torch.from_numpy(self.condition_npz["condition_weight"][index].astype(np.float32, copy=False)),
@@ -80,6 +88,8 @@ class AMLConditionMotionDataset(Dataset):
             "condition_categorical_slot_mask": torch.from_numpy(self.condition_npz["categorical_slot_mask"][index].astype(np.float32, copy=False)),
             "reference_prompt": str(row.get("reference_prompt") or ""),
             "selected_families": list(row.get("selected_families") or []),
+            "selected_conditions": list(row.get("selected_conditions") or []),
+            "selected_motion_structures": list(row.get("selected_motion_structures") or []),
         }
         return sample
 
@@ -100,6 +110,8 @@ def collate_aml_condition_motion_samples(samples: list[dict[str, Any]]) -> dict[
         "case_id",
         "reference_prompt",
         "selected_families",
+        "selected_conditions",
+        "selected_motion_structures",
     ]
     for key in metadata_keys:
         batch[key] = [sample[key] for sample in samples]

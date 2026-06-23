@@ -10,6 +10,7 @@ from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CASE_LIST_GLOB = "outputs/aml_regression_testset_v2/group_[0-9][0-9]_case_ids.txt"
+DEFAULT_MOMASK_PYTHON = Path("/mnt/data/home/guoruoxi/miniconda3/envs/momask/bin/python")
 
 
 def _load_json(path: Path) -> Any:
@@ -85,7 +86,7 @@ def write_group_index(
     lines = [
         f"# AML MoMask Review Pack - {group_name}",
         "",
-        "GT motion vs motion-only AutoPrompt-conditioned MoMask. HML3D captions are reference only.",
+        "GT motion vs MoMask from HML3D prompt vs motion-only AML AutoPrompt.",
         "",
         f"- case list: `{_rel_link(case_list, group_dir)}`",
         f"- probe summary: `{_rel_link(probe_summary, group_dir)}`",
@@ -153,7 +154,7 @@ def write_master_index(output_root: Path, rows: list[dict[str, Any]], args: argp
     lines = [
         "# AML MoMask Review Pack",
         "",
-        "GT motion vs motion-only AutoPrompt-conditioned MoMask review bundle.",
+        "GT motion vs MoMask native HML3D prompt vs motion-only AML AutoPrompt review bundle.",
         "",
         f"- review name: `{args.review_name}`",
         f"- prompt mode: `{args.prompt_mode}`",
@@ -162,6 +163,7 @@ def write_master_index(output_root: Path, rows: list[dict[str, Any]], args: argp
         f"- cond scale: `{args.cond_scale}`",
         f"- caption semantic aliases: `{bool(args.caption_semantic_aliases)}`",
         f"- caption alias source: `{args.caption_alias_source if args.caption_semantic_aliases else 'none'}`",
+        f"- native compare: `{bool(args.native_compare)}`",
         f"- cases: `{total_cases}`",
         f"- GIFs: `{total_gifs}`",
         f"- generation skipped: `{bool(args.skip_generation)}`",
@@ -206,9 +208,15 @@ def main() -> None:
     parser.add_argument("--prompt-mode", choices=["coarse", "event_stream"], default="coarse")
     parser.add_argument("--max-events", type=int, default=8)
     parser.add_argument("--gpu-id", default="0")
+    parser.add_argument("--momask-python", default=str(DEFAULT_MOMASK_PYTHON))
     parser.add_argument("--time-steps", type=int, default=10)
     parser.add_argument("--cond-scale", type=int, default=4)
     parser.add_argument("--skip-generation", action="store_true")
+    parser.add_argument(
+        "--native-compare",
+        action="store_true",
+        help="Generate/render MoMask from selected HML3D prompt as a native baseline next to AML AutoPrompt.",
+    )
     parser.add_argument("--reuse-existing", action="store_true")
     parser.add_argument(
         "--caption-semantic-aliases",
@@ -278,7 +286,39 @@ def main() -> None:
         if args.caption_semantic_aliases:
             probe_cmd.append("--caption-semantic-aliases")
             probe_cmd.extend(["--caption-alias-source", args.caption_alias_source])
+        if args.native_compare:
+            probe_cmd.append("--native-compare")
+        if args.native_compare:
+            probe_cmd.append("--skip-generation")
         _run(probe_cmd)
+
+        if args.native_compare and not args.skip_generation:
+            native_report = group_dir / "momask_native_batch_report.json"
+            auto_report = group_dir / "momask_aml_batch_report.json"
+            for prompt_key, ext_key, report_path in [
+                ("native_prompt", "native_ext", native_report),
+                ("auto_prompt", "auto_ext", auto_report),
+            ]:
+                batch_cmd = [
+                    str(args.momask_python),
+                    str(ROOT_DIR / "scripts" / "run_momask_batch_from_probe_summary.py"),
+                    "--summary",
+                    str(probe_summary),
+                    "--report",
+                    str(report_path),
+                    "--prompt-key",
+                    prompt_key,
+                    "--ext-key",
+                    ext_key,
+                    "--gpu-id",
+                    str(args.gpu_id),
+                    "--time-steps",
+                    str(args.time_steps),
+                    "--cond-scale",
+                    str(args.cond_scale),
+                    "--reuse-existing",
+                ]
+                _run(batch_cmd)
 
         if not args.skip_visualization:
             vis_cmd = [
@@ -294,6 +334,8 @@ def main() -> None:
                 str(args.frame_stride),
                 "--show-hml3d-reference",
             ]
+            if args.native_compare:
+                vis_cmd.append("--show-native-branch")
             if args.max_render_frames:
                 vis_cmd.extend(["--max-render-frames", str(args.max_render_frames)])
             _run(vis_cmd)

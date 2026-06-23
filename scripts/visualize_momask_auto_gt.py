@@ -103,25 +103,36 @@ def render_case(
     frame_stride: int = 1,
     max_render_frames: int | None = None,
     show_hml3d_reference: bool = True,
+    show_native_branch: bool = False,
 ) -> dict[str, Any]:
     case_id = case['case_id']
     source_num_frames = int(case.get('source_num_frames', 60))
     gt_joints = _gt_joints_from_pack(gt_pack, case_id)[:source_num_frames]
+    native_ext = str(case.get('native_ext') or case.get('gt_ext') or '')
+    native_pred = None
+    if show_native_branch and native_ext:
+        native_pred = _load_np(_find_joint_file(MOMASK_ROOT / 'generation' / native_ext / 'joints' / '0'))
+        native_pred = _pad_to_length(native_pred, source_num_frames)
     auto_ext = case['auto_ext']
     auto_pred = _load_np(_find_joint_file(MOMASK_ROOT / 'generation' / auto_ext / 'joints' / '0'))
     auto_pred = _pad_to_length(auto_pred, source_num_frames)
-    gt_proj, auto_proj = _normalize_panel([gt_joints, auto_pred])
+    if native_pred is not None:
+        gt_proj, native_proj, auto_proj = _normalize_panel([gt_joints, native_pred, auto_pred])
+    else:
+        gt_proj, auto_proj = _normalize_panel([gt_joints, auto_pred])
+        native_proj = None
 
     render_indices = frame_indices_for_render(
         len(gt_joints),
         frame_stride=frame_stride,
         max_render_frames=max_render_frames,
     )
-    canvas_w = 1520
+    canvas_w = 1900 if native_proj is not None else 1520
     canvas_h = 650
     gt_box = (20, 56, 430, 466)
-    prompt_box = (455, 56, 1065, 620)
-    auto_box = (1090, 56, 1500, 466)
+    prompt_box = (455, 56, 965, 620) if native_proj is not None else (455, 56, 1065, 620)
+    native_box = (990, 56, 1400, 466)
+    auto_box = (1430, 56, 1840, 466) if native_proj is not None else (1090, 56, 1500, 466)
     font_title = _load_font(23)
     font_body = _load_font(13)
     font_prompt = _load_font(12)
@@ -143,6 +154,7 @@ def render_case(
         )
 
     auto_prompt = str(case.get('auto_prompt') or '')
+    native_prompt = str(case.get('native_prompt') or case.get('gt_prompt') or '')
     gt_prompt = str(case.get('gt_prompt') or '')
     raw_prompt_segments = case.get('raw_prompt_segments') or []
     hml3d_prompts: list[str] = []
@@ -157,20 +169,32 @@ def render_case(
     for frame_idx in render_indices:
         img = Image.new('RGB', (canvas_w, canvas_h), color=(247, 247, 250))
         draw = ImageDraw.Draw(img)
-        for box in [gt_box, prompt_box, auto_box]:
+        boxes = [gt_box, prompt_box, auto_box]
+        if native_proj is not None:
+            boxes.insert(2, native_box)
+        for box in boxes:
             draw.rounded_rectangle(box, radius=16, outline=(210, 210, 220), width=2, fill=(255, 255, 255))
 
         draw.text((42, 18), 'GT Motion', fill=(20, 20, 20), font=font_title)
         draw.text((485, 18), 'HML3D Captions + AutoPrompt', fill=(20, 20, 20), font=font_title)
-        draw.text((1125, 18), 'MoMask from AutoPrompt', fill=(20, 20, 20), font=font_title)
+        if native_proj is not None:
+            draw.text((1020, 18), 'MoMask from HML3D', fill=(20, 20, 20), font=font_title)
+            draw.text((1460, 18), 'MoMask from AML', fill=(20, 20, 20), font=font_title)
+        else:
+            draw.text((1125, 18), 'MoMask from AutoPrompt', fill=(20, 20, 20), font=font_title)
 
         place(draw, gt_proj, frame_idx, gt_box, (176, 181, 193), (60, 150, 85))
+        if native_proj is not None:
+            place(draw, native_proj, frame_idx, native_box, (176, 181, 193), (55, 95, 205))
         place(draw, auto_proj, frame_idx, auto_box, (176, 181, 193), (205, 115, 25))
 
         draw.text((gt_box[0] + 20, gt_box[3] - 50), f'frame {frame_idx + 1}/{len(gt_joints)}', fill=(70, 70, 80), font=font_body)
         draw.text((gt_box[0] + 20, gt_box[3] - 26), f'case {case_id}', fill=(70, 70, 80), font=font_body)
+        if native_proj is not None:
+            draw.text((native_box[0] + 20, native_box[3] - 50), f'generated len {len(native_pred)}', fill=(70, 70, 80), font=font_body)
+            draw.text((native_box[0] + 20, native_box[3] - 26), 'HML3D caption conditioned', fill=(70, 70, 80), font=font_body)
         draw.text((auto_box[0] + 20, auto_box[3] - 50), f'generated len {int(case.get("generated_num_frames", len(auto_pred)))}', fill=(70, 70, 80), font=font_body)
-        draw.text((auto_box[0] + 20, auto_box[3] - 26), 'auto prompt conditioned', fill=(70, 70, 80), font=font_body)
+        draw.text((auto_box[0] + 20, auto_box[3] - 26), 'AML prompt conditioned', fill=(70, 70, 80), font=font_body)
 
         y = prompt_box[1] + 16
         meta_lines = [
@@ -183,6 +207,15 @@ def render_case(
             y += 16
         y += 6
         max_text_w = prompt_box[2] - prompt_box[0] - 36
+        if native_prompt:
+            draw.text((prompt_box[0] + 18, y), 'MoMask native prompt', fill=(55, 95, 205), font=font_body)
+            y += 17
+            for line in _wrap_text(draw, native_prompt, font_prompt, max_text_w):
+                if y > prompt_box[3] - 240:
+                    break
+                draw.text((prompt_box[0] + 18, y), line, fill=(55, 95, 205), font=font_prompt)
+                y += 14
+            y += 6
         if show_hml3d_reference and hml3d_prompts:
             draw.text((prompt_box[0] + 18, y), 'HML3D captions (reference only)', fill=(55, 95, 205), font=font_body)
             y += 17
@@ -215,6 +248,7 @@ def render_case(
         'rendered_frames': int(len(render_indices)),
         'frame_stride': int(frame_stride),
         'auto_ext': auto_ext,
+        'native_ext': native_ext if native_proj is not None else None,
         'auto_prompt': auto_prompt,
     }
 
@@ -229,6 +263,7 @@ def main() -> None:
     parser.add_argument('--max-render-frames', type=int, default=None)
     parser.add_argument('--show-hml3d-reference', action='store_true')
     parser.add_argument('--hide-hml3d-reference', action='store_true')
+    parser.add_argument('--show-native-branch', action='store_true')
     args = parser.parse_args()
 
     summary = _load_summary(Path(args.summary))
@@ -251,6 +286,7 @@ def main() -> None:
             frame_stride=args.frame_stride,
             max_render_frames=args.max_render_frames,
             show_hml3d_reference=(args.show_hml3d_reference or not args.hide_hml3d_reference),
+            show_native_branch=bool(args.show_native_branch),
         ))
         print(f'saved_auto_gt_vis={out_path}', flush=True)
     (output_dir / 'summary.json').write_text(json.dumps(outputs, ensure_ascii=True, indent=2), encoding='utf-8')

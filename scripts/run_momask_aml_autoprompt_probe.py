@@ -89,6 +89,11 @@ def main() -> None:
     parser.add_argument('--max-events', type=int, default=8)
     parser.add_argument('--prompt-mode', choices=['coarse', 'event_stream'], default='coarse')
     parser.add_argument('--ext-prefix', default='aml_auto_probe')
+    parser.add_argument(
+        '--native-compare',
+        action='store_true',
+        help='Also store the selected HML3D prompt/ext so the same summary can generate a native MoMask baseline.',
+    )
     parser.add_argument('--gpu-id', default='0')
     parser.add_argument('--time-steps', type=int, default=10)
     parser.add_argument('--cond-scale', type=int, default=4)
@@ -151,6 +156,7 @@ def main() -> None:
         source_num_frames = int(len(joints))
         generated_num_frames = int((source_num_frames // 4) * 4)
         auto_ext = f'{args.ext_prefix}_{case_id}_{args.prompt_mode}_autoprompt'
+        native_ext = f'{args.ext_prefix}_{case_id}_native_hml3d'
         case_dir = out_dir / case_id
         case_dir.mkdir(parents=True, exist_ok=True)
         (case_dir / 'aml_meta.json').write_text(json.dumps(_json_safe({
@@ -180,12 +186,14 @@ def main() -> None:
         row = {
             'case_id': case_id,
             'gt_prompt': gt_prompt,
+            'native_prompt': gt_prompt if args.native_compare else None,
             'auto_prompt': auto_prompt,
             'program': {'task_mode': 'aml_autoprompt_probe', 'source_prefix_frames': 0, 'edits': []},
             'auto_program': program,
             'canonical_actions': (coarse_program or {}).get('canonical_actions') or [],
             'coarse_action_program': coarse_program,
-            'gt_ext': None,
+            'gt_ext': native_ext if args.native_compare else None,
+            'native_ext': native_ext if args.native_compare else None,
             'auto_ext': auto_ext,
             'source_num_frames': source_num_frames,
             'generated_num_frames': generated_num_frames,
@@ -199,6 +207,7 @@ def main() -> None:
                 'cond_scale': int(args.cond_scale),
                 'caption_semantic_aliases_enabled': bool(args.caption_semantic_aliases),
                 'caption_alias_source': args.caption_alias_source if args.caption_semantic_aliases else None,
+                'native_compare_enabled': bool(args.native_compare),
             },
         }
         summary.append(row)

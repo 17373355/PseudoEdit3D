@@ -5,7 +5,8 @@ What this script does:
 2. Convert each case into channel events, overlap relations, and packets.
 3. Learn per-channel temporal motifs first.
 4. Promote frequently overlapping cross-channel motifs into coordination motifs.
-5. Write motif/family/forest artifacts for manual inspection.
+5. Optionally refine coarse Layer3 geometry labels for the Motion-BPE view.
+6. Write motif/family/forest artifacts for manual inspection.
 
 Text policy:
 - Captions are saved only as examples/diagnostics.
@@ -38,7 +39,7 @@ Tune these first:
 
 Cache note:
 - Changing BPE thresholds reuses --cache-dir.
-- Changing source/max-records/overlap/gap/relation flags rebuilds the cache.
+- Changing source/max-records/overlap/gap/relation/refinement flags rebuilds the cache.
 - Check summary.json -> record_cache.status: hit / miss_built / rebuilt.
 """
 
@@ -52,10 +53,13 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 
 DEFAULT_SOURCE_CORPUS = Path("outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl")
 DEFAULT_OUTPUT_DIR = Path("outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1")
-CACHE_SCHEMA_VERSION = "hml3d_multichannel_record_cache_v1"
+DEFAULT_HML3D_ROOT = Path("/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D")
+CACHE_SCHEMA_VERSION = "hml3d_multichannel_record_cache_v3_arm_trajectory"
 
 CHANNEL_ORDER = [
     "root_locomotion",
@@ -116,11 +120,44 @@ def _cache_paths(cache_dir: Path) -> dict[str, Path]:
 
 
 def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
+    arm_sidecar_enabled = _use_arm_trajectory_sidecar(args)
+    body_sidecar_enabled = _use_body_level_sidecar(args)
+    arm_reach_sidecar_enabled = _use_arm_reach_sidecar(args)
+    raw_joint_sidecar_enabled = arm_sidecar_enabled or body_sidecar_enabled or arm_reach_sidecar_enabled
     return {
         "source_signature": _source_signature(Path(args.source_corpus)),
         "max_records": args.max_records,
         "parallel_overlap_min": float(args.parallel_overlap_min),
         "lead_lag_gap_max": int(args.lead_lag_gap_max),
+        "observable_refinement": str(getattr(args, "observable_refinement", "v1")),
+        "arm_trajectory_sidecar": arm_sidecar_enabled,
+        "arm_reach_sidecar": arm_reach_sidecar_enabled,
+        "body_level_sidecar": body_sidecar_enabled,
+        "hml3d_joints3d": str(Path(getattr(args, "hml3d_root", DEFAULT_HML3D_ROOT)) / "joints3d.pth") if raw_joint_sidecar_enabled else "",
+        "arm_span_gap": int(getattr(args, "arm_span_gap", 6)),
+        "arm_span_pad": int(getattr(args, "arm_span_pad", 3)),
+        "arm_min_radius": float(getattr(args, "arm_min_radius", 0.18)),
+        "arm_circle_min_abs_deg": float(getattr(args, "arm_circle_min_abs_deg", 540.0)),
+        "arm_circle_max_radius_cv": float(getattr(args, "arm_circle_max_radius_cv", 0.38)),
+        "arm_large_arc_min_abs_deg": float(getattr(args, "arm_large_arc_min_abs_deg", 180.0)),
+        "arm_large_arc_min_path": float(getattr(args, "arm_large_arc_min_path", 0.70)),
+        "arm_large_arc_min_range": float(getattr(args, "arm_large_arc_min_range", 0.40)),
+        "arm_large_arc_max_radius_cv": float(getattr(args, "arm_large_arc_max_radius_cv", 0.55)),
+        "arm_min_planarity": float(getattr(args, "arm_min_planarity", 0.80)),
+        "arm_reach_span_gap": int(getattr(args, "arm_reach_span_gap", 4)),
+        "arm_reach_span_pad": int(getattr(args, "arm_reach_span_pad", 3)),
+        "arm_reach_min_delta": float(getattr(args, "arm_reach_min_delta", 0.16)),
+        "arm_reach_min_path": float(getattr(args, "arm_reach_min_path", 0.22)),
+        "arm_reach_min_peak": float(getattr(args, "arm_reach_min_peak", 0.24)),
+        "arm_reach_retract_ratio": float(getattr(args, "arm_reach_retract_ratio", 0.55)),
+        "arm_reach_min_forward_component": float(getattr(args, "arm_reach_min_forward_component", 0.10)),
+        "body_low_threshold": float(getattr(args, "body_low_threshold", 0.52)),
+        "body_high_threshold": float(getattr(args, "body_high_threshold", 0.58)),
+        "body_level_min_run": int(getattr(args, "body_level_min_run", 5)),
+        "body_long_low_min_duration": int(getattr(args, "body_long_low_min_duration", 30)),
+        "body_high_state_min_duration": int(getattr(args, "body_high_state_min_duration", 8)),
+        "body_transition_max_gap": int(getattr(args, "body_transition_max_gap", 40)),
+        "body_emit_high_state": bool(getattr(args, "body_emit_high_state", False)),
     }
 
 
@@ -130,8 +167,50 @@ def _cache_matches(metadata: dict[str, Any], args: argparse.Namespace) -> bool:
     return metadata.get("config") == _cache_config(args)
 
 
+def _use_arm_trajectory_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_arm_trajectory_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+
+
+def _use_body_level_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_body_level_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+
+
+def _use_arm_reach_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_arm_reach_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+
+
+def _load_hml3d_joints_pack(hml3d_root: Path) -> dict[str, Any]:
+    import torch
+
+    return torch.load(hml3d_root / "joints3d.pth", map_location="cpu")
+
+
 def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     channel_event_count = sum(len(record.get("channel_events") or []) for record in records)
+    arm_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_trajectory" in set(event.get("observable_refinement_tags") or [])
+    )
+    body_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_body_level" in set(event.get("observable_refinement_tags") or [])
+    )
+    arm_reach_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_reach" in set(event.get("observable_refinement_tags") or [])
+    )
     packet_count = sum(len(record.get("packets") or []) for record in records)
     parallel_packet_count = sum(
         1
@@ -146,6 +225,9 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "schema_version": CACHE_SCHEMA_VERSION,
         "record_count": len(records),
         "channel_event_count": channel_event_count,
+        "arm_trajectory_sidecar_event_count": arm_sidecar_event_count,
+        "arm_reach_sidecar_event_count": arm_reach_sidecar_event_count,
+        "body_level_sidecar_event_count": body_sidecar_event_count,
         "packet_count": packet_count,
         "parallel_packet_count": parallel_packet_count,
         "relation_count": sum(int(record.get("relation_count") or 0) for record in records),
@@ -171,7 +253,12 @@ def _load_or_build_multichannel_records(args: argparse.Namespace) -> tuple[list[
                 }
 
     source_records = _read_jsonl(source_path, max_records=args.max_records)
-    records = [build_multichannel_record(record, args) for record in source_records]
+    joints_pack = (
+        _load_hml3d_joints_pack(Path(args.hml3d_root))
+        if (_use_arm_trajectory_sidecar(args) or _use_arm_reach_sidecar(args) or _use_body_level_sidecar(args))
+        else None
+    )
+    records = [build_multichannel_record(record, args, joints_pack=joints_pack) for record in source_records]
     if cache_dir:
         cache_dir.mkdir(parents=True, exist_ok=True)
         paths = _cache_paths(cache_dir)
@@ -292,7 +379,7 @@ def _channel_for_event(event: dict[str, Any]) -> str:
         return "root_rotation"
     if super_family == "WHOLE_BODY_VERTICAL":
         return "whole_body_vertical"
-    if super_family in {"WHOLE_BODY_POSTURE", "WHOLE_BODY_STATE"}:
+    if super_family in {"WHOLE_BODY_POSTURE", "WHOLE_BODY_STATE", "WHOLE_BODY_LEVEL"}:
         return "whole_body_state"
     if super_family.startswith("TORSO_") or part == "torso":
         return "torso"
@@ -374,10 +461,1163 @@ def _event_sort_key(event: dict[str, Any]) -> tuple[int, int, int, str]:
     return (start, end, CHANNEL_RANK.get(channel, 999), str(event.get("event_id") or ""))
 
 
-def build_channel_events(record: dict[str, Any]) -> list[dict[str, Any]]:
+def _copy_event_with_refined_geometry(event: dict[str, Any], refined_cluster_id: str, tags: list[str]) -> dict[str, Any]:
+    copied = dict(event)
+    raw_geometry = str(event.get("geometry_cluster_id") or f"{event.get('super_family')}/{event.get('cluster_id')}")
+    super_family = str(event.get("super_family") or "")
+    merged_tags = list(dict.fromkeys([*(event.get("observable_refinement_tags") or []), *tags]))
+    copied["raw_geometry_cluster_id"] = raw_geometry
+    copied["raw_cluster_id"] = str(event.get("cluster_id") or "")
+    copied["cluster_id"] = refined_cluster_id
+    copied["geometry_cluster_id"] = f"{super_family}/{refined_cluster_id}"
+    copied["observable_refinement_tags"] = merged_tags
+    return copied
+
+
+def _overlaps_any(event: dict[str, Any], others: list[dict[str, Any]], *, min_ratio: float = 0.15, max_gap: int | None = None) -> bool:
+    for other in others:
+        if _overlap_ratio(event, other) >= min_ratio:
+            return True
+        if max_gap is not None and _gap(event, other) <= max_gap:
+            return True
+    return False
+
+
+def _event_signature(event: dict[str, Any]) -> dict[str, Any]:
+    return event.get("motion_signature") or {}
+
+
+def _events_with_super_family(events: list[dict[str, Any]], super_family: str) -> list[dict[str, Any]]:
+    return [event for event in events if str(event.get("super_family") or "") == super_family]
+
+
+def _events_with_cluster_prefix(events: list[dict[str, Any]], prefixes: tuple[str, ...]) -> list[dict[str, Any]]:
+    return [event for event in events if str(event.get("cluster_id") or "").startswith(prefixes)]
+
+
+def _events_with_clusters(events: list[dict[str, Any]], cluster_ids: set[str]) -> list[dict[str, Any]]:
+    return [event for event in events if str(event.get("cluster_id") or "") in cluster_ids]
+
+
+def _near_events(
+    event: dict[str, Any],
+    others: list[dict[str, Any]],
+    *,
+    min_ratio: float = 0.10,
+    max_gap: int = 4,
+) -> list[dict[str, Any]]:
+    return [other for other in others if _overlap_ratio(event, other) >= min_ratio or _gap(event, other) <= max_gap]
+
+
+def _has_before(event: dict[str, Any], others: list[dict[str, Any]], max_gap: int = 10) -> bool:
+    start, _ = _span(event)
+    for other in others:
+        _, other_end = _span(other)
+        if other_end <= start and _gap(event, other) <= max_gap:
+            return True
+    return False
+
+
+def _has_after(event: dict[str, Any], others: list[dict[str, Any]], max_gap: int = 10) -> bool:
+    _, end = _span(event)
+    for other in others:
+        other_start, _ = _span(other)
+        if other_start >= end and _gap(event, other) <= max_gap:
+            return True
+    return False
+
+
+def _cluster_suffix_after(prefix: str, cluster: str) -> str:
+    if cluster.startswith(prefix):
+        return cluster[len(prefix) :]
+    return cluster
+
+
+def _loco_direction(cluster: str, direction: str) -> str:
+    if "FORWARD" in cluster or direction == "forward":
+        return "FORWARD"
+    if "BACKWARD" in cluster or direction == "backward":
+        return "BACKWARD"
+    if "LEFT" in cluster or direction == "left":
+        return "LEFT"
+    if "RIGHT" in cluster or direction == "right":
+        return "RIGHT"
+    if "MIXED" in cluster or direction == "mixed":
+        return "MIXED"
+    return "ACTIVE"
+
+
+def _loco_speed(cluster: str, duration: int, magnitude: float) -> str:
+    if "FAST" in cluster:
+        return "FAST"
+    if "MEDIUM" in cluster:
+        return "MEDIUM"
+    if "SLOW" in cluster:
+        return "SLOW"
+    speed = magnitude / max(duration, 1)
+    if speed < 0.010:
+        return "SLOW"
+    if speed < 0.035:
+        return "MEDIUM"
+    return "FAST"
+
+
+def _turn_side_and_angle(cluster: str, direction: str) -> tuple[str, str]:
+    side = "LEFT" if ("LEFT" in cluster or direction == "left") else "RIGHT" if ("RIGHT" in cluster or direction == "right") else "MIXED"
+    for angle in ("THREE_QUARTER", "QUARTER", "SMALL", "HALF", "FULL", "MULTI", "QTR"):
+        if angle in cluster:
+            return side, "QUARTER" if angle == "QTR" else angle
+    return side, "GENERIC"
+
+
+def _turn_tempo(duration: int, magnitude: float) -> str:
+    speed = magnitude / max(duration, 1)
+    if speed < 2.0:
+        return "SLOW"
+    if speed < 6.0:
+        return "MEDIUM"
+    return "FAST"
+
+
+def _refine_root_locomotion_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    direction = _loco_direction(cluster, str(event.get("direction") or ""))
+    duration = _duration(event)
+    magnitude = _magnitude(event)
+    speed = _loco_speed(cluster, duration, magnitude)
+    tags: list[str] = []
+    vertical_events = _events_with_super_family(all_events, "WHOLE_BODY_VERTICAL")
+    leg_events = _events_with_cluster_prefix(all_events, ("LL_", "RL_"))
+    turn_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_ROTATION"
+        or str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    arm_periodic_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") in {"LEFT_ARM_PERIODIC", "RIGHT_ARM_PERIODIC", "BIMANUAL_PERIODIC"}
+    ]
+    coupled_vertical = _overlaps_any(event, vertical_events, min_ratio=0.08, max_gap=4)
+    coupled_leg = _overlaps_any(event, leg_events, min_ratio=0.08, max_gap=4)
+    coupled_turn = _overlaps_any(event, turn_events, min_ratio=0.08, max_gap=8)
+    coupled_arm = _overlaps_any(event, arm_periodic_events, min_ratio=0.08, max_gap=4)
+    if coupled_vertical:
+        tags.append("vertical_coupled")
+    if coupled_leg:
+        tags.append("leg_coupled")
+    if coupled_turn:
+        tags.append("turn_coupled")
+    if coupled_arm:
+        tags.append("arm_coupled")
+    if magnitude < 0.18 or (direction in {"ACTIVE", "MIXED"} and magnitude < 0.35):
+        tags.append("weak_root_drift")
+        return f"LOCO_ROOT_DRIFT_{direction}_{speed}", tags
+    if direction in {"ACTIVE", "MIXED"} or coupled_turn:
+        tags.append("path_fragment")
+        return f"LOCO_PATH_FRAGMENT_{direction}_{speed}", tags
+    if coupled_vertical or coupled_leg:
+        tags.append("gait_context")
+        return f"LOCO_GAIT_CONTEXT_{direction}_{speed}", tags
+    tags.append("translation_context")
+    return f"LOCO_TRANSLATION_{direction}_{speed}", tags
+
+
+def _refine_root_turn_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    super_family = str(event.get("super_family") or "")
+    side, angle = _turn_side_and_angle(cluster, str(event.get("direction") or ""))
+    tempo = _turn_tempo(_duration(event), _magnitude(event))
+    tags = [f"turn_angle_{angle.lower()}", f"turn_tempo_{tempo.lower()}"]
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+        and not str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    vertical_events = _events_with_super_family(all_events, "WHOLE_BODY_VERTICAL")
+    if _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=8):
+        tags.append("path_turn_context")
+        role = "PATH"
+    elif _overlaps_any(event, vertical_events, min_ratio=0.08, max_gap=4):
+        tags.append("vertical_turn_context")
+        role = "VERTICAL"
+    else:
+        tags.append("isolated_turn")
+        role = "ISOLATED"
+    prefix = "LOCO_TURN" if super_family == "WHOLE_BODY_LOCOMOTION" else "WB_ROT"
+    return f"{prefix}_{side}_{angle}_{tempo}_{role}", tags
+
+
+def _refine_leg_forward_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    side = "LL" if cluster.startswith("LL_") else "RL"
+    sig = _event_signature(event)
+    tags: list[str] = []
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+        and not str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    vertical_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_VERTICAL"
+    ]
+    coupled_loco = bool(sig.get("coupled_with_locomotion")) or _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_vertical = _overlaps_any(event, vertical_events, min_ratio=0.12, max_gap=3)
+    duration = _duration(event)
+    magnitude = _magnitude(event)
+    speed = magnitude / max(duration, 1)
+    if coupled_loco:
+        tags.append("locomotion_coupled")
+    if coupled_vertical:
+        tags.append("vertical_coupled")
+    if cluster.endswith("LEG_FORWARD_POSE") or (duration >= 14 and speed < 0.025):
+        tags.append("hold_like")
+        return f"{side}_LEG_FORWARD_HOLD_POSE", tags
+    if coupled_loco and magnitude < 0.55:
+        tags.append("gait_phase")
+        return f"{side}_LEG_FORWARD_GAIT_SWING", tags
+    if coupled_vertical and duration <= 12 and speed >= 0.030:
+        tags.append("impulse_like")
+        return f"{side}_LEG_FORWARD_HOP_OR_KICK_IMPULSE", tags
+    if magnitude >= 0.45 and duration <= 12:
+        tags.append("impulse_like")
+        return f"{side}_LEG_FORWARD_KICK_IMPULSE", tags
+    tags.append("ambiguous_forward_leg")
+    return f"{side}_LEG_FORWARD_UNRESOLVED", tags
+
+
+def _refine_vertical_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    sig = _event_signature(event)
+    tags: list[str] = []
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+        and not str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    low_body_events = [
+        other for other in all_events
+        if str(other.get("cluster_id") or "") in {"WB_SQUAT_HOLD", "WB_LOW_BODY_HOLD"}
+    ]
+    leg_events = [
+        other for other in all_events
+        if str(other.get("cluster_id") or "") in {"LL_KICK_FORWARD", "RL_KICK_FORWARD", "LL_LEG_FORWARD_POSE", "RL_LEG_FORWARD_POSE"}
+    ]
+    arm_raise_events = [
+        other for other in all_events
+        if str(other.get("cluster_id") or "") in {"BI_RAISE_SPREAD", "LA_HAND_HIGH", "RA_HAND_HIGH"}
+    ]
+    coupled_loco = bool(sig.get("coupled_with_locomotion")) or _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_low = _overlaps_any(event, low_body_events, min_ratio=0.12, max_gap=5)
+    coupled_leg = _overlaps_any(event, leg_events, min_ratio=0.10, max_gap=4)
+    coupled_arm_raise = _overlaps_any(event, arm_raise_events, min_ratio=0.12, max_gap=4)
+    magnitude = _magnitude(event)
+    direction = str(event.get("direction") or "")
+    repeat_mode = str(sig.get("repeat_mode") or "")
+    if magnitude < 0.08 and (coupled_loco or coupled_leg):
+        tags.append("gait_bounce")
+        return "WB_VERT_GAIT_BOUNCE", tags
+    if coupled_low and direction == "down":
+        tags.append("low_body_transition")
+        return "WB_VERT_LOW_BODY_DESCENT", tags
+    if coupled_low and direction == "up":
+        tags.append("low_body_transition")
+        return "WB_VERT_LOW_BODY_RISE", tags
+    if coupled_arm_raise and repeat_mode in {"cycle", "repeated_cycle"}:
+        tags.append("arm_raise_coupled")
+        return "WB_VERT_ARM_RAISE_COORDINATED_CYCLE", tags
+    if coupled_arm_raise and magnitude >= 0.12:
+        tags.append("arm_raise_coupled")
+        return "WB_VERT_ARM_RAISE_COUPLED", tags
+    if magnitude >= 0.20 and direction == "up":
+        tags.append("salient_jump_up")
+        return "WB_VERT_JUMP_UP_IMPULSE", tags
+    if magnitude >= 0.20 and direction == "down":
+        tags.append("salient_descent")
+        return "WB_VERT_SALIENT_DESCENT", tags
+    if cluster in {"WB_VERT_CYCLE", "WB_VERT_REP", "WB_VERT_REP_ALT"}:
+        tags.append("vertical_cycle")
+        return "WB_VERT_GENERIC_CYCLE", tags
+    tags.append("generic_vertical")
+    return f"{cluster}_REFINED_GENERIC", tags
+
+
+def _refine_low_body_posture_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    tags: list[str] = []
+    vertical_down = [other for other in all_events if str(other.get("cluster_id") or "") == "WB_VERT_DOWN"]
+    vertical_up = [other for other in all_events if str(other.get("cluster_id") or "") == "WB_VERT_UP"]
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+        and not str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    leg_events = _events_with_cluster_prefix(all_events, ("LL_", "RL_"))
+    torso_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") in {"TORSO_POSTURE", "TORSO_PERIODIC"}
+    ]
+    down_near = _overlaps_any(event, vertical_down, min_ratio=0.08, max_gap=8) or _has_before(event, vertical_down, max_gap=10)
+    up_near = _overlaps_any(event, vertical_up, min_ratio=0.08, max_gap=8) or _has_after(event, vertical_up, max_gap=10)
+    coupled_loco = _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_leg = _overlaps_any(event, leg_events, min_ratio=0.10, max_gap=4)
+    coupled_torso = _overlaps_any(event, torso_events, min_ratio=0.10, max_gap=4)
+    if coupled_loco:
+        tags.append("locomotion_coupled")
+    if coupled_leg:
+        tags.append("leg_coupled")
+    if coupled_torso:
+        tags.append("torso_coupled")
+    if down_near and up_near:
+        tags.append("low_body_down_up_cycle")
+        return "WB_LOW_BODY_DOWN_UP_CYCLE", tags
+    if down_near:
+        tags.append("low_body_descent_hold")
+        return "WB_LOW_BODY_DESCENT_HOLD", tags
+    if up_near:
+        tags.append("low_body_rise_from_low")
+        return "WB_LOW_BODY_RISE_FROM_LOW", tags
+    if _duration(event) >= 28 and not coupled_loco:
+        tags.append("sustained_low_body")
+        return f"{cluster}_SUSTAINED", tags
+    if coupled_loco:
+        tags.append("low_body_gait_context")
+        return f"{cluster}_LOCO_CONTEXT", tags
+    if coupled_leg:
+        tags.append("low_body_leg_extension_context")
+        return f"{cluster}_LEG_CONTEXT", tags
+    tags.append("generic_low_body")
+    return f"{cluster}_REFINED_GENERIC", tags
+
+
+def _refine_torso_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    super_family = str(event.get("super_family") or "")
+    direction = str(event.get("direction") or "none").upper()
+    tags: list[str] = []
+    low_body_events = _events_with_clusters(all_events, {"WB_SQUAT_HOLD", "WB_LOW_BODY_HOLD"})
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+        and not str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    vertical_events = _events_with_super_family(all_events, "WHOLE_BODY_VERTICAL")
+    arm_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") in {"LEFT_ARM_PERIODIC", "RIGHT_ARM_PERIODIC", "BIMANUAL_PERIODIC", "LEFT_ARM_POSTURE", "RIGHT_ARM_POSTURE"}
+    ]
+    coupled_low = _overlaps_any(event, low_body_events, min_ratio=0.10, max_gap=5)
+    coupled_loco = _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_vertical = _overlaps_any(event, vertical_events, min_ratio=0.08, max_gap=4)
+    coupled_arm = _overlaps_any(event, arm_events, min_ratio=0.08, max_gap=4)
+    if coupled_low:
+        tags.append("low_body_coupled")
+    if coupled_loco:
+        tags.append("locomotion_coupled")
+    if coupled_vertical:
+        tags.append("vertical_coupled")
+    if coupled_arm:
+        tags.append("arm_coupled")
+    if super_family == "TORSO_POSTURE" and _duration(event) >= 24 and not coupled_loco:
+        tags.append("sustained_torso_posture")
+        return f"{cluster}_SUSTAINED", tags
+    if coupled_low:
+        return f"{cluster}_LOW_BODY_CONTEXT", tags
+    if coupled_loco:
+        return f"{cluster}_LOCO_CONTEXT", tags
+    if coupled_vertical:
+        return f"{cluster}_VERTICAL_CONTEXT", tags
+    if super_family == "TORSO_PERIODIC":
+        repeat = str(_event_signature(event).get("repeat_mode") or "single").upper()
+        tags.append("torso_periodic")
+        return f"{cluster}_{repeat}_{direction}", tags
+    tags.append("generic_torso")
+    return f"{cluster}_REFINED_GENERIC", tags
+
+
+def _refine_arm_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    side = "LA" if cluster.startswith("LA_") else "RA" if cluster.startswith("RA_") else "BI"
+    sig = _event_signature(event)
+    tags: list[str] = []
+    opposite_prefix = "RA_" if side == "LA" else "LA_" if side == "RA" else ""
+    opposite_events = [
+        other for other in all_events
+        if opposite_prefix and str(other.get("cluster_id") or "").startswith(opposite_prefix)
+    ]
+    vertical_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_VERTICAL"
+    ]
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+    ]
+    bimanual_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "").startswith("BIMANUAL_")
+    ]
+    coupled_loco = bool(sig.get("coupled_with_locomotion")) or _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_vertical = _overlaps_any(event, vertical_events, min_ratio=0.12, max_gap=4)
+    coupled_opposite = _overlaps_any(event, opposite_events, min_ratio=0.35, max_gap=2)
+    coupled_bimanual = _overlaps_any(event, bimanual_events, min_ratio=0.20, max_gap=3)
+    direction = str(event.get("direction") or "none")
+    repeat_mode = str(sig.get("repeat_mode") or "")
+    if side in {"LA", "RA"} and coupled_opposite and coupled_vertical:
+        tags.extend(["bilateral", "vertical_coupled"])
+        return f"{side}_BILATERAL_VERTICAL_ARM_CYCLE", tags
+    if side in {"LA", "RA"} and coupled_opposite:
+        tags.append("bilateral")
+        return f"{side}_BILATERAL_ARM_PERIODIC_{direction.upper()}", tags
+    if coupled_loco:
+        tags.append("locomotion_coupled")
+        return f"{side}_LOCO_ARM_SWING_{direction.upper()}", tags
+    if coupled_vertical:
+        tags.append("vertical_coupled")
+        return f"{side}_VERTICAL_COUPLED_ARM_PERIODIC_{direction.upper()}", tags
+    if coupled_bimanual:
+        tags.append("bimanual_context")
+        return f"{side}_BIMANUAL_CONTEXT_ARM_PERIODIC_{direction.upper()}", tags
+    if repeat_mode in {"repeated_cycle", "cycle"}:
+        tags.append("isolated_periodic")
+        return f"{side}_ISOLATED_ARM_PERIODIC_{direction.upper()}", tags
+    tags.append("generic_arm")
+    return f"{cluster}_REFINED_GENERIC", tags
+
+
+def _refine_arm_posture_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    side = "LA" if cluster.startswith("LA_") else "RA"
+    tags: list[str] = []
+    opposite = "RA_HAND_HIGH" if side == "LA" else "LA_HAND_HIGH"
+    opposite_events = _events_with_clusters(all_events, {opposite})
+    vertical_events = _events_with_super_family(all_events, "WHOLE_BODY_VERTICAL")
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+    ]
+    bimanual_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "").startswith("BIMANUAL_")
+    ]
+    coupled_opposite = _overlaps_any(event, opposite_events, min_ratio=0.25, max_gap=3)
+    coupled_vertical = _overlaps_any(event, vertical_events, min_ratio=0.10, max_gap=4)
+    coupled_loco = _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_bimanual = _overlaps_any(event, bimanual_events, min_ratio=0.12, max_gap=3)
+    if coupled_opposite:
+        tags.append("bilateral_high_pose")
+    if coupled_vertical:
+        tags.append("vertical_coupled")
+    if coupled_loco:
+        tags.append("locomotion_coupled")
+    if coupled_bimanual:
+        tags.append("bimanual_context")
+    if coupled_opposite and coupled_vertical:
+        return f"{side}_BILATERAL_HIGH_POSE_VERTICAL_CONTEXT", tags
+    if coupled_opposite:
+        return f"{side}_BILATERAL_HIGH_POSE", tags
+    if coupled_loco:
+        return f"{side}_HIGH_POSE_LOCO_CONTEXT", tags
+    if _duration(event) >= 20:
+        tags.append("hold_like")
+        return f"{side}_HIGH_POSE_HOLD", tags
+    tags.append("transient_high_pose")
+    return f"{side}_HIGH_POSE_TRANSIENT", tags
+
+
+def _refine_bimanual_event(event: dict[str, Any], all_events: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    cluster = str(event.get("cluster_id") or "")
+    tags: list[str] = []
+    vertical_events = _events_with_super_family(all_events, "WHOLE_BODY_VERTICAL")
+    locomotion_events = [
+        other for other in all_events
+        if str(other.get("super_family") or "") == "WHOLE_BODY_LOCOMOTION"
+        and not str(other.get("cluster_id") or "").startswith("LOCO_TURN_")
+    ]
+    low_body_events = _events_with_clusters(all_events, {"WB_SQUAT_HOLD", "WB_LOW_BODY_HOLD"})
+    hand_high_events = _events_with_clusters(all_events, {"LA_HAND_HIGH", "RA_HAND_HIGH"})
+    coupled_vertical = _overlaps_any(event, vertical_events, min_ratio=0.10, max_gap=4)
+    coupled_loco = _overlaps_any(event, locomotion_events, min_ratio=0.08, max_gap=4)
+    coupled_low = _overlaps_any(event, low_body_events, min_ratio=0.10, max_gap=5)
+    coupled_high = _overlaps_any(event, hand_high_events, min_ratio=0.12, max_gap=3)
+    repeat_mode = str(_event_signature(event).get("repeat_mode") or "")
+    if coupled_vertical:
+        tags.append("vertical_coupled")
+    if coupled_loco:
+        tags.append("locomotion_coupled")
+    if coupled_low:
+        tags.append("low_body_coupled")
+    if coupled_high:
+        tags.append("hand_high_coupled")
+    if cluster == "BI_RAISE_SPREAD" and coupled_vertical:
+        return "BI_RAISE_SPREAD_VERTICAL_CONTEXT", tags
+    if cluster.startswith("BI_HANDS_CLOSE") and coupled_vertical:
+        return "BI_HANDS_CLOSE_VERTICAL_CONTEXT", tags
+    if coupled_low:
+        return f"{cluster}_LOW_BODY_CONTEXT", tags
+    if coupled_loco:
+        return f"{cluster}_LOCO_CONTEXT", tags
+    if repeat_mode in {"cycle", "repeated_cycle"}:
+        tags.append("bimanual_cycle")
+        return f"{cluster}_CYCLE_CONTEXT", tags
+    tags.append("generic_bimanual")
+    return f"{cluster}_REFINED_GENERIC", tags
+
+
+def refine_events_for_motion_bpe(events: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
+    if mode == "v1":
+        return events
+    if mode not in {"v2", "v3"}:
+        raise ValueError(f"unsupported observable refinement mode: {mode}")
+    refined: list[dict[str, Any]] = []
+    for event in events:
+        cluster = str(event.get("cluster_id") or "")
+        super_family = str(event.get("super_family") or "")
+        if super_family == "WHOLE_BODY_LOCOMOTION" and cluster.startswith("LOCO_TURN_"):
+            new_cluster, tags = _refine_root_turn_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif super_family == "WHOLE_BODY_LOCOMOTION":
+            new_cluster, tags = _refine_root_locomotion_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif super_family == "WHOLE_BODY_ROTATION":
+            new_cluster, tags = _refine_root_turn_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif cluster in {"LL_KICK_FORWARD", "RL_KICK_FORWARD", "LL_LEG_FORWARD_POSE", "RL_LEG_FORWARD_POSE"}:
+            new_cluster, tags = _refine_leg_forward_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif cluster in {"WB_VERT_UP", "WB_VERT_DOWN", "WB_VERT_CYCLE", "WB_VERT_REP", "WB_VERT_REP_ALT"}:
+            new_cluster, tags = _refine_vertical_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif cluster in {"WB_SQUAT_HOLD", "WB_LOW_BODY_HOLD"}:
+            new_cluster, tags = _refine_low_body_posture_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif super_family in {"TORSO_POSTURE", "TORSO_PERIODIC"}:
+            new_cluster, tags = _refine_torso_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif cluster in {
+            "LA_REPEAT",
+            "LA_REPEAT_ALT",
+            "LA_REPEAT_LOCO",
+            "LA_REPEAT_ALT_LOCO",
+            "LA_NEAR_FAR",
+            "RA_REPEAT",
+            "RA_REPEAT_ALT",
+            "RA_REPEAT_LOCO",
+            "RA_REPEAT_ALT_LOCO",
+            "RA_NEAR_FAR",
+        }:
+            new_cluster, tags = _refine_arm_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif cluster in {"LA_HAND_HIGH", "RA_HAND_HIGH"}:
+            new_cluster, tags = _refine_arm_posture_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        elif super_family == "BIMANUAL_PERIODIC":
+            new_cluster, tags = _refine_bimanual_event(event, events)
+            refined.append(_copy_event_with_refined_geometry(event, new_cluster, tags))
+        else:
+            refined.append(event)
+    return refined
+
+
+ARM_TRAJECTORY_SIDES = {
+    "left": {
+        "side_prefix": "LA",
+        "super_family": "LEFT_ARM_TRAJECTORY",
+        "part": "left_arm",
+        "source_super_prefix": "LEFT_ARM_",
+        "shoulder_joint": 16,
+        "wrist_joint": 20,
+    },
+    "right": {
+        "side_prefix": "RA",
+        "super_family": "RIGHT_ARM_TRAJECTORY",
+        "part": "right_arm",
+        "source_super_prefix": "RIGHT_ARM_",
+        "shoulder_joint": 17,
+        "wrist_joint": 21,
+    },
+}
+
+
+def _as_numpy_joints(value: Any) -> np.ndarray | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        value = value.get("joints3d")
+    if hasattr(value, "cpu"):
+        value = value.cpu().numpy()
+    arr = np.asarray(value, dtype=np.float32)
+    if arr.ndim != 3 or arr.shape[1] < 22 or arr.shape[2] != 3:
+        return None
+    return arr
+
+
+def _joints_for_case(joints_pack: dict[str, Any] | None, case_id: str) -> np.ndarray | None:
+    if not joints_pack:
+        return None
+    key = f"{case_id}.npy"
+    if key in joints_pack:
+        return _as_numpy_joints(joints_pack[key])
+    if case_id in joints_pack:
+        return _as_numpy_joints(joints_pack[case_id])
+    return None
+
+
+def _merge_frame_spans(spans: list[tuple[int, int]], gap: int) -> list[list[int]]:
+    out: list[list[int]] = []
+    for start, end in sorted(spans):
+        if not out or start - out[-1][1] > gap:
+            out.append([start, end])
+        else:
+            out[-1][1] = max(out[-1][1], end)
+    return out
+
+
+def _arm_source_spans(events: list[dict[str, Any]], side: str, gap: int) -> list[list[int]]:
+    spec = ARM_TRAJECTORY_SIDES[side]
+    side_prefix = str(spec["source_super_prefix"])
+    part = str(spec["part"])
+    spans: list[tuple[int, int]] = []
+    for event in events:
+        super_family = str(event.get("super_family") or "")
+        event_part = str(event.get("part") or "")
+        if super_family.startswith(side_prefix) or event_part == part or super_family.startswith("BIMANUAL_"):
+            start, end = _span(event)
+            if end >= start:
+                spans.append((start, end))
+    return _merge_frame_spans(spans, gap=gap)
+
+
+def _arm_trajectory_features(joints: np.ndarray, side: str, span: list[int], pad: int) -> dict[str, Any] | None:
+    spec = ARM_TRAJECTORY_SIDES[side]
+    start = max(0, int(span[0]) - pad)
+    end = min(int(joints.shape[0]) - 1, int(span[1]) + pad)
+    if end - start + 1 < 5:
+        return None
+    shoulder = int(spec["shoulder_joint"])
+    wrist = int(spec["wrist_joint"])
+    rel = joints[start : end + 1, wrist] - joints[start : end + 1, shoulder]
+    if not np.isfinite(rel).all():
+        return None
+
+    centered = rel - rel.mean(axis=0, keepdims=True)
+    cov = centered.T @ centered / max(1, centered.shape[0] - 1)
+    vals, vecs = np.linalg.eigh(cov)
+    order = np.argsort(vals)[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+    proj = centered @ vecs[:, :2]
+    angle = np.unwrap(np.arctan2(proj[:, 1], proj[:, 0]))
+    delta = np.diff(angle)
+    radius = np.linalg.norm(proj, axis=1)
+    path_length = float(np.linalg.norm(np.diff(rel, axis=0), axis=1).sum())
+    ranges = np.ptp(rel, axis=0)
+    eig_sum = float(vals.sum())
+    planarity = float((vals[0] + vals[1]) / max(eig_sum, 1e-8))
+    radius_mean = float(radius.mean())
+    radius_cv = float(radius.std() / max(radius_mean, 1e-6))
+    total_abs_deg = float(np.degrees(np.abs(delta).sum()))
+    net_deg = float(np.degrees(angle[-1] - angle[0]))
+    return {
+        "span": [start, end],
+        "duration": end - start + 1,
+        "total_abs_deg": total_abs_deg,
+        "net_deg": net_deg,
+        "orbit_sign": "positive" if net_deg >= 0.0 else "negative",
+        "radius_mean_m": radius_mean,
+        "radius_cv": radius_cv,
+        "path_length_m": path_length,
+        "max_range_m": float(ranges.max()),
+        "axis_ranges_m": [float(item) for item in ranges.tolist()],
+        "planarity": planarity,
+    }
+
+
+def _arm_trajectory_kind(features: dict[str, Any], args: argparse.Namespace) -> str | None:
+    radius_mean = float(features["radius_mean_m"])
+    radius_cv = float(features["radius_cv"])
+    total_abs_deg = float(features["total_abs_deg"])
+    path_length = float(features["path_length_m"])
+    max_range = float(features["max_range_m"])
+    planarity = float(features["planarity"])
+
+    min_radius = float(args.arm_min_radius)
+    if (
+        radius_mean >= min_radius
+        and radius_cv <= float(args.arm_circle_max_radius_cv)
+        and total_abs_deg >= float(args.arm_circle_min_abs_deg)
+        and path_length >= float(args.arm_large_arc_min_path)
+        and planarity >= float(args.arm_min_planarity)
+    ):
+        return "arm_orbit_cycle"
+    if (
+        radius_mean >= min_radius
+        and radius_cv <= float(args.arm_large_arc_max_radius_cv)
+        and max_range >= float(args.arm_large_arc_min_range)
+        and total_abs_deg >= float(args.arm_large_arc_min_abs_deg)
+        and path_length >= float(args.arm_large_arc_min_path)
+        and planarity >= float(args.arm_min_planarity)
+    ):
+        return "large_arm_arc"
+    return None
+
+
+def _build_arm_trajectory_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    source_offset = len(events)
+    for side, spec in ARM_TRAJECTORY_SIDES.items():
+        spans = _arm_source_spans(events, side, gap=int(args.arm_span_gap))
+        for span_idx, span in enumerate(spans):
+            features = _arm_trajectory_features(joints, side, span, pad=int(args.arm_span_pad))
+            if not features:
+                continue
+            kind = _arm_trajectory_kind(features, args)
+            if kind is None:
+                continue
+            side_prefix = str(spec["side_prefix"])
+            sign = str(features["orbit_sign"]).upper()
+            cluster_stem = "ARM_ORBIT_CYCLE" if kind == "arm_orbit_cycle" else "LARGE_ARM_ARC"
+            start, end = [int(item) for item in features["span"]]
+            total_abs_deg = float(features["total_abs_deg"])
+            rows.append(
+                {
+                    "event_index": source_offset + len(rows),
+                    "token": "",
+                    "geometry_cluster_id": f"{spec['super_family']}/{side_prefix}_{cluster_stem}_{sign}",
+                    "part": str(spec["part"]),
+                    "super_family": str(spec["super_family"]),
+                    "cluster_id": f"{side_prefix}_{cluster_stem}_{sign}",
+                    "direction": f"orbit_{str(features['orbit_sign'])}" if kind == "arm_orbit_cycle" else f"arc_{str(features['orbit_sign'])}",
+                    "role": "composed",
+                    "span": [start, end],
+                    "duration": int(features["duration"]),
+                    "magnitude": round(total_abs_deg, 4),
+                    "unit": "deg",
+                    "count": max(1, int(round(total_abs_deg / 360.0))) if kind == "arm_orbit_cycle" else None,
+                    "optional_semantic_name": kind,
+                    "motion_signature": {
+                        "dominant_axis": "arm_wrist_relative_to_shoulder_orbit",
+                        "repeat_mode": "cycle" if kind == "arm_orbit_cycle" else "large_arc",
+                        "phase_template": kind,
+                        "context_mode": "raw_joint_trajectory_sidecar",
+                        "tempo_bucket": "medium",
+                        "coupled_with_locomotion": False,
+                        "radius_mean_m": round(float(features["radius_mean_m"]), 4),
+                        "radius_cv": round(float(features["radius_cv"]), 4),
+                        "path_length_m": round(float(features["path_length_m"]), 4),
+                        "max_range_m": round(float(features["max_range_m"]), 4),
+                        "axis_ranges_m": [round(float(item), 4) for item in features["axis_ranges_m"]],
+                        "planarity": round(float(features["planarity"]), 4),
+                        "net_degrees": round(float(features["net_deg"]), 4),
+                        "total_abs_degrees": round(total_abs_deg, 4),
+                    },
+                    "observable_refinement_tags": ["raw_joint_trajectory", kind, "arm_trajectory_sidecar"],
+                    "source_span_index": span_idx,
+                }
+            )
+    return rows
+
+
+def _body_forward_axes(joints: np.ndarray) -> np.ndarray:
+    left_shoulder = joints[:, 16]
+    right_shoulder = joints[:, 17]
+    left_hip = joints[:, 1]
+    right_hip = joints[:, 2]
+    across = right_shoulder - left_shoulder
+    up = ((left_shoulder + right_shoulder) * 0.5) - ((left_hip + right_hip) * 0.5)
+    forward = np.cross(across, up)
+    forward[:, 1] = 0.0
+    norm = np.linalg.norm(forward, axis=1, keepdims=True)
+    fallback = np.zeros_like(forward)
+    fallback[:, 2] = 1.0
+    return np.where(norm > 1e-6, forward / np.maximum(norm, 1e-6), fallback)
+
+
+def _arm_reach_source_spans(events: list[dict[str, Any]], side: str, gap: int, total_frames: int) -> list[list[int]]:
+    spans = _arm_source_spans(events, side, gap=gap)
+    if spans:
+        return spans
+    if total_frames <= 0:
+        return []
+    return [[0, total_frames - 1]]
+
+
+def _smooth_signal(signal: np.ndarray, window: int = 5) -> np.ndarray:
+    if signal.size == 0 or window <= 1:
+        return signal.astype(np.float32)
+    kernel = np.ones(window, dtype=np.float32) / float(window)
+    pad = window // 2
+    return np.convolve(np.pad(signal, (pad, pad), mode="edge"), kernel, mode="valid").astype(np.float32)
+
+
+def _reach_projection_stats(forward: np.ndarray) -> dict[str, Any]:
+    min_idx = int(np.argmin(forward))
+    max_idx = int(np.argmax(forward))
+    min_value = float(forward[min_idx])
+    max_value = float(forward[max_idx])
+    before_min = float(forward[: max_idx + 1].min()) if max_idx >= 0 else min_value
+    after_min = float(forward[max_idx:].min()) if max_idx < forward.size else min_value
+    return {
+        "forward": forward,
+        "forward_min_m": min_value,
+        "forward_max_m": max_value,
+        "forward_delta_m": float(max_value - min_value),
+        "forward_path_m": float(np.abs(np.diff(forward)).sum()),
+        "extension_delta_m": float(max_value - before_min),
+        "retraction_delta_m": float(max_value - after_min),
+        "start_forward_m": float(forward[0]),
+        "end_forward_m": float(forward[-1]),
+        "peak_local_index": max_idx,
+        "trough_local_index": min_idx,
+    }
+
+
+def _arm_reach_features(joints: np.ndarray, side: str, span: list[int], pad: int) -> dict[str, Any] | None:
+    spec = ARM_TRAJECTORY_SIDES[side]
+    start = max(0, int(span[0]) - pad)
+    end = min(int(joints.shape[0]) - 1, int(span[1]) + pad)
+    if end - start + 1 < 5:
+        return None
+    shoulder = int(spec["shoulder_joint"])
+    wrist = int(spec["wrist_joint"])
+    rel = joints[start : end + 1, wrist] - joints[start : end + 1, shoulder]
+    axes = _body_forward_axes(joints)[start : end + 1]
+    if not np.isfinite(rel).all() or not np.isfinite(axes).all():
+        return None
+    raw_forward = _smooth_signal(np.einsum("ij,ij->i", rel, axes), window=5)
+    positive_stats = _reach_projection_stats(raw_forward)
+    negative_stats = _reach_projection_stats(-raw_forward)
+    orientation_sign = 1.0
+    stats = positive_stats
+    if float(negative_stats["forward_max_m"]) > float(positive_stats["forward_max_m"]):
+        orientation_sign = -1.0
+        stats = negative_stats
+    axes_xz = axes[:, [0, 2]]
+    rel_xz = rel[:, [0, 2]]
+    lateral = np.linalg.norm(rel_xz - axes_xz * np.einsum("ij,ij->i", rel_xz, axes_xz)[:, None], axis=1)
+    return {
+        "span": [start, end],
+        "duration": end - start + 1,
+        "forward_min_m": float(stats["forward_min_m"]),
+        "forward_max_m": float(stats["forward_max_m"]),
+        "forward_delta_m": float(stats["forward_delta_m"]),
+        "forward_path_m": float(stats["forward_path_m"]),
+        "extension_delta_m": float(stats["extension_delta_m"]),
+        "retraction_delta_m": float(stats["retraction_delta_m"]),
+        "start_forward_m": float(stats["start_forward_m"]),
+        "end_forward_m": float(stats["end_forward_m"]),
+        "peak_frame": start + int(stats["peak_local_index"]),
+        "trough_frame": start + int(stats["trough_local_index"]),
+        "orientation_sign": orientation_sign,
+        "mean_lateral_radius_m": float(lateral.mean()) if lateral.size else 0.0,
+    }
+
+
+def _arm_reach_kind(features: dict[str, Any], args: argparse.Namespace) -> str | None:
+    delta = float(features["forward_delta_m"])
+    path = float(features["forward_path_m"])
+    peak = float(features["forward_max_m"])
+    extension = float(features["extension_delta_m"])
+    retraction = float(features["retraction_delta_m"])
+    min_delta = float(args.arm_reach_min_delta)
+    min_path = float(args.arm_reach_min_path)
+    min_peak = float(args.arm_reach_min_peak)
+    min_forward = float(args.arm_reach_min_forward_component)
+    retract_ratio = float(args.arm_reach_retract_ratio)
+    if peak < min_peak or delta < min_delta or path < min_path:
+        return None
+    has_extension = extension >= min_forward
+    has_retraction = retraction >= min_forward
+    if has_extension and retraction >= max(min_forward, extension * retract_ratio):
+        return "arm_reach_retract"
+    if has_extension:
+        return "arm_reach_extend"
+    if has_retraction:
+        return "arm_retract"
+    return None
+
+
+def _build_arm_reach_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    source_offset = len(events)
+    total_frames = int(record.get("num_frames") or joints.shape[0])
+    for side, spec in ARM_TRAJECTORY_SIDES.items():
+        spans = _arm_reach_source_spans(events, side, gap=int(args.arm_reach_span_gap), total_frames=total_frames)
+        for span_idx, span in enumerate(spans):
+            trajectory_features = _arm_trajectory_features(joints, side, span, pad=int(args.arm_span_pad))
+            if trajectory_features and _arm_trajectory_kind(trajectory_features, args) is not None:
+                continue
+            features = _arm_reach_features(joints, side, span, pad=int(args.arm_reach_span_pad))
+            if not features:
+                continue
+            kind = _arm_reach_kind(features, args)
+            if kind is None:
+                continue
+            side_prefix = str(spec["side_prefix"])
+            cluster_stem = {
+                "arm_reach_retract": "ARM_REACH_RETRACT",
+                "arm_reach_extend": "ARM_REACH_EXTEND",
+                "arm_retract": "ARM_RETRACT",
+            }[kind]
+            start, end = [int(item) for item in features["span"]]
+            rows.append(
+                {
+                    "event_index": source_offset + len(rows),
+                    "token": "",
+                    "geometry_cluster_id": f"{spec['super_family']}/{side_prefix}_{cluster_stem}",
+                    "part": str(spec["part"]),
+                    "super_family": str(spec["super_family"]),
+                    "cluster_id": f"{side_prefix}_{cluster_stem}",
+                    "direction": "forward_back" if kind == "arm_reach_retract" else "forward" if kind == "arm_reach_extend" else "backward",
+                    "role": "composed",
+                    "span": [start, end],
+                    "duration": int(features["duration"]),
+                    "magnitude": round(float(features["forward_delta_m"]), 4),
+                    "unit": "m",
+                    "count": 1,
+                    "optional_semantic_name": kind,
+                    "motion_signature": {
+                        "dominant_axis": "arm_wrist_relative_to_shoulder_body_forward",
+                        "repeat_mode": "reach_retract" if kind == "arm_reach_retract" else "reach_extend",
+                        "phase_template": kind,
+                        "context_mode": "raw_joint_reach_sidecar",
+                        "tempo_bucket": "medium",
+                        "coupled_with_locomotion": False,
+                        "forward_min_m": round(float(features["forward_min_m"]), 4),
+                        "forward_max_m": round(float(features["forward_max_m"]), 4),
+                        "forward_delta_m": round(float(features["forward_delta_m"]), 4),
+                        "forward_path_m": round(float(features["forward_path_m"]), 4),
+                        "extension_delta_m": round(float(features["extension_delta_m"]), 4),
+                        "retraction_delta_m": round(float(features["retraction_delta_m"]), 4),
+                        "orientation_sign": int(float(features["orientation_sign"])),
+                        "peak_frame": int(features["peak_frame"]),
+                        "trough_frame": int(features["trough_frame"]),
+                        "mean_lateral_radius_m": round(float(features["mean_lateral_radius_m"]), 4),
+                    },
+                    "observable_refinement_tags": ["raw_joint_reach", kind, "arm_reach_sidecar"],
+                    "source_span_index": span_idx,
+                }
+            )
+    return rows
+
+
+def _runs_from_mask(mask: np.ndarray, min_run: int) -> list[list[int]]:
+    indices = np.where(mask)[0]
+    if indices.size == 0:
+        return []
+    runs: list[list[int]] = []
+    start = prev = int(indices[0])
+    for raw in indices[1:]:
+        idx = int(raw)
+        if idx == prev + 1:
+            prev = idx
+            continue
+        if prev - start + 1 >= min_run:
+            runs.append([start, prev])
+        start = prev = idx
+    if prev - start + 1 >= min_run:
+        runs.append([start, prev])
+    return runs
+
+
+def _body_level_signal(joints: np.ndarray) -> dict[str, np.ndarray]:
+    pelvis_y = joints[:, 0, 1]
+    ankle_y = (joints[:, 7, 1] + joints[:, 8, 1]) * 0.5
+    head_y = joints[:, 15, 1]
+    body_height = np.maximum(head_y - ankle_y, 1e-6)
+    pelvis_level = (pelvis_y - ankle_y) / body_height
+    kernel = np.ones(7, dtype=np.float32) / 7.0
+    pad = len(kernel) // 2
+    smooth = np.convolve(np.pad(pelvis_level, (pad, pad), mode="edge"), kernel, mode="valid")
+    return {
+        "pelvis_level": pelvis_level.astype(np.float32),
+        "pelvis_level_smooth": smooth.astype(np.float32),
+    }
+
+
+def _body_transition_events_from_runs(
+    case_id: str,
+    low_runs: list[list[int]],
+    high_runs: list[list[int]],
+    signal: np.ndarray,
+    args: argparse.Namespace,
+    start_event_index: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    max_gap = int(args.body_transition_max_gap)
+
+    def add_event(cluster: str, direction: str, span: list[int], role: str, magnitude: float, tags: list[str]) -> None:
+        rows.append(
+            {
+                "event_index": start_event_index + len(rows),
+                "token": "",
+                "geometry_cluster_id": f"WHOLE_BODY_LEVEL/{cluster}",
+                "part": "whole_body",
+                "super_family": "WHOLE_BODY_LEVEL",
+                "cluster_id": cluster,
+                "direction": direction,
+                "role": role,
+                "span": [int(span[0]), int(span[1])],
+                "duration": int(span[1]) - int(span[0]) + 1,
+                "magnitude": round(abs(float(magnitude)), 4),
+                "unit": "ratio",
+                "count": None,
+                "optional_semantic_name": cluster.lower(),
+                "motion_signature": {
+                    "dominant_axis": "pelvis_height_normalized",
+                    "repeat_mode": "state" if role == "state" else "transition",
+                    "phase_template": cluster.lower(),
+                    "context_mode": "raw_joint_body_level_sidecar",
+                    "tempo_bucket": "medium",
+                    "coupled_with_locomotion": False,
+                    "start_level": round(float(signal[int(span[0])]), 4),
+                    "end_level": round(float(signal[int(span[1])]), 4),
+                    "min_level": round(float(signal[int(span[0]) : int(span[1]) + 1].min()), 4),
+                    "max_level": round(float(signal[int(span[0]) : int(span[1]) + 1].max()), 4),
+                },
+                "observable_refinement_tags": ["raw_joint_body_level", "body_level_sidecar", *tags],
+                "case_id_source": case_id,
+            }
+        )
+
+    for run in low_runs:
+        start, end = run
+        min_level = float(signal[start : end + 1].min())
+        max_level = float(signal[start : end + 1].max())
+        cluster = "WB_LEVEL_LOW_SUSTAINED" if end - start + 1 >= int(args.body_long_low_min_duration) else "WB_LEVEL_LOW_BRIEF"
+        add_event(cluster, "low", run, "state", max_level - min_level, ["low_body_level"])
+
+    if bool(getattr(args, "body_emit_high_state", False)):
+        for run in high_runs:
+            start, end = run
+            if end - start + 1 < int(args.body_high_state_min_duration):
+                continue
+            add_event("WB_LEVEL_HIGH_STANDLIKE", "high", run, "state", float(signal[start : end + 1].max() - signal[start : end + 1].min()), ["high_body_level"])
+
+    for low in low_runs:
+        low_start, low_end = low
+        before = [run for run in high_runs if run[1] <= low_start and low_start - run[1] <= max_gap]
+        after = [run for run in high_runs if run[0] >= low_end and run[0] - low_end <= max_gap]
+        if before:
+            prev_high = max(before, key=lambda run: run[1])
+            span = [prev_high[1], low_start]
+            add_event("WB_LEVEL_DESCEND_TO_LOW", "down", span, "transition", float(signal[span[1]] - signal[span[0]]), ["level_transition_down"])
+        if after:
+            next_high = min(after, key=lambda run: run[0])
+            span = [low_end, next_high[0]]
+            add_event("WB_LEVEL_RISE_FROM_LOW", "up", span, "transition", float(signal[span[1]] - signal[span[0]]), ["level_transition_up"])
+
+    cycle_count = 0
+    for low in low_runs:
+        low_start, low_end = low
+        next_high = [run for run in high_runs if run[0] >= low_end and run[0] - low_end <= max_gap]
+        if not next_high:
+            continue
+        high = min(next_high, key=lambda run: run[0])
+        next_low = [run for run in low_runs if run[0] >= high[1] and run[0] - high[1] <= max_gap]
+        if not next_low:
+            continue
+        low2 = min(next_low, key=lambda run: run[0])
+        span = [low_start, low2[1]]
+        cycle_count += 1
+        add_event(
+            "WB_LEVEL_LOW_HIGH_LOW_CYCLE",
+            "low_high_low",
+            span,
+            "composed",
+            float(signal[span[0] : span[1] + 1].max() - signal[span[0] : span[1] + 1].min()),
+            ["level_transition_cycle"],
+        )
+
+    high_low_high_count = 0
+    for high in high_runs:
+        high_start, high_end = high
+        next_low = [run for run in low_runs if run[0] >= high_end and run[0] - high_end <= max_gap]
+        if not next_low:
+            continue
+        low = min(next_low, key=lambda run: run[0])
+        next_high = [run for run in high_runs if run[0] >= low[1] and run[0] - low[1] <= max_gap]
+        if not next_high:
+            continue
+        high2 = min(next_high, key=lambda run: run[0])
+        span = [high_start, high2[1]]
+        high_low_high_count += 1
+        add_event(
+            "WB_LEVEL_HIGH_LOW_HIGH_CYCLE",
+            "high_low_high",
+            span,
+            "composed",
+            float(signal[span[0] : span[1] + 1].max() - signal[span[0] : span[1] + 1].min()),
+            ["level_transition_cycle"],
+        )
+
+    if cycle_count or high_low_high_count:
+        for event in rows:
+            if event["cluster_id"].endswith("_CYCLE"):
+                event["count"] = max(cycle_count, high_low_high_count)
+                event["motion_signature"]["repeat_mode"] = "cycle"
+    return rows
+
+
+def _build_body_level_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    signal_dict = _body_level_signal(joints)
+    signal = signal_dict["pelvis_level_smooth"]
+    min_run = int(args.body_level_min_run)
+    low_runs = _runs_from_mask(signal <= float(args.body_low_threshold), min_run=min_run)
+    high_runs = _runs_from_mask(signal >= float(args.body_high_threshold), min_run=min_run)
+    if not low_runs and not high_runs:
+        return []
+    return _body_transition_events_from_runs(
+        str(record.get("case_id") or ""),
+        low_runs,
+        high_runs,
+        signal,
+        args,
+        start_event_index=len(events),
+    )
+
+
+def build_channel_events(
+    record: dict[str, Any],
+    observable_refinement: str = "v1",
+    args: argparse.Namespace | None = None,
+    joints_pack: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     case_id = str(record.get("case_id") or "")
-    for local_idx, event in enumerate(record.get("events") or []):
+    source_events = list(record.get("events") or [])
+    source_events = refine_events_for_motion_bpe(source_events, observable_refinement)
+    if args is not None and _use_arm_trajectory_sidecar(args):
+        source_events = source_events + _build_arm_trajectory_sidecar_events(record, source_events, args, joints_pack)
+    if args is not None and _use_arm_reach_sidecar(args):
+        source_events = source_events + _build_arm_reach_sidecar_events(record, source_events, args, joints_pack)
+    if args is not None and _use_body_level_sidecar(args):
+        source_events = source_events + _build_body_level_sidecar_events(record, source_events, args, joints_pack)
+    for local_idx, event in enumerate(source_events):
         channel = _channel_for_event(event)
         start, end = _span(event)
         duration = _duration(event)
@@ -405,6 +1645,13 @@ def build_channel_events(record: dict[str, Any]) -> list[dict[str, Any]]:
             "super_family": str(event.get("super_family") or ""),
             "cluster_id": str(event.get("cluster_id") or ""),
             "geometry_cluster_id": str(event.get("geometry_cluster_id") or ""),
+            "raw_cluster_id": str(event.get("raw_cluster_id") or event.get("cluster_id") or ""),
+            "raw_geometry_cluster_id": str(
+                event.get("raw_geometry_cluster_id")
+                or event.get("geometry_cluster_id")
+                or f"{event.get('super_family')}/{event.get('cluster_id')}"
+            ),
+            "observable_refinement_tags": event.get("observable_refinement_tags") or [],
             "span": [start, end],
             "direction": str(event.get("direction") or "none"),
             "duration": duration,
@@ -534,6 +1781,8 @@ def build_packets(events: list[dict[str, Any]], relations: list[dict[str, Any]])
                     "channel": event["channel"],
                     "symbol": event["symbol"],
                     "geometry_cluster_id": event["geometry_cluster_id"],
+                    "raw_geometry_cluster_id": event.get("raw_geometry_cluster_id"),
+                    "observable_refinement_tags": event.get("observable_refinement_tags") or [],
                     "span": event["span"],
                 }
                 for event in sorted(members, key=_event_sort_key)
@@ -557,6 +1806,8 @@ def _unit_from_event(event: dict[str, Any]) -> dict[str, Any]:
         "span": list(event["span"]),
         "channels": [str(event["channel"])],
         "geometry_clusters": [str(event["geometry_cluster_id"])],
+        "raw_geometry_clusters": [str(event.get("raw_geometry_cluster_id") or event["geometry_cluster_id"])],
+        "observable_refinement_tags": list(event.get("observable_refinement_tags") or []),
         "relation_types": [],
     }
 
@@ -571,12 +1822,23 @@ def _unit_from_packet(packet: dict[str, Any]) -> dict[str, Any]:
         "span": list(packet["span"]),
         "channels": list(packet.get("member_channels") or []),
         "geometry_clusters": sorted({str(member["geometry_cluster_id"]) for member in packet.get("members") or []}),
+        "raw_geometry_clusters": sorted({str(member.get("raw_geometry_cluster_id") or member["geometry_cluster_id"]) for member in packet.get("members") or []}),
+        "observable_refinement_tags": sorted({str(tag) for member in packet.get("members") or [] for tag in (member.get("observable_refinement_tags") or [])}),
         "relation_types": [str(packet.get("packet_type") or "")],
     }
 
 
-def build_multichannel_record(record: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
-    events = build_channel_events(record)
+def build_multichannel_record(
+    record: dict[str, Any],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    events = build_channel_events(
+        record,
+        str(getattr(args, "observable_refinement", "v1")),
+        args=args,
+        joints_pack=joints_pack,
+    )
     relations = build_relations(
         events,
         parallel_overlap_min=float(args.parallel_overlap_min),
@@ -620,6 +1882,8 @@ def _merge_units(left: dict[str, Any], right: dict[str, Any], symbol: str, opera
         "span": span,
         "channels": sorted(set(left.get("channels") or []) | set(right.get("channels") or []), key=lambda ch: CHANNEL_RANK.get(ch, 999)),
         "geometry_clusters": sorted(set(left.get("geometry_clusters") or []) | set(right.get("geometry_clusters") or [])),
+        "raw_geometry_clusters": sorted(set(left.get("raw_geometry_clusters") or []) | set(right.get("raw_geometry_clusters") or [])),
+        "observable_refinement_tags": sorted(set(left.get("observable_refinement_tags") or []) | set(right.get("observable_refinement_tags") or [])),
         "relation_types": sorted(set(left.get("relation_types") or []) | set(right.get("relation_types") or [])),
     }
 
@@ -858,6 +2122,8 @@ def _build_coactivation_units(
                     "span": span,
                     "channels": channels,
                     "geometry_clusters": sorted({str(cluster) for unit in members for cluster in (unit.get("geometry_clusters") or [])}),
+                    "raw_geometry_clusters": sorted({str(cluster) for unit in members for cluster in (unit.get("raw_geometry_clusters") or [])}),
+                    "observable_refinement_tags": sorted({str(tag) for unit in members for tag in (unit.get("observable_refinement_tags") or [])}),
                     "relation_types": ["coactivation"],
                     "member_symbols": [str(unit.get("symbol") or "") for unit in members],
                     "member_coactivation_symbol": member_symbol,
@@ -870,16 +2136,30 @@ def _build_coactivation_units(
     return out
 
 
-def _coactivation_stats(sequences: dict[str, list[dict[str, Any]]]) -> tuple[Counter[str], dict[str, set[str]], dict[str, list[dict[str, Any]]]]:
+def _coactivation_stats(
+    sequences: dict[str, list[dict[str, Any]]],
+) -> tuple[Counter[str], dict[str, set[str]], dict[str, list[dict[str, Any]]], dict[str, dict[str, Counter[str]]]]:
     counts: Counter[str] = Counter()
     cases: dict[str, set[str]] = defaultdict(set)
     examples: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    meta: dict[str, dict[str, Counter[str]]] = defaultdict(
+        lambda: {
+            "channels": Counter(),
+            "geometry_clusters": Counter(),
+            "observable_refinement_tags": Counter(),
+            "relation_types": Counter(),
+        }
+    )
     for sequence_id, seq in sequences.items():
         case_id = sequence_id.split("::", 1)[0]
         for unit in seq:
             symbol = str(unit.get("symbol") or "")
             counts[symbol] += 1
             cases[symbol].add(case_id)
+            meta[symbol]["channels"].update(str(item) for item in unit.get("channels") or [])
+            meta[symbol]["geometry_clusters"].update(str(item) for item in unit.get("geometry_clusters") or [])
+            meta[symbol]["observable_refinement_tags"].update(str(item) for item in unit.get("observable_refinement_tags") or [])
+            meta[symbol]["relation_types"].update(str(item) for item in unit.get("relation_types") or [])
             if len(examples[symbol]) < 12:
                 examples[symbol].append(
                     {
@@ -890,7 +2170,133 @@ def _coactivation_stats(sequences: dict[str, list[dict[str, Any]]]) -> tuple[Cou
                         "member_coactivation_symbol": unit.get("member_coactivation_symbol"),
                     }
                 )
-    return counts, cases, examples
+    return counts, cases, examples, meta
+
+
+def _channel_zone(channel: str) -> str:
+    if channel in {"left_arm", "right_arm", "bimanual"}:
+        return "upper"
+    if channel in {"left_leg", "right_leg", "whole_body_state"}:
+        return "lower"
+    if channel == "whole_body_vertical":
+        return "vertical"
+    if channel in {"root_locomotion", "root_rotation"}:
+        return "root"
+    if channel == "torso":
+        return "torso"
+    return "other"
+
+
+def _coordination_structure_features(
+    symbol: str,
+    *,
+    count: int,
+    support_cases: int,
+    meta: dict[str, Counter[str]],
+) -> dict[str, Any]:
+    channels = sorted(meta.get("channels", Counter()), key=lambda ch: CHANNEL_RANK.get(ch, 999))
+    zones = sorted({_channel_zone(channel) for channel in channels})
+    geometry = set(meta.get("geometry_clusters", Counter()))
+    tags = set(meta.get("observable_refinement_tags", Counter()))
+
+    has_upper = "upper" in zones
+    has_lower = "lower" in zones
+    has_vertical = "vertical" in zones
+    has_root = "root" in zones
+    has_torso = "torso" in zones
+
+    gait_like = any(tag in {"gait_phase", "gait_bounce"} for tag in tags) or any("GAIT_CONTEXT" in item or "LOCO_ARM_SWING" in item for item in geometry)
+    root_context = any("ROOT_DRIFT" in item or "PATH_FRAGMENT" in item for item in geometry)
+    generic_vertical = any("VERT_UP_REFINED_GENERIC" in item or "VERT_DOWN_REFINED_GENERIC" in item or "VERT_GENERIC" in item for item in geometry)
+    low_body = any("LOW_BODY" in item or "SQUAT" in item for item in geometry) or "low_body_coupled" in tags
+    leg_non_gait = any("LEG_FORWARD_HOLD_POSE" in item or "LEG_FORWARD_KICK_IMPULSE" in item or "LEG_FORWARD_HOP_OR_KICK_IMPULSE" in item for item in geometry)
+    vertical_impulse = any("JUMP_UP_IMPULSE" in item or "SALIENT_DESCENT" in item for item in geometry)
+    arm_vertical = "vertical_coupled" in tags and has_upper
+    bimanual_vertical = any("RAISE_SPREAD_VERTICAL" in item or "HANDS_CLOSE_VERTICAL" in item for item in geometry)
+    high_pose = any("HIGH_POSE" in item for item in geometry)
+
+    score = math.log1p(max(0, support_cases))
+    score += 0.35 * len(channels)
+    score += 0.55 * len(zones)
+    if has_upper and has_vertical:
+        score += 1.25
+    if has_lower and has_vertical and not gait_like:
+        score += 1.00
+    if has_upper and low_body:
+        score += 1.00
+    if has_torso and low_body:
+        score += 0.80
+    if bimanual_vertical:
+        score += 1.50
+    if arm_vertical:
+        score += 0.75
+    if leg_non_gait:
+        score += 0.80
+    if vertical_impulse:
+        score += 0.80
+    if high_pose and (has_vertical or low_body):
+        score += 0.50
+    if gait_like:
+        score -= 2.00
+    if gait_like and not (has_upper or has_torso or low_body or leg_non_gait or vertical_impulse or bimanual_vertical):
+        score -= 2.50
+    if root_context:
+        score -= 1.00
+    if generic_vertical and not (has_upper or low_body or leg_non_gait):
+        score -= 0.80
+    if len(zones) <= 1:
+        score -= 1.50
+    if has_root and not (has_upper or has_lower or has_vertical or has_torso):
+        score -= 1.00
+
+    return {
+        "score": round(score, 6),
+        "channels": channels,
+        "zones": zones,
+        "gait_like": gait_like,
+        "root_context": root_context,
+        "generic_vertical": generic_vertical,
+        "low_body": low_body,
+        "leg_non_gait": leg_non_gait,
+        "vertical_impulse": vertical_impulse,
+        "arm_vertical": arm_vertical,
+        "bimanual_vertical": bimanual_vertical,
+        "high_pose": high_pose,
+        "count": int(count),
+        "support_cases": int(support_cases),
+        "symbol": symbol,
+    }
+
+
+def _select_coordination_symbols(
+    counts: Counter[str],
+    cases: dict[str, set[str]],
+    meta: dict[str, dict[str, Counter[str]]],
+    args: argparse.Namespace,
+    budget: int,
+) -> tuple[list[str], dict[str, dict[str, Any]]]:
+    candidates = [
+        symbol
+        for symbol, count in counts.items()
+        if count >= int(args.min_pair_count) and len(cases[symbol]) >= int(args.min_pair_support)
+    ]
+    features = {
+        symbol: _coordination_structure_features(
+            symbol,
+            count=int(counts[symbol]),
+            support_cases=len(cases[symbol]),
+            meta=meta.get(symbol, {}),
+        )
+        for symbol in candidates
+    }
+    selection = str(getattr(args, "coordination_selection", "support"))
+    if selection == "structure_score":
+        min_score = float(getattr(args, "coordination_min_structure_score", 0.0))
+        candidates = [symbol for symbol in candidates if float(features[symbol]["score"]) >= min_score]
+        candidates.sort(key=lambda symbol: (-float(features[symbol]["score"]), -len(cases[symbol]), -counts[symbol], symbol))
+    else:
+        candidates.sort(key=lambda symbol: (-len(cases[symbol]), -counts[symbol], symbol))
+    return candidates[:budget], features
 
 
 def _coordination_unit_from_coactivation(unit: dict[str, Any], merge_id: str) -> dict[str, Any]:
@@ -908,14 +2314,8 @@ def _learn_coordination_motifs(
     start_step: int,
     budget: int,
 ) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
-    counts, cases, examples = _coactivation_stats(coactivation_sequences)
-    candidates = [
-        symbol
-        for symbol, count in counts.items()
-        if count >= int(args.min_pair_count) and len(cases[symbol]) >= int(args.min_pair_support)
-    ]
-    candidates.sort(key=lambda symbol: (-len(cases[symbol]), -counts[symbol], symbol))
-    selected = candidates[:budget]
+    counts, cases, examples, meta = _coactivation_stats(coactivation_sequences)
+    selected, structure_features = _select_coordination_symbols(counts, cases, meta, args, budget)
     merges: list[dict[str, Any]] = []
     symbol_to_merge: dict[str, str] = {}
     for offset, symbol in enumerate(selected):
@@ -931,6 +2331,8 @@ def _learn_coordination_motifs(
                 "operator_counts": {"COORDINATION_MERGE": int(counts[symbol])},
                 "count": int(counts[symbol]),
                 "support_cases": len(cases[symbol]),
+                "selection_score": structure_features.get(symbol, {}).get("score"),
+                "selection_features": structure_features.get(symbol, {}),
                 "example_case_ids": sorted(cases[symbol])[: int(args.examples_per_motif)],
                 "example_occurrences": examples[symbol][: int(args.examples_per_motif)],
             }
@@ -996,6 +2398,7 @@ def audit_motifs(records: list[dict[str, Any]], merges: list[dict[str, Any]], se
         channel_counter: Counter[str] = Counter()
         geometry_counter: Counter[str] = Counter()
         relation_counter: Counter[str] = Counter()
+        refinement_counter: Counter[str] = Counter()
         alias_counter: Counter[str] = Counter()
         base_counter: Counter[str] = Counter()
         examples: list[dict[str, Any]] = []
@@ -1004,6 +2407,7 @@ def audit_motifs(records: list[dict[str, Any]], merges: list[dict[str, Any]], se
             case_id = str(occ["case_id"])
             channel_counter.update(str(item) for item in occ.get("channels") or [])
             geometry_counter.update(str(item) for item in occ.get("geometry_clusters") or [])
+            refinement_counter.update(str(item) for item in occ.get("observable_refinement_tags") or [])
             relation_counter.update(str(item) for item in occ.get("relation_types") or [])
             base_counter.update(str(item) for item in occ.get("base_symbols") or [])
             if case_id not in alias_seen_cases:
@@ -1032,11 +2436,14 @@ def audit_motifs(records: list[dict[str, Any]], merges: list[dict[str, Any]], se
                 "step": int(merge.get("step") or 0),
                 "operator": merge.get("operator"),
                 "parents": merge.get("parents") or [],
+                "selection_score": merge.get("selection_score"),
+                "selection_features": merge.get("selection_features"),
                 "occurrences": len(motif_occs),
                 "support_cases": len(support_cases),
                 "channels": _top_counter(channel_counter, 12),
                 "relation_profile": _top_counter(relation_counter, 8),
                 "top_geometry_clusters": _top_counter(geometry_counter, 12),
+                "top_observable_refinement_tags": _top_counter(refinement_counter, 12),
                 "top_base_symbols": _top_counter(base_counter, 12),
                 "caption_alias_purity": round(alias_purity, 4),
                 "top_caption_alias": "" if top_alias == "__NO_CAPTION_ALIAS__" else top_alias,
@@ -1266,6 +2673,24 @@ def _packet_diagnostic_token_count(records: list[dict[str, Any]]) -> int:
 
 def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequences: dict[str, list[dict[str, Any]]], args: argparse.Namespace, source_records: int) -> dict[str, Any]:
     channel_event_count = sum(len(record.get("channel_events") or []) for record in records)
+    arm_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_trajectory" in set(event.get("observable_refinement_tags") or [])
+    )
+    body_level_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_body_level" in set(event.get("observable_refinement_tags") or [])
+    )
+    arm_reach_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_reach" in set(event.get("observable_refinement_tags") or [])
+    )
     packet_count = sum(len(record.get("packets") or []) for record in records)
     parallel_packet_count = sum(1 for record in records for packet in (record.get("packets") or []) if packet.get("packet_type") == "parallel")
     relation_count = sum(int(record.get("relation_count", len(record.get("relations") or []))) for record in records)
@@ -1292,11 +2717,15 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         if any(str(unit.get("symbol") or "").startswith(("<CHM_", "<COM_")) for unit in seq)
     }
     return {
-        "version": "hml3d_multichannel_motion_bpe_v1",
+        "version": f"hml3d_multichannel_motion_bpe_{str(getattr(args, 'observable_refinement', 'v1'))}",
         "source_corpus": str(args.source_corpus),
+        "observable_refinement": str(getattr(args, "observable_refinement", "v1")),
         "source_record_count": source_records,
         "num_records": len(records),
         "channel_event_count": channel_event_count,
+        "arm_trajectory_sidecar_event_count": arm_sidecar_event_count,
+        "arm_reach_sidecar_event_count": arm_reach_sidecar_event_count,
+        "body_level_sidecar_event_count": body_level_sidecar_event_count,
         "channel_event_type_count": len(base_vocab),
         "packet_count": packet_count,
         "packet_type_count": len(packet_vocab),
@@ -1323,6 +2752,8 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         "operator_counts": dict(sorted(operator_counts.items())),
         "channel_motif_count": channel_motif_count,
         "coordination_motif_count": coordination_motif_count,
+        "coordination_selection": str(getattr(args, "coordination_selection", "support")),
+        "coordination_min_structure_score": float(getattr(args, "coordination_min_structure_score", 0.0)),
         "num_merges_requested": int(args.num_merges),
         "channel_merge_ratio": float(args.channel_merge_ratio),
         "min_pair_count": int(args.min_pair_count),
@@ -1347,10 +2778,41 @@ class MotionBpeSelfTest:
             "min_pair_count": 1,
             "min_pair_support": 1,
             "selection": "count",
+            "coordination_selection": "support",
+            "coordination_min_structure_score": 0.0,
             "examples_per_motif": 4,
             "write_heavy_corpora": False,
             "cache_dir": None,
             "rebuild_cache": False,
+            "observable_refinement": "v1",
+            "hml3d_root": str(DEFAULT_HML3D_ROOT),
+            "disable_arm_trajectory_sidecar": False,
+            "arm_span_gap": 6,
+            "arm_span_pad": 3,
+            "arm_min_radius": 0.18,
+            "arm_circle_min_abs_deg": 540.0,
+            "arm_circle_max_radius_cv": 0.38,
+            "arm_large_arc_min_abs_deg": 180.0,
+            "arm_large_arc_min_path": 1.25,
+            "arm_large_arc_min_range": 0.40,
+            "arm_large_arc_max_radius_cv": 0.55,
+            "arm_min_planarity": 0.80,
+            "disable_arm_reach_sidecar": False,
+            "arm_reach_span_gap": 4,
+            "arm_reach_span_pad": 3,
+            "arm_reach_min_delta": 0.16,
+            "arm_reach_min_path": 0.22,
+            "arm_reach_min_peak": 0.24,
+            "arm_reach_retract_ratio": 0.55,
+            "arm_reach_min_forward_component": 0.10,
+            "disable_body_level_sidecar": False,
+            "body_low_threshold": 0.52,
+            "body_high_threshold": 0.58,
+            "body_level_min_run": 5,
+            "body_long_low_min_duration": 30,
+            "body_high_state_min_duration": 8,
+            "body_transition_max_gap": 40,
+            "body_emit_high_state": False,
         }
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -1642,7 +3104,10 @@ def write_multichannel_motion_bpe_outputs(output_dir: Path, result: dict[str, An
 
     _write_json(output_dir / "channel_event_vocab.json", {"version": "channel_event_vocab_v1", "items": _top_counter(_base_vocab(records), 5000)})
     _write_json(output_dir / "packet_vocab.json", {"version": "packet_vocab_v1", "items": _top_counter(_packet_vocab(records), 5000)})
-    _write_json(output_dir / "multichannel_motion_bpe_vocab.json", {"version": "multichannel_motion_bpe_vocab_v1", "merges": merges})
+    _write_json(
+        output_dir / "multichannel_motion_bpe_vocab.json",
+        {"version": f"multichannel_motion_bpe_vocab_{str(getattr(args, 'observable_refinement', 'v1'))}", "merges": merges},
+    )
     _write_jsonl(
         output_dir / "case_multichannel_bpe_sequences.jsonl",
         [
@@ -1674,11 +3139,42 @@ def main() -> None:
     parser.add_argument("--max-records", type=int, default=None)
     parser.add_argument("--parallel-overlap-min", type=float, default=0.30)
     parser.add_argument("--lead-lag-gap-max", type=int, default=6)
+    parser.add_argument("--observable-refinement", choices=["v1", "v2", "v3"], default="v1", help="Refine coarse Layer3 geometry labels for Motion-BPE tokenization without modifying the source corpus. v3 adds raw-joint arm trajectory sidecar events.")
+    parser.add_argument("--hml3d-root", default=str(DEFAULT_HML3D_ROOT), help="HumanML3D root used by v3 raw-joint trajectory sidecars.")
+    parser.add_argument("--disable-arm-trajectory-sidecar", action="store_true", help="Disable v3 raw-joint arm trajectory sidecar events.")
+    parser.add_argument("--arm-span-gap", type=int, default=6, help="Merge same-side arm source spans separated by at most this many frames before trajectory scoring.")
+    parser.add_argument("--arm-span-pad", type=int, default=3, help="Pad merged arm spans before trajectory scoring.")
+    parser.add_argument("--arm-min-radius", type=float, default=0.18, help="Minimum mean wrist-to-shoulder trajectory radius for arm orbit candidates.")
+    parser.add_argument("--arm-circle-min-abs-deg", type=float, default=540.0, help="Minimum accumulated in-plane wrist angle for arm orbit candidates.")
+    parser.add_argument("--arm-circle-max-radius-cv", type=float, default=0.38, help="Maximum radius coefficient of variation for arm orbit candidates.")
+    parser.add_argument("--arm-large-arc-min-abs-deg", type=float, default=180.0, help="Minimum accumulated in-plane wrist angle for large arm arc candidates.")
+    parser.add_argument("--arm-large-arc-min-path", type=float, default=1.25, help="Minimum wrist path length for arm trajectory sidecar candidates.")
+    parser.add_argument("--arm-large-arc-min-range", type=float, default=0.40, help="Minimum per-axis wrist trajectory range for large arm arc candidates.")
+    parser.add_argument("--arm-large-arc-max-radius-cv", type=float, default=0.55, help="Maximum radius coefficient of variation for large arm arc candidates.")
+    parser.add_argument("--arm-min-planarity", type=float, default=0.80, help="Minimum PCA planarity for arm trajectory sidecar candidates.")
+    parser.add_argument("--disable-arm-reach-sidecar", action="store_true", help="Disable v3 raw-joint arm reach/retract sidecar events.")
+    parser.add_argument("--arm-reach-span-gap", type=int, default=4, help="Merge same-side arm source spans separated by at most this many frames before reach/retract scoring.")
+    parser.add_argument("--arm-reach-span-pad", type=int, default=3, help="Pad merged arm spans before reach/retract scoring.")
+    parser.add_argument("--arm-reach-min-delta", type=float, default=0.16, help="Minimum body-forward wrist extension range for arm reach/retract candidates.")
+    parser.add_argument("--arm-reach-min-path", type=float, default=0.22, help="Minimum accumulated body-forward wrist path for arm reach/retract candidates.")
+    parser.add_argument("--arm-reach-min-peak", type=float, default=0.24, help="Minimum peak body-forward wrist offset for arm reach/retract candidates.")
+    parser.add_argument("--arm-reach-retract-ratio", type=float, default=0.55, help="Minimum retract/extend ratio to classify an arm reach as reach-retract.")
+    parser.add_argument("--arm-reach-min-forward-component", type=float, default=0.10, help="Minimum forward extension and retraction component for arm reach/retract candidates.")
+    parser.add_argument("--disable-body-level-sidecar", action="store_true", help="Disable v3 raw-joint body-level sidecar events.")
+    parser.add_argument("--body-low-threshold", type=float, default=0.52, help="Normalized pelvis-height threshold for low body-level state.")
+    parser.add_argument("--body-high-threshold", type=float, default=0.58, help="Normalized pelvis-height threshold for high stand-like body-level state.")
+    parser.add_argument("--body-level-min-run", type=int, default=5, help="Minimum consecutive frames for a body-level state run.")
+    parser.add_argument("--body-long-low-min-duration", type=int, default=30, help="Minimum low-run duration for sustained low-body-level state.")
+    parser.add_argument("--body-high-state-min-duration", type=int, default=8, help="Minimum high-run duration for stand-like body-level state.")
+    parser.add_argument("--body-transition-max-gap", type=int, default=40, help="Maximum gap between low/high body-level runs to create transition events.")
+    parser.add_argument("--body-emit-high-state", action="store_true", help="Emit generic high stand-like body-level states. Disabled by default because they are ubiquitous context.")
     parser.add_argument("--num-merges", type=int, default=256)
     parser.add_argument("--channel-merge-ratio", type=float, default=0.5, help="Fraction of merge budget used for per-channel sequential motifs before cross-channel coordination mining.")
     parser.add_argument("--min-pair-count", type=int, default=80)
     parser.add_argument("--min-pair-support", type=int, default=40)
     parser.add_argument("--selection", choices=["count", "support"], default="count")
+    parser.add_argument("--coordination-selection", choices=["support", "structure_score"], default="support", help="How to rank cross-channel coactivation motifs after channel BPE.")
+    parser.add_argument("--coordination-min-structure-score", type=float, default=0.0, help="Minimum structure score when --coordination-selection=structure_score.")
     parser.add_argument("--examples-per-motif", type=int, default=8)
     parser.add_argument("--write-heavy-corpora", action="store_true", help="Write full event/packet corpora; summaries and vocab are always written.")
     args = parser.parse_args()

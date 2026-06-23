@@ -16,21 +16,23 @@ DEFAULT_MOMASK_ROOT = Path("/mnt/data/home/guoruoxi/code/momask-codes")
 DEFAULT_PYTHON = Path("/mnt/data/home/guoruoxi/miniconda3/envs/momask/bin/python")
 
 
-def _load_cases(summary_paths: list[Path]) -> list[dict[str, Any]]:
+def _load_cases(summary_paths: list[Path], prompt_key: str, ext_key: str) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
     seen: set[str] = set()
     for path in summary_paths:
         rows = json.loads(path.read_text(encoding="utf-8"))
         for row in rows:
-            ext = str(row.get("auto_ext") or "")
+            ext = str(row.get(ext_key) or "")
             if not ext or ext in seen:
                 continue
             seen.add(ext)
             cases.append(
                 {
                     "case_id": str(row["case_id"]),
-                    "auto_ext": ext,
-                    "auto_prompt": str(row.get("auto_prompt") or ""),
+                    "ext": ext,
+                    "prompt": str(row.get(prompt_key) or ""),
+                    "prompt_key": prompt_key,
+                    "ext_key": ext_key,
                     "source_num_frames": int(row.get("source_num_frames") or row.get("generated_num_frames") or 0),
                     "summary": str(path),
                 }
@@ -184,7 +186,7 @@ def _generate_batch(
     rows: list[dict[str, Any]] = []
     for start in range(0, len(cases), chunk_size):
         chunk = cases[start : start + chunk_size]
-        captions = [case["auto_prompt"] for case in chunk]
+        captions = [case["prompt"] for case in chunk]
         token_lens = torch.LongTensor([max(1, int(case["source_num_frames"]) // 4) for case in chunk])
         token_lens = token_lens.to(opt.device).long()
         motion_lens = (token_lens * 4).detach().cpu().numpy().astype(np.int32).tolist()
@@ -207,7 +209,7 @@ def _generate_batch(
         for case, length, joint_data in zip(chunk, motion_lens, data):
             saved = _save_motion(
                 momask_root=momask_root,
-                ext=str(case["auto_ext"]),
+                ext=str(case["ext"]),
                 length=int(length),
                 joint_data=np.asarray(joint_data, dtype=np.float32),
                 save_bvh=save_bvh,
@@ -216,7 +218,7 @@ def _generate_batch(
             row = dict(case)
             row.update(saved)
             rows.append(row)
-            print(f"saved case={case['case_id']} ext={case['auto_ext']} len={length}", flush=True)
+            print(f"saved case={case['case_id']} ext={case['ext']} len={length}", flush=True)
     return rows
 
 
@@ -224,6 +226,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--summary", action="append", required=True)
     parser.add_argument("--report", required=True)
+    parser.add_argument("--prompt-key", default="auto_prompt")
+    parser.add_argument("--ext-key", default="auto_ext")
     parser.add_argument("--momask-root", default=str(DEFAULT_MOMASK_ROOT))
     parser.add_argument("--gpu-id", default="0")
     parser.add_argument("--time-steps", type=int, default=10)
@@ -235,11 +239,14 @@ def main() -> None:
     args = parser.parse_args()
 
     momask_root = Path(args.momask_root)
-    cases = _load_cases([Path(path) for path in args.summary])
+    cases = _load_cases([Path(path) for path in args.summary], prompt_key=str(args.prompt_key), ext_key=str(args.ext_key))
+    empty_prompt_cases = [case for case in cases if not str(case.get("prompt") or "").strip()]
+    if empty_prompt_cases:
+        raise SystemExit(f"{len(empty_prompt_cases)} cases have empty prompt for key={args.prompt_key}: {empty_prompt_cases[:5]}")
     skipped = []
     missing = []
     for case in cases:
-        if args.reuse_existing and _joint_exists(momask_root, str(case["auto_ext"])):
+        if args.reuse_existing and _joint_exists(momask_root, str(case["ext"])):
             skipped.append(case)
         else:
             missing.append(case)
@@ -262,10 +269,12 @@ def main() -> None:
             save_bvh=bool(args.save_bvh),
         )
 
-    remaining_missing = [case for case in cases if not _joint_exists(momask_root, str(case["auto_ext"]))]
+    remaining_missing = [case for case in cases if not _joint_exists(momask_root, str(case["ext"]))]
     report = {
         "run": {
             "summaries": [str(path) for path in args.summary],
+            "prompt_key": str(args.prompt_key),
+            "ext_key": str(args.ext_key),
             "momask_root": str(momask_root),
             "gpu_id": str(args.gpu_id),
             "time_steps": int(args.time_steps),

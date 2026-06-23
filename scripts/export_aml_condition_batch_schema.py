@@ -129,11 +129,15 @@ def _categorical_slots(
 
 def _collect_vocabs(records: list[dict[str, Any]]) -> dict[str, Any]:
     families = []
+    conditions = []
+    structure_labels = []
     statuses = []
     slot_values: dict[str, list[str]] = defaultdict(list)
     for record in records:
         for cond in record.get("selected_conditions") or []:
             families.append(str(cond.get("family_id") or "UNKNOWN"))
+            conditions.append(str(cond.get("condition_id") or "UNKNOWN"))
+            structure_labels.append(str(cond.get("motion_structure_label") or "UNKNOWN"))
             statuses.append(str(cond.get("status") or "unknown"))
             slots = cond.get("slot_values") or {}
             for name in CATEGORICAL_SLOT_NAMES:
@@ -141,6 +145,8 @@ def _collect_vocabs(records: list[dict[str, Any]]) -> dict[str, Any]:
                     slot_values[name].append(str(slots[name]))
     return {
         "family_vocab": _vocab(families),
+        "condition_vocab": _vocab(conditions),
+        "motion_structure_vocab": _vocab(structure_labels),
         "status_vocab": _vocab(statuses, base=STATUS_BASE_VOCAB),
         "categorical_slot_vocabs": {
             name: _vocab(slot_values.get(name, []))
@@ -165,6 +171,8 @@ def export_batch_schema(
     condition_mask = np.zeros((num_cases, max_conditions), dtype=np.float32)
     action_index = np.full((num_cases, max_conditions), -1, dtype=np.int64)
     family_id = np.zeros((num_cases, max_conditions), dtype=np.int64)
+    condition_id = np.zeros((num_cases, max_conditions), dtype=np.int64)
+    motion_structure_id = np.zeros((num_cases, max_conditions), dtype=np.int64)
     status_id = np.zeros((num_cases, max_conditions), dtype=np.int64)
     score = np.zeros((num_cases, max_conditions), dtype=np.float32)
     weight = np.zeros((num_cases, max_conditions), dtype=np.float32)
@@ -194,6 +202,8 @@ def export_batch_schema(
                 "num_selected": len(kept),
                 "reference_prompt": record.get("reference_prompt") or "",
                 "selected_families": [cond.get("family_id") for cond in kept],
+                "selected_conditions": [cond.get("condition_id") for cond in kept],
+                "selected_motion_structures": [cond.get("motion_structure_label") for cond in kept],
             }
         )
         for cond_idx, cond in enumerate(kept):
@@ -201,6 +211,8 @@ def export_batch_schema(
             condition_mask[case_idx, cond_idx] = 1.0
             action_index[case_idx, cond_idx] = _safe_int(cond.get("action_index"), -1)
             family_id[case_idx, cond_idx] = _id(vocabs["family_vocab"], cond.get("family_id") or "UNKNOWN")
+            condition_id[case_idx, cond_idx] = _id(vocabs["condition_vocab"], cond.get("condition_id") or "UNKNOWN")
+            motion_structure_id[case_idx, cond_idx] = _id(vocabs["motion_structure_vocab"], cond.get("motion_structure_label") or "UNKNOWN")
             status_id[case_idx, cond_idx] = _id(vocabs["status_vocab"], cond.get("status") or "unknown")
             score[case_idx, cond_idx] = _safe_float(cond.get("screen_score"), 0.0)
             weight[case_idx, cond_idx] = _safe_float(cond.get("condition_weight"), 0.0)
@@ -236,6 +248,8 @@ def export_batch_schema(
         "condition_mask": condition_mask,
         "action_index": action_index,
         "family_id": family_id,
+        "condition_id": condition_id,
+        "motion_structure_id": motion_structure_id,
         "status_id": status_id,
         "score": score,
         "condition_weight": weight,
@@ -258,12 +272,14 @@ def export_batch_schema(
         "array_shapes": {key: list(value.shape) for key, value in arrays.items()},
         "array_dtypes": {key: str(value.dtype) for key, value in arrays.items()},
         "family_vocab": vocabs["family_vocab"],
+        "condition_vocab": vocabs["condition_vocab"],
+        "motion_structure_vocab": vocabs["motion_structure_vocab"],
         "status_vocab": vocabs["status_vocab"],
         "categorical_slot_vocabs": vocabs["categorical_slot_vocabs"],
         "truncated_case_count": truncation_count,
         "padding_policy": {
             "condition_mask": "1 for real selected condition, 0 for padding",
-            "family_id/status_id/categorical_slots": "0 is <pad>, 1 is <unk>",
+            "family_id/condition_id/motion_structure_id/status_id/categorical_slots": "0 is <pad>, 1 is <unk>",
             "span": "[-1, -1] when missing or padding",
         },
     }
@@ -274,11 +290,19 @@ def summarize(arrays: dict[str, np.ndarray], schema: dict[str, Any], rows: list[
     mask = arrays["condition_mask"] > 0.0
     score_values = arrays["score"][mask]
     family_counter: Counter[str] = Counter()
+    condition_counter: Counter[str] = Counter()
+    structure_counter: Counter[str] = Counter()
     status_counter: Counter[str] = Counter()
     inv_family = {idx: token for token, idx in schema["family_vocab"].items()}
+    inv_condition = {idx: token for token, idx in schema["condition_vocab"].items()}
+    inv_structure = {idx: token for token, idx in schema["motion_structure_vocab"].items()}
     inv_status = {idx: token for token, idx in schema["status_vocab"].items()}
     for family_idx in arrays["family_id"][mask].tolist():
         family_counter[inv_family.get(int(family_idx), UNK_TOKEN)] += 1
+    for condition_idx in arrays["condition_id"][mask].tolist():
+        condition_counter[inv_condition.get(int(condition_idx), UNK_TOKEN)] += 1
+    for structure_idx in arrays["motion_structure_id"][mask].tolist():
+        structure_counter[inv_structure.get(int(structure_idx), UNK_TOKEN)] += 1
     for status_idx in arrays["status_id"][mask].tolist():
         status_counter[inv_status.get(int(status_idx), UNK_TOKEN)] += 1
     return {
@@ -296,6 +320,8 @@ def summarize(arrays: dict[str, np.ndarray], schema: dict[str, Any], rows: list[
         "numeric_slot_fill_mean": float(arrays["numeric_slot_mask"][mask].mean()) if mask.sum() else 0.0,
         "categorical_slot_fill_mean": float(arrays["categorical_slot_mask"][mask].mean()) if mask.sum() else 0.0,
         "family_counts_top30": family_counter.most_common(30),
+        "condition_counts_top30": condition_counter.most_common(30),
+        "motion_structure_counts_top30": structure_counter.most_common(30),
         "status_counts": status_counter.most_common(),
         "array_shapes": schema["array_shapes"],
         "truncated_case_count": int(schema["truncated_case_count"]),
@@ -346,6 +372,12 @@ def write_report(path: Path, summary: dict[str, Any], schema: dict[str, Any]) ->
     lines.extend(["", "## Top Families", "", "| family | count |", "| --- | --- |"])
     for family, count in summary["family_counts_top30"][:20]:
         lines.append(f"| {family} | {count} |")
+    lines.extend(["", "## Top Condition Types", "", "| condition | count |", "| --- | --- |"])
+    for condition, count in summary["condition_counts_top30"][:20]:
+        lines.append(f"| {condition} | {count} |")
+    lines.extend(["", "## Top Motion Structure Labels", "", "| motion_structure_label | count |", "| --- | --- |"])
+    for label, count in summary["motion_structure_counts_top30"][:20]:
+        lines.append(f"| {label} | {count} |")
     lines.extend(
         [
             "",
