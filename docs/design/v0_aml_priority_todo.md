@@ -94,6 +94,25 @@ Current weak points:
   tennis.
 - The first general observable fix targets `unilateral_arm_circle` and
   `large_arm_arc` as raw-joint motion evidence, not as caption keywords.
+- The v4 coord-role promotion review surface now separates likely named
+  compositions from reusable components:
+  `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_promotion_review/`.
+
+## Layer Contract
+
+The layers have different precision/recall goals.
+
+- Observable micro-events should favor recall. At this layer, it is better to
+  over-emit measurable joint/root/body signals than to miss evidence needed by
+  later mining. Extra events are acceptable if they keep span, channel,
+  geometry, magnitude, count, and source evidence traceable.
+- Merge, proxy, and promotion should favor precision. These layers must prevent
+  frequent but low-importance components from dominating a pattern. Promotion
+  must use motion scope, structure score, support, caption/WordNet naming
+  evidence, and visual/manual review gates; support alone is not sufficient.
+- A noisy micro-event is a tuning problem only if it floods BPE or hides stronger
+  evidence. A noisy proxy/promotion is a correctness problem because it changes
+  the semantic action node exposed to AML and downstream editing.
 
 ## Current Critical Path
 
@@ -169,6 +188,10 @@ schema.
     low-body transitions, torso context, arm symmetry/coupling, bimanual context.
   - Review check: v2 promotion self-review shows fewer dense composition rows
     and no full-action promotion from impure components.
+  - Layer contract: this step may be recall-heavy. It should expose candidate
+    evidence broadly, but every emitted micro-event must remain localized,
+    typed by channel/geometry, and removable or downweighted by later merge
+    policy.
   - New group_01 failure ledger:
     `outputs/aml_regression_testset_v2/aml_momask_native_vs_aml_review250_v0/group_01_failure_audit_v0/failure_ledger.md`
   - Next observable priorities:
@@ -249,6 +272,9 @@ schema.
     `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_failure_probe/`
   - Review check: compare v1 vs v2 on compression, motif purity, target audit recall,
     and false-positive rate.
+  - Layer contract: this step must be precision-heavy. Merge and proxy nodes
+    should suppress generic frequent components unless they form a stable,
+    reviewable composition with clear motion scope.
   - Current result:
     - Coordination mining now uses high-signal raw-joint events and high-signal
       channel motifs as seeds instead of only selected `<CHM_*>` motifs.
@@ -269,6 +295,26 @@ schema.
       rather than full semantic actions. Promotion should therefore use
       `motion_scope`, caption/WordNet naming, and visual spot checks instead of
       support alone.
+    - Diagnostic note: full jumping-jack-like structure exists in the
+      coactivation sequence, but is fragmented across many nearby role
+      signatures. The selected v4 merge set currently surfaces the clean
+      upper/vertical component as `named_component_review`, not a full pattern.
+      Next step is composition closure / family-level grouping over related
+      role signatures, not more micro-events.
+
+- [~] Build v4 coord-role promotion/component review.
+  - Script:
+    `scripts/build_v4_coord_role_promotion_review.py`
+  - Artifact:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_promotion_review/`
+  - Current result:
+    42 families total: 2 `promote_review`, 5 `composition_review`,
+    1 `named_component_review`, 12 `component_review`, and
+    22 `component_library`.
+  - Review check:
+    `sit_down` body-level/torso compositions are the only immediate named
+    promote-review rows; jumping-jack-like evidence is deliberately kept as a
+    named component until upper/vertical/lower closure is promoted.
 
 - [~] Audit missed full-pattern coactivations.
   - Artifact:
