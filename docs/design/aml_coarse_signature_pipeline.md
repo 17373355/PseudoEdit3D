@@ -114,7 +114,11 @@ This makes the md/json audit path independent from Python-local proto-id lists w
 
 ## Global Alias Evidence
 
-`scripts/mine_hml3d_upperbody_phrases.py` scans all HumanML3D captions as a global wording inventory and associates upper-body Layer-3 motion keys with word families, surface phrases, support, coverage, precision, and lift.
+The earlier `scripts/mine_hml3d_upperbody_phrases.py` scanner has been moved to
+`legacy/text_phrase_mining/scripts/`. Current text-derived pseudo-GT audit
+targets are configured in `configs/motion_pattern_text_targets.json`, and
+Motion-BPE / pattern-family builders consume them only as evaluation and naming
+diagnostics.
 
 This layer is only for:
 

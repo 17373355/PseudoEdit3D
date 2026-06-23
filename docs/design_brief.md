@@ -386,7 +386,7 @@ Phrase / wording mining:
 
 - `scripts/analyze_aml_prompt_phrases.py`
 - `scripts/analyze_vertical_salience.py`
-- `scripts/mine_hml3d_upperbody_phrases.py`
+- `configs/motion_pattern_text_targets.json`
 
 Report visualization:
 

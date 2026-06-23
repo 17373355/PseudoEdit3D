@@ -12,6 +12,7 @@ Current target groups:
 
 - `auto_prompt_pattern_batches/`: old HumanML3D batch-wise auto-prompt repair workflow
 - `aml_demos/`: layer-specific demo scripts superseded by unified AML extraction/visualization
+- `text_phrase_mining/`: earlier hard-coded HumanML3D text phrase mining probes
 - `old_stage1_atomic_scaffold/`: earlier training scaffold, only after dependency audit
 
 Current AML mainline is documented in:
@@ -78,3 +79,33 @@ No active file should import from this folder.
 - `scripts/learn_motion_bpe.py` -> `legacy/motion_bpe_baseline/scripts/learn_motion_bpe.py`
   - reason: old case-list Layer2 submotion BPE script is not imported by active AML scripts and does not produce the new full-corpus tree-induction artifacts
   - replacement: `scripts/audit_hml3d_layer3_event_bpe.py`
+
+### 2026-06-16
+
+- `scripts/build_hml3d_pattern_batch.py` -> `legacy/auto_prompt_pattern_batches/scripts/build_hml3d_pattern_batch.py`
+  - reason: old batch-wise HML3D auto-prompt pattern repair workflow; already listed as candidate legacy
+  - replacement: current review-set and Motion-BPE workflows use `scripts/build_aml_regression_testset.py`, `scripts/run_aml_momask_review_pack.py`, and `scripts/audit_hml3d_multichannel_motion_bpe.py`
+- `scripts/analyze_hml3d_pattern_batch.py` -> `legacy/auto_prompt_pattern_batches/scripts/analyze_hml3d_pattern_batch.py`
+  - reason: old analyzer for the batch-wise auto-prompt repair workflow
+  - replacement: `scripts/audit_hml3d_multichannel_motion_bpe.py` and generated `audit_report.md`
+- `scripts/report_hml3d_batch_sizes.py` -> `legacy/auto_prompt_pattern_batches/scripts/report_hml3d_batch_sizes.py`
+  - reason: helper for the old pattern-batch workflow
+  - replacement: `scripts/build_aml_regression_testset.py` and `scripts/audit_hml3d_multichannel_motion_bpe.py`
+- `scripts/mine_hml3d_missing_patterns.py` -> `legacy/auto_prompt_pattern_batches/scripts/mine_hml3d_missing_patterns.py`
+  - reason: caption-pattern gap miner tied to old prompt-pattern batches
+  - replacement: text naming now goes through `scripts/build_text_bpe_wordnet_naming_layer.py`
+- `scripts/mine_submotion_pairs.py` -> `legacy/early_submotion_mining/scripts/mine_submotion_pairs.py`
+  - reason: early micro-event pair/triple mining draft superseded by full-HML3D event-BPE and multi-channel Motion-BPE audits
+  - replacement: `scripts/audit_hml3d_layer3_event_bpe.py` and `scripts/audit_hml3d_multichannel_motion_bpe.py`
+- `scripts/mine_submotion_candidates.py` -> `legacy/early_submotion_mining/scripts/mine_submotion_candidates.py`
+  - reason: early case-list submotion candidate miner superseded by corpus-level BPE audits
+  - replacement: `scripts/audit_hml3d_layer3_event_bpe.py` and `scripts/audit_hml3d_multichannel_motion_bpe.py`
+- `scripts/mine_projected_submotion_candidates.py` -> `legacy/early_submotion_mining/scripts/mine_projected_submotion_candidates.py`
+  - reason: early projected-stream pair/triple mining draft superseded by multi-channel event/packet representation
+  - replacement: `scripts/audit_hml3d_multichannel_motion_bpe.py`
+
+### 2026-06-23
+
+- `scripts/mine_hml3d_upperbody_phrases.py` -> `legacy/text_phrase_mining/scripts/mine_hml3d_upperbody_phrases.py`
+  - reason: earlier hard-coded upper-body text phrase scanner is superseded by the target-registry based text pseudo-GT audit path
+  - replacement: `configs/motion_pattern_text_targets.json`, `scripts/audit_motion_pattern_pseudo_gt.py`, and `scripts/audit_motion_pattern_recall_candidates.py`

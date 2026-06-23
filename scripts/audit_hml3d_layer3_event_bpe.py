@@ -26,6 +26,7 @@ from scripts.run_momask_aml_prompt_probe import extract_aml_program
 
 DEFAULT_HML_ROOT = Path("/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D")
 DEFAULT_OUTPUT_DIR = Path("outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_audit_v1")
+DEFAULT_TARGET_REGISTRY = Path("configs/motion_pattern_text_targets.json")
 
 
 def _json_safe(obj: Any) -> Any:
@@ -453,25 +454,28 @@ def _record_maps(records: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any
     return by_case, event_maps, action_links
 
 
-def _caption_keyword_tags(captions: list[str]) -> list[str]:
+def _load_text_target_patterns(path: Path) -> dict[str, re.Pattern[str]]:
+    if not path.exists():
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    targets = payload.get("targets") if isinstance(payload, dict) else payload
+    if not isinstance(targets, list):
+        return {}
+    patterns: dict[str, re.Pattern[str]] = {}
+    for item in targets:
+        if not isinstance(item, dict):
+            continue
+        target_id = str(item.get("id") or "")
+        regex = str(item.get("regex") or "")
+        if not target_id or not regex:
+            continue
+        patterns[target_id] = re.compile(regex, re.IGNORECASE)
+    return patterns
+
+
+def _caption_keyword_tags(captions: list[str], target_patterns: dict[str, re.Pattern[str]]) -> list[str]:
     text = " ".join(captions).lower()
-    specs = {
-        "jumping_jack": r"\bjumping\s+jacks?\b",
-        "jump_rope": r"\bjump\s+rope\b|\bskipping\s+rope\b",
-        "sit": r"\bsits?\s+down\b|\bsitting\b|\bsat\b",
-        "stand_up": r"\bstands?\s+(back\s+)?up\b",
-        "kneel": r"\bkneels?\b|\bknees\b",
-        "karate_or_martial": r"\bkarate\b|\bmartial\b|\bfighting\b|\bpunch",
-        "dance": r"\bdanc",
-        "ballet": r"\bballet\b",
-        "cartwheel": r"\bcartwheel|\bhandstand|\bflip\b",
-        "basketball": r"\bbasketball\b|\bdribbl",
-        "tennis": r"\btennis\b",
-        "swim": r"\bswimm",
-        "climb": r"\bclimb",
-        "duck_under": r"\bduck|\bunder",
-    }
-    return [name for name, pattern in specs.items() if re.search(pattern, text)]
+    return [name for name, pattern in target_patterns.items() if pattern.search(text)]
 
 
 def _top_counter(counter: Counter[str], limit: int) -> list[dict[str, Any]]:
@@ -496,6 +500,7 @@ def _audit_motifs(
     args: argparse.Namespace,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     by_case, event_maps, action_links = _record_maps(records)
+    text_target_patterns = _load_text_target_patterns(Path(args.target_registry))
     merge_map = {str(merge["merge_id"]): merge for merge in merges}
     occurrences = _motif_occurrences(sequences, set(merge_map))
     motif_rows: list[dict[str, Any]] = []
@@ -518,7 +523,7 @@ def _audit_motifs(
             record = by_case.get(case_id, {})
             alias_ids = record.get("caption_alias_ids") or []
             case_aliases[case_id].update(str(item) for item in alias_ids if item)
-            case_keywords[case_id].update(_caption_keyword_tags(record.get("caption_texts") or []))
+            case_keywords[case_id].update(_caption_keyword_tags(record.get("caption_texts") or [], text_target_patterns))
             base_counter.update(str(item) for item in occ.get("base_symbols") or [])
             linked_families: set[str] = set()
             linked_statuses: set[str] = set()
@@ -802,6 +807,7 @@ def main() -> None:
     parser.add_argument("--stable-alias-purity", type=float, default=0.45)
     parser.add_argument("--examples-per-motif", type=int, default=8)
     parser.add_argument("--progress-every", type=int, default=100)
+    parser.add_argument("--target-registry", default=str(DEFAULT_TARGET_REGISTRY), help="Text pseudo-GT target registry used only for naming diagnostics.")
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -843,6 +849,7 @@ def main() -> None:
         "base_vocab_size": len(base_vocab),
         "token_granularity": args.token_granularity,
         "include_coarse": not args.skip_coarse,
+        "target_registry": str(args.target_registry),
         "min_pair_count": args.min_pair_count,
         "min_pair_support": args.min_pair_support,
         "selection": args.selection,

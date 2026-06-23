@@ -3,8 +3,9 @@
 What this script does:
 1. Read the Layer3 event corpus.
 2. Convert each case into channel events, overlap relations, and packets.
-3. Learn BPE motifs from per-channel sequences and packet sequences.
-4. Write motif/family/forest artifacts for manual inspection.
+3. Learn per-channel temporal motifs first.
+4. Promote frequently overlapping cross-channel motifs into coordination motifs.
+5. Write motif/family/forest artifacts for manual inspection.
 
 Text policy:
 - Captions are saved only as examples/diagnostics.
@@ -29,6 +30,7 @@ Full run:
 
 Tune these first:
 - --num-merges: maximum learned motif count.
+- --channel-merge-ratio: fraction of merge budget used for per-channel motifs.
 - --min-pair-count: minimum total pair frequency.
 - --min-pair-support: minimum distinct case support.
 - --parallel-overlap-min: stricter/looser parallel packet grouping.
@@ -119,8 +121,6 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         "max_records": args.max_records,
         "parallel_overlap_min": float(args.parallel_overlap_min),
         "lead_lag_gap_max": int(args.lead_lag_gap_max),
-        "include_relation_view": bool(args.include_relation_view),
-        "retain_full_relations": bool(args.retain_full_relations),
     }
 
 
@@ -575,37 +575,6 @@ def _unit_from_packet(packet: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _relation_units(relations: list[dict[str, Any]], event_by_id: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for idx, rel in enumerate(relations):
-        if rel["relation"] == "same_channel_adjacent":
-            continue
-        left = event_by_id.get(str(rel["left_event_id"]))
-        right = event_by_id.get(str(rel["right_event_id"]))
-        if not left or not right:
-            continue
-        channels = sorted([left["channel"], right["channel"]], key=lambda ch: CHANNEL_RANK.get(ch, 999))
-        clusters = sorted([left["geometry_cluster_id"], right["geometry_cluster_id"]])
-        symbol = f"REL[{channels[0]}:{clusters[0].split('/', 1)[-1]}~{channels[1]}:{clusters[1].split('/', 1)[-1]}|{rel['relation']}]"
-        start = min(int(left["span"][0]), int(right["span"][0]))
-        end = max(int(left["span"][1]), int(right["span"][1]))
-        out.append(
-            {
-                "symbol": symbol,
-                "unit_type": "relation",
-                "base_symbols": [left["symbol"], right["symbol"]],
-                "event_ids": [left["event_id"], right["event_id"]],
-                "packet_ids": [],
-                "span": [start, end],
-                "channels": channels,
-                "geometry_clusters": clusters,
-                "relation_types": [str(rel["relation"])],
-            }
-        )
-    out.sort(key=lambda unit: (int(unit["span"][0]), int(unit["span"][1]), unit["symbol"]))
-    return out
-
-
 def build_multichannel_record(record: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
     events = build_channel_events(record)
     relations = build_relations(
@@ -621,12 +590,9 @@ def build_multichannel_record(record: dict[str, Any], args: argparse.Namespace) 
     for seq in by_channel.values():
         seq.sort(key=lambda unit: (int(unit["span"][0]), int(unit["span"][1]), unit["symbol"]))
     packet_units = [_unit_from_packet(packet) for packet in packets]
-    relation_units = _relation_units(relations, {event["event_id"]: event for event in events}) if args.include_relation_view else []
-    keep_relations = bool(args.include_relation_view or args.retain_full_relations)
     views = {
         "channel_sequences": dict(sorted(by_channel.items(), key=lambda item: CHANNEL_RANK.get(item[0], 999))),
         "packet_sequence": packet_units,
-        "relation_sequence": relation_units,
     }
     return {
         "case_id": str(record.get("case_id") or ""),
@@ -634,7 +600,7 @@ def build_multichannel_record(record: dict[str, Any], args: argparse.Namespace) 
         "caption_texts": record.get("caption_texts") or [],
         "caption_alias_ids": record.get("caption_alias_ids") or [],
         "channel_events": events,
-        "relations": relations if keep_relations else [],
+        "relations": [],
         "relation_count": len(relations),
         "relation_type_counts": dict(sorted(relation_type_counts.items())),
         "packets": packets,
@@ -658,52 +624,29 @@ def _merge_units(left: dict[str, Any], right: dict[str, Any], symbol: str, opera
     }
 
 
-def _sequence_views(records: list[dict[str, Any]], include_relation_view: bool) -> dict[str, list[dict[str, Any]]]:
+def _channel_sequence_views(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     sequences: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         case_id = str(record["case_id"])
         for channel, seq in (record.get("views", {}).get("channel_sequences") or {}).items():
             if len(seq) >= 2:
                 sequences[f"{case_id}::channel::{channel}"] = [dict(unit) for unit in seq]
-        packet_seq = record.get("views", {}).get("packet_sequence") or []
-        if len(packet_seq) >= 2:
-            sequences[f"{case_id}::packet"] = [dict(unit) for unit in packet_seq]
-        relation_seq = record.get("views", {}).get("relation_sequence") or []
-        if include_relation_view and len(relation_seq) >= 2:
-            sequences[f"{case_id}::relation"] = [dict(unit) for unit in relation_seq]
     return sequences
 
 
-def _operator_for_symbol_pair(left: str, right: str, sequence_id: str) -> str:
-    if "::channel::" in sequence_id:
-        return "SEQ_CHANNEL_MERGE"
-    if "::relation" in sequence_id:
-        return "RELATION_SEQUENCE_MERGE"
-    if left.startswith("PAR[") or right.startswith("PAR["):
-        return "PACKET_SEQUENCE_MERGE"
-    return "SEQ_PACKET_MERGE"
-
-
-def _symbol_sequence_views(records: list[dict[str, Any]], include_relation_view: bool) -> dict[str, list[str]]:
+def _channel_symbol_sequence_views(records: list[dict[str, Any]]) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for record in records:
         case_id = str(record["case_id"])
         for channel, seq in (record.get("views", {}).get("channel_sequences") or {}).items():
             if len(seq) >= 2:
                 out[f"{case_id}::channel::{channel}"] = [str(unit.get("symbol") or "") for unit in seq]
-        packet_seq = record.get("views", {}).get("packet_sequence") or []
-        if len(packet_seq) >= 2:
-            out[f"{case_id}::packet"] = [str(unit.get("symbol") or "") for unit in packet_seq]
-        relation_seq = record.get("views", {}).get("relation_sequence") or []
-        if include_relation_view and len(relation_seq) >= 2:
-            out[f"{case_id}::relation"] = [str(unit.get("symbol") or "") for unit in relation_seq]
     return out
 
 
-def _pair_stats_symbols(sequences: dict[str, list[str]]) -> tuple[Counter[tuple[str, str]], dict[tuple[str, str], set[str]], dict[tuple[str, str], Counter[str]]]:
+def _pair_stats_symbols(sequences: dict[str, list[str]]) -> tuple[Counter[tuple[str, str]], dict[tuple[str, str], set[str]]]:
     counts: Counter[tuple[str, str]] = Counter()
     cases: dict[tuple[str, str], set[str]] = defaultdict(set)
-    operators: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     for sequence_id, seq in sequences.items():
         if len(seq) < 2:
             continue
@@ -712,8 +655,7 @@ def _pair_stats_symbols(sequences: dict[str, list[str]]) -> tuple[Counter[tuple[
             pair = (seq[idx], seq[idx + 1])
             counts[pair] += 1
             cases[pair].add(case_id)
-            operators[pair][_operator_for_symbol_pair(seq[idx], seq[idx + 1], sequence_id)] += 1
-    return counts, cases, operators
+    return counts, cases
 
 
 def _selected_pair_examples(sequences: dict[str, list[str]], pair: tuple[str, str], limit: int) -> list[dict[str, Any]]:
@@ -782,14 +724,14 @@ def _apply_merge_symbols(seq: list[str], pair: tuple[str, str], merged_symbol: s
     return out
 
 
-def _reconstruct_structured_sequences(
+def _reconstruct_channel_motif_sequences(
     records: list[dict[str, Any]],
     merges: list[dict[str, Any]],
-    *,
-    include_relation_view: bool,
 ) -> dict[str, list[dict[str, Any]]]:
-    sequences = _sequence_views(records, include_relation_view=include_relation_view)
+    sequences = _channel_sequence_views(records)
     for merge in merges:
+        if str(merge.get("operator") or "") != "SEQ_CHANNEL_MERGE":
+            continue
         pair = tuple(str(item) for item in (merge.get("parents") or []))
         if len(pair) != 2:
             continue
@@ -800,11 +742,11 @@ def _reconstruct_structured_sequences(
     return sequences
 
 
-def learn_multichannel_bpe(records: list[dict[str, Any]], args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
-    sequences = _symbol_sequence_views(records, include_relation_view=bool(args.include_relation_view))
+def _learn_channel_motifs(records: list[dict[str, Any]], args: argparse.Namespace, *, budget: int) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    sequences = _channel_symbol_sequence_views(records)
     merges: list[dict[str, Any]] = []
-    for step in range(1, int(args.num_merges) + 1):
-        counts, cases, operators = _pair_stats_symbols(sequences)
+    for step in range(1, budget + 1):
+        counts, cases = _pair_stats_symbols(sequences)
         pair = _select_pair(
             counts,
             cases,
@@ -814,16 +756,15 @@ def learn_multichannel_bpe(records: list[dict[str, Any]], args: argparse.Namespa
         )
         if pair is None:
             break
-        merged_symbol = f"<MCBPE_{step:04d}>"
-        top_operator = operators[pair].most_common(1)[0][0] if operators[pair] else "SEQ_MERGE"
+        merged_symbol = f"<CHM_{step:04d}>"
         examples = _selected_pair_examples(sequences, pair, int(args.examples_per_motif))
         merges.append(
             {
                 "merge_id": merged_symbol,
                 "step": step,
                 "parents": list(pair),
-                "operator": top_operator,
-                "operator_counts": dict(operators[pair]),
+                "operator": "SEQ_CHANNEL_MERGE",
+                "operator_counts": {"SEQ_CHANNEL_MERGE": int(counts[pair])},
                 "count": int(counts[pair]),
                 "support_cases": len(cases[pair]),
                 "example_case_ids": sorted(cases[pair])[: int(args.examples_per_motif)],
@@ -832,8 +773,202 @@ def learn_multichannel_bpe(records: list[dict[str, Any]], args: argparse.Namespa
         )
         for sequence_id in list(sequences):
             sequences[sequence_id] = _apply_merge_symbols(sequences[sequence_id], pair, merged_symbol)
-    structured_sequences = _reconstruct_structured_sequences(records, merges, include_relation_view=bool(args.include_relation_view))
-    return merges, structured_sequences
+    return merges, _reconstruct_channel_motif_sequences(records, merges)
+
+
+def _channel_units_by_case(channel_sequences: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    by_case: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for sequence_id, seq in channel_sequences.items():
+        case_id = sequence_id.split("::", 1)[0]
+        for unit in seq:
+            by_case[case_id].append(dict(unit))
+    for units in by_case.values():
+        units.sort(key=lambda unit: (int((unit.get("span") or [0, 0])[0]), int((unit.get("span") or [0, 0])[1]), str(unit.get("symbol") or "")))
+    return by_case
+
+
+def _coactivation_symbol(units: list[dict[str, Any]]) -> str:
+    parts = []
+    for unit in sorted(units, key=lambda item: (CHANNEL_RANK.get((item.get("channels") or ["other"])[0], 999), str(item.get("symbol") or ""))):
+        channel = str((unit.get("channels") or ["other"])[0])
+        symbol = str(unit.get("symbol") or "")
+        parts.append(f"{channel}:{symbol}")
+    return "COACT[" + "+".join(parts) + "]"
+
+
+def _coactivation_signature(units: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for unit in sorted(units, key=lambda item: (CHANNEL_RANK.get((item.get("channels") or ["other"])[0], 999), str(item.get("symbol") or ""))):
+        channel = str((unit.get("channels") or ["other"])[0])
+        clusters = sorted(str(cluster) for cluster in (unit.get("geometry_clusters") or []) if cluster)
+        cluster_key = "&".join(clusters[:4]) if clusters else "unknown_geometry"
+        parts.append(f"{channel}:{cluster_key}")
+    return "COORD_SIG[" + "+".join(parts) + "]"
+
+
+def _build_coactivation_units(
+    channel_sequences: dict[str, list[dict[str, Any]]],
+    *,
+    parallel_overlap_min: float,
+) -> dict[str, list[dict[str, Any]]]:
+    out: dict[str, list[dict[str, Any]]] = {}
+    for case_id, units in _channel_units_by_case(channel_sequences).items():
+        candidates = [unit for unit in units if str(unit.get("symbol") or "").startswith("<CHM_")]
+        parent: dict[int, int] = {idx: idx for idx in range(len(candidates))}
+
+        def find(x: int) -> int:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a: int, b: int) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        for i, left in enumerate(candidates):
+            left_channels = set(left.get("channels") or [])
+            for j in range(i + 1, len(candidates)):
+                right = candidates[j]
+                if left_channels & set(right.get("channels") or []):
+                    continue
+                if _overlap_ratio(left, right) >= parallel_overlap_min:
+                    union(i, j)
+
+        groups: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for idx, unit in enumerate(candidates):
+            groups[find(idx)].append(unit)
+
+        coacts: list[dict[str, Any]] = []
+        for idx, members in enumerate(groups.values(), start=1):
+            channels = sorted({channel for unit in members for channel in (unit.get("channels") or [])}, key=lambda ch: CHANNEL_RANK.get(ch, 999))
+            if len(channels) < 2:
+                continue
+            span = [min(int((unit.get("span") or [0, 0])[0]) for unit in members), max(int((unit.get("span") or [0, 0])[1]) for unit in members)]
+            member_symbol = _coactivation_symbol(members)
+            signature = _coactivation_signature(members)
+            coacts.append(
+                {
+                    "symbol": signature,
+                    "unit_type": "coactivation_packet",
+                    "base_symbols": [str(symbol) for unit in members for symbol in (unit.get("base_symbols") or [unit.get("symbol")])],
+                    "event_ids": [str(event_id) for unit in members for event_id in (unit.get("event_ids") or [])],
+                    "packet_ids": [],
+                    "span": span,
+                    "channels": channels,
+                    "geometry_clusters": sorted({str(cluster) for unit in members for cluster in (unit.get("geometry_clusters") or [])}),
+                    "relation_types": ["coactivation"],
+                    "member_symbols": [str(unit.get("symbol") or "") for unit in members],
+                    "member_coactivation_symbol": member_symbol,
+                    "coactivation_id": f"{case_id}:coact{idx:04d}",
+                }
+            )
+        coacts.sort(key=lambda unit: (int(unit["span"][0]), int(unit["span"][1]), str(unit["symbol"])))
+        if len(coacts) >= 1:
+            out[f"{case_id}::coactivation"] = coacts
+    return out
+
+
+def _coactivation_stats(sequences: dict[str, list[dict[str, Any]]]) -> tuple[Counter[str], dict[str, set[str]], dict[str, list[dict[str, Any]]]]:
+    counts: Counter[str] = Counter()
+    cases: dict[str, set[str]] = defaultdict(set)
+    examples: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for sequence_id, seq in sequences.items():
+        case_id = sequence_id.split("::", 1)[0]
+        for unit in seq:
+            symbol = str(unit.get("symbol") or "")
+            counts[symbol] += 1
+            cases[symbol].add(case_id)
+            if len(examples[symbol]) < 12:
+                examples[symbol].append(
+                    {
+                        "case_id": case_id,
+                        "sequence_id": sequence_id,
+                        "span": unit.get("span"),
+                        "member_symbols": unit.get("member_symbols") or [],
+                        "member_coactivation_symbol": unit.get("member_coactivation_symbol"),
+                    }
+                )
+    return counts, cases, examples
+
+
+def _coordination_unit_from_coactivation(unit: dict[str, Any], merge_id: str) -> dict[str, Any]:
+    out = dict(unit)
+    out["symbol"] = merge_id
+    out["unit_type"] = "coordination_motif"
+    out["operator"] = "COORDINATION_MERGE"
+    out["relation_types"] = sorted(set(unit.get("relation_types") or []) | {"coordination"})
+    return out
+
+
+def _learn_coordination_motifs(
+    coactivation_sequences: dict[str, list[dict[str, Any]]],
+    args: argparse.Namespace,
+    start_step: int,
+    budget: int,
+) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    counts, cases, examples = _coactivation_stats(coactivation_sequences)
+    candidates = [
+        symbol
+        for symbol, count in counts.items()
+        if count >= int(args.min_pair_count) and len(cases[symbol]) >= int(args.min_pair_support)
+    ]
+    candidates.sort(key=lambda symbol: (-len(cases[symbol]), -counts[symbol], symbol))
+    selected = candidates[:budget]
+    merges: list[dict[str, Any]] = []
+    symbol_to_merge: dict[str, str] = {}
+    for offset, symbol in enumerate(selected):
+        step = start_step + offset
+        merge_id = f"<COM_{offset + 1:04d}>"
+        symbol_to_merge[symbol] = merge_id
+        merges.append(
+            {
+                "merge_id": merge_id,
+                "step": step,
+                "parents": [symbol],
+                "operator": "COORDINATION_MERGE",
+                "operator_counts": {"COORDINATION_MERGE": int(counts[symbol])},
+                "count": int(counts[symbol]),
+                "support_cases": len(cases[symbol]),
+                "example_case_ids": sorted(cases[symbol])[: int(args.examples_per_motif)],
+                "example_occurrences": examples[symbol][: int(args.examples_per_motif)],
+            }
+        )
+
+    sequences: dict[str, list[dict[str, Any]]] = {}
+    for sequence_id, seq in coactivation_sequences.items():
+        replaced: list[dict[str, Any]] = []
+        for unit in seq:
+            symbol = str(unit.get("symbol") or "")
+            if symbol in symbol_to_merge:
+                replaced.append(_coordination_unit_from_coactivation(unit, symbol_to_merge[symbol]))
+            else:
+                replaced.append(dict(unit))
+        if replaced:
+            sequences[sequence_id] = replaced
+    return merges, sequences
+
+
+def learn_multichannel_bpe(records: list[dict[str, Any]], args: argparse.Namespace) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]]:
+    total_budget = max(1, int(args.num_merges))
+    channel_ratio = min(1.0, max(0.0, float(args.channel_merge_ratio)))
+    channel_budget = min(total_budget, max(1, int(round(total_budget * channel_ratio))))
+    channel_merges, channel_sequences = _learn_channel_motifs(records, args, budget=channel_budget)
+    coordination_budget = 0 if channel_ratio >= 1.0 else max(0, total_budget - len(channel_merges))
+    coactivation_sequences = _build_coactivation_units(
+        channel_sequences,
+        parallel_overlap_min=float(args.parallel_overlap_min),
+    )
+    coordination_merges, coordination_sequences = _learn_coordination_motifs(
+        coactivation_sequences,
+        args,
+        start_step=len(channel_merges) + 1,
+        budget=coordination_budget,
+    )
+    sequences = dict(channel_sequences)
+    sequences.update(coordination_sequences)
+    return channel_merges + coordination_merges, sequences
 
 
 def _motif_occurrences(sequences: dict[str, list[dict[str, Any]]], motif_symbols: set[str]) -> dict[str, list[dict[str, Any]]]:
@@ -864,16 +999,20 @@ def audit_motifs(records: list[dict[str, Any]], merges: list[dict[str, Any]], se
         alias_counter: Counter[str] = Counter()
         base_counter: Counter[str] = Counter()
         examples: list[dict[str, Any]] = []
+        alias_seen_cases: set[str] = set()
         for occ in motif_occs:
             case_id = str(occ["case_id"])
             channel_counter.update(str(item) for item in occ.get("channels") or [])
             geometry_counter.update(str(item) for item in occ.get("geometry_clusters") or [])
             relation_counter.update(str(item) for item in occ.get("relation_types") or [])
             base_counter.update(str(item) for item in occ.get("base_symbols") or [])
-            record = record_map.get(case_id, {})
-            alias_ids = [str(item) for item in record.get("caption_alias_ids") or [] if item]
-            alias_counter.update(alias_ids or ["__NO_CAPTION_ALIAS__"])
+            if case_id not in alias_seen_cases:
+                record = record_map.get(case_id, {})
+                alias_ids = [str(item) for item in record.get("caption_alias_ids") or [] if item]
+                alias_counter.update(alias_ids or ["__NO_CAPTION_ALIAS__"])
+                alias_seen_cases.add(case_id)
             if len(examples) < int(args.examples_per_motif):
+                record = record_map.get(case_id, {})
                 examples.append(
                     {
                         "case_id": case_id,
@@ -1101,14 +1240,27 @@ def _final_vocab(sequences: dict[str, list[dict[str, Any]]]) -> Counter[str]:
     return out
 
 
-def _sequence_token_count(records: list[dict[str, Any]], *, include_relation_view: bool) -> int:
+def _channel_input_token_count(records: list[dict[str, Any]]) -> int:
+    return sum(
+        len(seq)
+        for record in records
+        for seq in (record.get("views", {}).get("channel_sequences") or {}).values()
+    )
+
+
+def _channel_sequence_count(records: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for record in records
+        for seq in (record.get("views", {}).get("channel_sequences") or {}).values()
+        if len(seq) >= 2
+    )
+
+
+def _packet_diagnostic_token_count(records: list[dict[str, Any]]) -> int:
     total = 0
     for record in records:
-        for seq in (record.get("views", {}).get("channel_sequences") or {}).values():
-            total += len(seq)
         total += len(record.get("views", {}).get("packet_sequence") or [])
-        if include_relation_view:
-            total += len(record.get("views", {}).get("relation_sequence") or [])
     return total
 
 
@@ -1126,18 +1278,19 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
     base_vocab = _base_vocab(records)
     packet_vocab = _packet_vocab(records)
     final_vocab = _final_vocab(sequences)
-    original_multiview_tokens = _sequence_token_count(records, include_relation_view=bool(args.include_relation_view))
-    final_token_count = sum(final_vocab.values())
+    channel_input_tokens = _channel_input_token_count(records)
+    packet_diagnostic_tokens = _packet_diagnostic_token_count(records)
+    channel_output_token_count = sum(len(seq) for sequence_id, seq in sequences.items() if "::channel::" in sequence_id)
+    coordination_output_token_count = sum(len(seq) for sequence_id, seq in sequences.items() if sequence_id.endswith("::coactivation"))
+    final_token_count = channel_output_token_count + coordination_output_token_count
     operator_counts = Counter(str(merge.get("operator") or "") for merge in merges)
-    parallel_motif_count = sum(
-        1
-        for merge in merges
-        if str(merge.get("operator") or "") in {"RELATION_SEQUENCE_MERGE", "PACKET_SEQUENCE_MERGE"}
-        or "PAR" in " ".join(str(p) for p in merge.get("parents") or [])
-    )
-    packet_motif_count = sum(1 for merge in merges if "PACKET" in str(merge.get("operator") or ""))
-    relation_view_motif_count = sum(1 for merge in merges if str(merge.get("operator") or "") == "RELATION_SEQUENCE_MERGE")
-    covered_cases = {seq_id.split("::", 1)[0] for seq_id, seq in sequences.items() if any(str(unit.get("symbol") or "").startswith("<MCBPE_") for unit in seq)}
+    channel_motif_count = sum(1 for merge in merges if str(merge.get("operator") or "") == "SEQ_CHANNEL_MERGE")
+    coordination_motif_count = sum(1 for merge in merges if str(merge.get("operator") or "") == "COORDINATION_MERGE")
+    covered_cases = {
+        seq_id.split("::", 1)[0]
+        for seq_id, seq in sequences.items()
+        if any(str(unit.get("symbol") or "").startswith(("<CHM_", "<COM_")) for unit in seq)
+    }
     return {
         "version": "hml3d_multichannel_motion_bpe_v1",
         "source_corpus": str(args.source_corpus),
@@ -1151,31 +1304,33 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         "parallel_packet_count": parallel_packet_count,
         "relation_count": relation_count,
         "relation_type_counts": dict(sorted(relation_type_counts.items())),
-        "original_multiview_token_count": original_multiview_tokens,
+        "channel_sequence_count": _channel_sequence_count(records),
+        "coordination_sequence_count": sum(1 for sequence_id in sequences if sequence_id.endswith("::coactivation")),
+        "channel_input_token_count": channel_input_tokens,
+        "channel_output_token_count": channel_output_token_count,
+        "coordination_output_token_count": coordination_output_token_count,
+        "packet_diagnostic_token_count": packet_diagnostic_tokens,
         "learned_motif_count": len(merges),
         "final_token_count": final_token_count,
         "final_vocab_size": len(final_vocab),
-        "compression_ratio": round(final_token_count / max(1, original_multiview_tokens), 6),
-        "parallel_motif_ratio": round(parallel_motif_count / max(1, len(merges)), 6),
+        "channel_bpe_output_ratio": round(channel_output_token_count / max(1, channel_input_tokens), 6),
+        "all_output_view_ratio": round(final_token_count / max(1, channel_input_tokens), 6),
+        "coordination_motif_ratio": round(coordination_motif_count / max(1, len(merges)), 6),
         "case_coverage": round(len(covered_cases) / max(1, len(records)), 6),
         "covered_case_count": len(covered_cases),
         "base_vocab_size": len(base_vocab),
         "packet_vocab_size": len(packet_vocab),
         "operator_counts": dict(sorted(operator_counts.items())),
-        "packet_motif_count": packet_motif_count,
-        "packet_motif_ratio": round(packet_motif_count / max(1, len(merges)), 6),
-        "parallel_packet_motif_count": parallel_motif_count,
-        "relation_view_motif_count": relation_view_motif_count,
+        "channel_motif_count": channel_motif_count,
+        "coordination_motif_count": coordination_motif_count,
         "num_merges_requested": int(args.num_merges),
+        "channel_merge_ratio": float(args.channel_merge_ratio),
         "min_pair_count": int(args.min_pair_count),
         "min_pair_support": int(args.min_pair_support),
         "selection": str(args.selection),
-        "include_relation_view": bool(args.include_relation_view),
         "parallel_overlap_min": float(args.parallel_overlap_min),
         "lead_lag_gap_max": int(args.lead_lag_gap_max),
         "heavy_corpora_written": bool(args.write_heavy_corpora),
-        "retain_full_relations": bool(args.retain_full_relations),
-        "relations_retained_in_memory": bool(args.include_relation_view or args.retain_full_relations),
     }
 
 
@@ -1188,13 +1343,12 @@ class MotionBpeSelfTest:
             "parallel_overlap_min": 0.30,
             "lead_lag_gap_max": 6,
             "num_merges": 8,
+            "channel_merge_ratio": 0.5,
             "min_pair_count": 1,
             "min_pair_support": 1,
             "selection": "count",
             "examples_per_motif": 4,
-            "include_relation_view": False,
             "write_heavy_corpora": False,
-            "retain_full_relations": False,
             "cache_dir": None,
             "rebuild_cache": False,
         }
@@ -1236,27 +1390,27 @@ class MotionBpeSelfTest:
                 },
                 {
                     "event_index": 2,
-                    "span": [12, 18],
-                    "duration": 7,
-                    "super_family": "LEFT_ARM_PERIODIC",
-                    "part": "left_arm",
-                    "cluster_id": "LA_REPEAT",
-                    "geometry_cluster_id": "LEFT_ARM_PERIODIC/LA_REPEAT",
-                    "direction": "up_down",
-                    "magnitude": 0.20,
+                    "span": [11, 19],
+                    "duration": 9,
+                    "super_family": "BIMANUAL_PERIODIC",
+                    "part": "bimanual",
+                    "cluster_id": "BI_RAISE_SPREAD",
+                    "geometry_cluster_id": "BIMANUAL_PERIODIC/BI_RAISE_SPREAD",
+                    "direction": "up_out",
+                    "magnitude": 0.40,
                     "unit": "m",
                     "count": 2,
                 },
                 {
                     "event_index": 3,
-                    "span": [12, 18],
-                    "duration": 7,
-                    "super_family": "RIGHT_ARM_PERIODIC",
-                    "part": "right_arm",
-                    "cluster_id": "RA_REPEAT",
-                    "geometry_cluster_id": "RIGHT_ARM_PERIODIC/RA_REPEAT",
-                    "direction": "up_down",
-                    "magnitude": 0.20,
+                    "span": [11, 19],
+                    "duration": 9,
+                    "super_family": "WHOLE_BODY_VERTICAL",
+                    "part": "whole_body",
+                    "cluster_id": "WB_VERT_UP",
+                    "geometry_cluster_id": "WHOLE_BODY_VERTICAL/WB_VERT_UP",
+                    "direction": "up",
+                    "magnitude": 0.30,
                     "unit": "m",
                     "count": 2,
                 },
@@ -1267,7 +1421,7 @@ class MotionBpeSelfTest:
         args = self._args()
         record = build_multichannel_record(self._toy_record(), args)
         channels = {str(event["channel"]) for event in record["channel_events"]}
-        required = {"bimanual", "whole_body_vertical", "left_arm", "right_arm"}
+        required = {"bimanual", "whole_body_vertical"}
         assert required.issubset(channels), channels
         vocab = _base_vocab([record])
         assert vocab, "base vocab should not be empty"
@@ -1276,6 +1430,7 @@ class MotionBpeSelfTest:
         records = [record]
         merges, sequences = learn_multichannel_bpe(records, args)
         assert merges, "expected at least one toy BPE merge"
+        assert any(str(merge.get("operator") or "") == "COORDINATION_MERGE" for merge in merges), merges
         motif_rows = audit_motifs(records, merges, sequences, args)
         assert motif_rows, "expected toy motif rows"
         assert all(not any(str(key).endswith("_keywords") for key in row) for row in motif_rows), motif_rows[0]
@@ -1323,7 +1478,7 @@ def write_report(
     lines: list[str] = []
     lines.append("# HML3D Multi-Channel Motion-BPE Audit")
     lines.append("")
-    lines.append("This audit derives channel events and parallel packets from the existing Layer3 event corpus, then learns BPE motifs over per-channel and packet sequences.")
+    lines.append("This audit derives channel events and overlap diagnostics from the existing Layer3 event corpus, learns per-channel temporal motifs first, then promotes frequent cross-channel motif coactivations into coordination motifs.")
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -1366,6 +1521,39 @@ def write_report(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def write_coordination_review(path: Path, motif_rows: list[dict[str, Any]]) -> None:
+    rows = [row for row in motif_rows if str(row.get("operator") or "") == "COORDINATION_MERGE"]
+    lines: list[str] = []
+    lines.append("# Coordination Motif Review")
+    lines.append("")
+    lines.append("Motion-only review table for cross-channel coordination motifs. Caption aliases are diagnostic only.")
+    lines.append("")
+    lines.append(f"- coordination motifs: `{len(rows)}`")
+    lines.append("")
+    for row in rows:
+        lines.append(f"## {row.get('motif_id')}")
+        lines.append("")
+        lines.append(f"- support cases: `{row.get('support_cases')}`")
+        lines.append(f"- occurrences: `{row.get('occurrences')}`")
+        lines.append(f"- top caption alias: `{row.get('top_caption_alias') or ''}`")
+        lines.append(f"- caption alias purity: `{row.get('caption_alias_purity')}`")
+        lines.append(f"- parents: `{row.get('parents')}`")
+        channels = ", ".join(f"{item['id']}:{item['count']}" for item in row.get("channels", [])[:8])
+        geometry = ", ".join(f"{item['id']}:{item['count']}" for item in row.get("top_geometry_clusters", [])[:10])
+        lines.append(f"- channels: {channels}")
+        lines.append(f"- geometry: {geometry}")
+        aliases = ", ".join(f"{item['id']}:{item['count']}" for item in row.get("top_caption_aliases", [])[:6])
+        lines.append(f"- caption aliases: {aliases}")
+        lines.append("")
+        lines.append("| case | span | caption |")
+        lines.append("| --- | --- | --- |")
+        for example in row.get("example_occurrences", [])[:8]:
+            caption = str(example.get("caption") or "").replace("|", "\\|")
+            lines.append(f"| `{example.get('case_id')}` | `{example.get('span')}` | {caption} |")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def output_paths(output_dir: Path, *, write_heavy_corpora: bool) -> dict[str, str]:
     paths = {
         "channel_event_vocab": str(output_dir / "channel_event_vocab.json"),
@@ -1377,6 +1565,7 @@ def output_paths(output_dir: Path, *, write_heavy_corpora: bool) -> dict[str, st
         "motion_pattern_forest_candidates": str(output_dir / "motion_pattern_forest_candidates.json"),
         "summary": str(output_dir / "summary.json"),
         "audit_report": str(output_dir / "audit_report.md"),
+        "coordination_review": str(output_dir / "coordination_review.md"),
     }
     if write_heavy_corpora:
         paths["multi_channel_event_corpus"] = str(output_dir / "multi_channel_event_corpus.jsonl")
@@ -1435,7 +1624,6 @@ def write_multichannel_motion_bpe_outputs(output_dir: Path, result: dict[str, An
                     "channel_events": record.get("channel_events") or [],
                     "relation_count": int(record.get("relation_count") or 0),
                     "relation_type_counts": record.get("relation_type_counts") or {},
-                    "relations": record.get("relations") or [],
                 }
                 for record in records
             ],
@@ -1472,6 +1660,7 @@ def write_multichannel_motion_bpe_outputs(output_dir: Path, result: dict[str, An
     _write_json(output_dir / "motion_pattern_forest_candidates.json", forest_payload)
     _write_json(output_dir / "summary.json", summary)
     write_report(output_dir / "audit_report.md", summary, motif_rows, family_payload, forest_payload)
+    write_coordination_review(output_dir / "coordination_review.md", motif_rows)
     return paths
 
 
@@ -1486,13 +1675,12 @@ def main() -> None:
     parser.add_argument("--parallel-overlap-min", type=float, default=0.30)
     parser.add_argument("--lead-lag-gap-max", type=int, default=6)
     parser.add_argument("--num-merges", type=int, default=256)
+    parser.add_argument("--channel-merge-ratio", type=float, default=0.5, help="Fraction of merge budget used for per-channel sequential motifs before cross-channel coordination mining.")
     parser.add_argument("--min-pair-count", type=int, default=80)
     parser.add_argument("--min-pair-support", type=int, default=40)
     parser.add_argument("--selection", choices=["count", "support"], default="count")
     parser.add_argument("--examples-per-motif", type=int, default=8)
-    parser.add_argument("--include-relation-view", action="store_true")
     parser.add_argument("--write-heavy-corpora", action="store_true", help="Write full event/packet corpora; summaries and vocab are always written.")
-    parser.add_argument("--retain-full-relations", action="store_true", help="Store full pairwise relation records in the heavy event corpus; otherwise only relation counts are retained.")
     args = parser.parse_args()
 
     if args.self_test:

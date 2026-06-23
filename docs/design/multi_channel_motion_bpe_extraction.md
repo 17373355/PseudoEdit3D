@@ -15,8 +15,9 @@ outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/
 
 The first implementation is intentionally symbolic and CPU-oriented. It starts
 from the existing Layer3 event corpus, builds channel events and overlap
-packets, learns BPE over per-channel and packet sequences, and emits motif
-family / forest candidate artifacts. It does not replace the old
+diagnostics, learns channel motifs first, then promotes stable cross-channel
+coactivations into coordination motifs. It emits motif family / forest
+candidate artifacts and does not replace the old
 single-sequence baseline.
 
 The goal is not to create a runtime AML tree immediately. The goal is to
@@ -468,16 +469,40 @@ REL(kick_forward, terminal_still, before_after)
 This view is useful for diagnosing whether a motif is truly parallel,
 sequential, or a weak adjacency artifact.
 
-### Step 7: BPE Operators
+### Step 7: Two-Stage Motion-BPE
 
-The upgraded BPE is no longer only adjacent-pair merge. It has four operators.
+The active BPE path is intentionally simple and hierarchical:
+
+```text
+channel event sequences
+-> Channel-BPE temporal motifs          <CHM_0001>
+-> timeline projection and overlap
+-> raw coactivation units               COACT[channel_a:<CHM_i> + channel_b:<CHM_j>]
+-> structural coordination signatures   COORD_SIG[channel_a:geometry + channel_b:geometry]
+-> Coordination-BPE motifs              <COM_0001>
+```
+
+This order encodes the design choice:
+
+- first learn what a single body channel tends to do over time;
+- only then ask which learned channel motifs repeatedly overlap across
+  different channels;
+- keep text labels out of the merge process.
 
 Implementation note:
 
 ```text
-v1 learns merges on lightweight symbol sequences, then reconstructs structured
-tokens once from the learned merge table.
+v1 learns channel merges on lightweight symbol sequences, reconstructs
+structured channel motif sequences, derives coactivation units from overlapping
+channel motifs, converts them to geometry-level `COORD_SIG[...]` signatures,
+then promotes high-support signatures into coordination motifs.
 ```
+
+The distinction between `COACT[...]` and `COORD_SIG[...]` matters. `COACT`
+preserves the exact member `<CHM_*>` ids for provenance. `COORD_SIG` is the
+counting key used for promotion, based on channel and geometry clusters. This
+prevents the same coordination pattern from fragmenting across many equivalent
+channel-motif ids.
 
 This avoids repeatedly copying event dictionaries during BPE learning. The
 symbolic BPE stage is not a good GPU target because its hot path is JSON/dict
@@ -488,10 +513,10 @@ this audit, useful speedups should come from cached channel-event/packet
 corpora, integer token ids, incremental pair statistics, and optional
 multi-process relation construction.
 
-#### Operator 1: Same-Channel Sequence Merge
+#### Stage 1: Same-Channel Sequence Merge
 
 ```text
-SEQ_MERGE(channel, token_a, token_b)
+SEQ_CHANNEL_MERGE(channel, token_a, token_b) -> <CHM_k>
 ```
 
 Example:
@@ -503,38 +528,39 @@ left_arm/UP -> left_arm/DOWN
 
 Use for repeated or cyclic single-limb motion.
 
-#### Operator 2: Parallel Packet Merge
+#### Stage 2a: Raw Coactivation Unit
 
 ```text
-PAR_MERGE(token_a, token_b, relation=parallel)
+COACT[channel_a:<CHM_i> + channel_b:<CHM_j> + ...]
 ```
 
 Example:
 
 ```text
-bimanual/RAISE_SPREAD + whole_body_vertical/UP
-=> PAR_JUMPING_JACK_UP_SPREAD_CANDIDATE
+bimanual:<CHM_arm_raise_lower_cycle> overlaps whole_body_vertical:<CHM_up_down_cycle>
+=> COACT[bimanual:<CHM_i> + whole_body_vertical:<CHM_j>]
 ```
 
-Use for coordinated multi-body-part motion.
+This is not yet a named pattern. It is a structural observation that two or
+more channel motifs overlap in time.
 
-#### Operator 3: Repetition Merge
+#### Stage 2b: Coordination Merge
 
 ```text
-REP_MERGE(token_or_packet, count_bin)
+COORDINATION_MERGE(COORD_SIG[...]) -> <COM_k>
 ```
 
 Example:
 
 ```text
-PAR[bimanual_raise_spread + vertical_cycle] repeated c4_6
-=> repeated_bilateral_vertical_coordination
+COORD_SIG[bimanual:BIMANUAL_PERIODIC/BI_RAISE_SPREAD + whole_body_vertical:WHOLE_BODY_VERTICAL/WB_VERT_DOWN&WHOLE_BODY_VERTICAL/WB_VERT_UP]
+=> <COM_bilateral_vertical_coordination_candidate>
 ```
 
 Use for jumping-jack-like, running-in-place-like, dance-like, or exercise-like
-patterns.
+patterns when the overlap is frequent enough across cases.
 
-#### Operator 4: Packet Sequence Merge
+#### Deferred Extension: Packet Sequence Merge
 
 ```text
 SEQ_MERGE(packet_a, packet_b)
@@ -547,8 +573,9 @@ PAR[low_body_hold] -> PAR[vertical_up]
 => low_to_stand_transition_candidate
 ```
 
-Use for sit/stand, crouch/release, kick/recover, turn/stop, and similar
-multi-phase motions.
+This is not active in the current script. It is a later extension for
+sit/stand, crouch/release, kick/recover, turn/stop, and similar multi-phase
+motions after the channel/coordination hierarchy is stable.
 
 ### Step 8: Merge Scoring
 
@@ -591,7 +618,8 @@ Run a sweep:
 ```text
 num_merges:       256, 512, 1024, 2048
 min_support:      40, 80, 120
-relation mode:    sequence_only, packet_sequence, full_multichannel
+channel ratio:    0.4, 0.5, 0.7
+overlap min:      0.25, 0.30, 0.40
 token detail:     geometry, geometry_speed, detailed
 ```
 
@@ -600,16 +628,17 @@ For each run, report:
 ```text
 base token types
 base token occurrences
-packet token types
-packet token occurrences
+packet diagnostic token types
+packet diagnostic token occurrences
 merge motif types
 final vocabulary types
-final token occurrences
-compression ratio
+channel input token occurrences
+channel output token occurrences
+channel-BPE output ratio
 case coverage
 motif purity
 average channels per motif
-parallel motif ratio
+coordination motif ratio
 ```
 
 Stop conditions should be evidence-based:
@@ -628,9 +657,9 @@ Motif schema:
 
 ```json
 {
-  "motif_id": "<MCBPE_000512>",
-  "operator": "PAR_MERGE",
-  "parents": ["bimanual/BI_RAISE_SPREAD", "whole_body_vertical/WB_VERT_UP"],
+  "motif_id": "<COM_0007>",
+  "operator": "COORDINATION_MERGE",
+  "parents": ["COACT[bimanual:<CHM_0012>+whole_body_vertical:<CHM_0009>]"],
   "support_cases": 184,
   "occurrences": 231,
   "channels": ["bimanual", "whole_body_vertical"],
@@ -661,10 +690,9 @@ Motif schema:
     "top_caption_alias": "jumping_jack",
     "caption_alias_purity": 0.71
   },
-  "legacy_diagnostics": {
-    "top_old_family": "BILATERAL_RHYTHMIC_COORDINATION",
-    "old_family_purity": 0.68
-  }
+  "top_base_symbols": [
+    {"id": "bimanual/BIMANUAL_PERIODIC/BI_RAISE_SPREAD|...", "count": 184}
+  ]
 }
 ```
 
@@ -721,7 +749,7 @@ Forest node fields:
     "relation": "parallel_or_repeated_parallel",
     "numeric_handles": ["duration", "vertical_magnitude", "arm_spread_amplitude", "cycle_count"]
   },
-  "source_motifs": ["<MCBPE_000512>", "<MCBPE_000733>"],
+  "source_motifs": ["<COM_0007>", "<CHM_0042>"],
   "metrics": {
     "support_cases": 184,
     "case_coverage": 0.0064,
@@ -755,22 +783,24 @@ This makes parallel motion look like ordered adjacency.
 Multi-channel BPE view:
 
 ```text
-packet p1:
-  bimanual: BI_RAISE
-  root_locomotion: LOCO_FORWARD
-  relation: parallel
+bimanual channel motif:
+  <CHM_arm_raise_lower>
+root_locomotion channel motif:
+  <CHM_forward_stride>
+coactivation:
+  COACT[bimanual:<CHM_arm_raise_lower> + root_locomotion:<CHM_forward_stride>]
 ```
 
-The packet can still be followed by another packet:
+The current script can promote repeated coactivation into a coordination motif:
 
 ```text
-PAR[BI_RAISE + LOCO_FORWARD] -> PAR[BI_LOWER + LOCO_FORWARD]
+COACT[...] -> <COM_k>
 ```
 
-This lets the system learn both:
+This lets the system separate:
 
-- the parallel coordination;
-- the temporal sequence of coordinated phases.
+- within-channel temporal words;
+- cross-channel coordination words.
 
 ## Report-Ready Extraction Summary
 
@@ -782,10 +812,11 @@ These observables are segmented into channel-specific motion events with
 span, direction, magnitude, speed, and count. Instead of flattening concurrent
 events into a single sequence, we build an overlap graph and group temporally
 co-active channel events into parallel packets. Motion-BPE then learns
-reusable symbolic units from both per-channel sequences and packet sequences,
-using merge operators for sequential composition, parallel coordination, and
-repetition. The learned motifs induce a motion pattern forest; HumanML3D text
-and WordNet are used only after induction to name and audit the nodes.
+same-channel temporal motifs first. It then projects these motifs back onto
+the timeline and promotes high-support cross-channel coactivations into
+coordination motifs. The learned motifs induce a motion pattern forest;
+HumanML3D text and WordNet are used only after induction to name and audit the
+nodes.
 ```
 
 ## Artifact Plan
@@ -817,6 +848,7 @@ case_multichannel_bpe_sequences.jsonl
 motif_audit.json
 motif_family_candidates.json
 motion_pattern_forest_candidates.json
+coordination_review.md
 summary.json
 audit_report.md
 review_pack/
@@ -828,6 +860,36 @@ The active script is:
 
 ```text
 scripts/audit_hml3d_multichannel_motion_bpe.py
+```
+
+The coordination promotion review script is:
+
+```text
+scripts/promote_coordination_motif_candidates.py
+```
+
+The coordination forest review script is:
+
+```text
+scripts/build_coordination_pattern_forest.py
+```
+
+The text-pseudo-GT pattern audit script is:
+
+```text
+scripts/audit_motion_pattern_pseudo_gt.py
+```
+
+The recall-candidate diagnostic script is:
+
+```text
+scripts/audit_motion_pattern_recall_candidates.py
+```
+
+The generic family-proposal builder is:
+
+```text
+scripts/build_motion_pattern_family_proposals.py
 ```
 
 Main callable functions:
@@ -861,12 +923,14 @@ audit_report.md
 motif_audit.json
 motif_family_candidates.json
 motion_pattern_forest_candidates.json
+coordination_review.md
 ```
 
 The main knobs are:
 
 ```text
 --num-merges          maximum learned motif count
+--channel-merge-ratio fraction of budget reserved for channel motifs before coordination
 --min-pair-count     total pair frequency threshold
 --min-pair-support   distinct-case support threshold
 --parallel-overlap-min
@@ -898,7 +962,215 @@ Motion-BPE remains motion-only. Captions and caption aliases are preserved for
 diagnostic naming and human review, but text keywords are not used to create
 tokens, select merges, or group motif families.
 
-Minimum summary fields:
+## Coordination Promotion Queue
+
+`promote_coordination_motif_candidates.py` converts learned
+`COORDINATION_MERGE` motifs into an offline review queue. It does not modify
+the AML runtime tree.
+
+Inputs:
+
+```text
+motif_audit.json
+```
+
+Outputs:
+
+```text
+coordination_pattern_promotion_candidates.json
+coordination_pattern_promotion_review.md
+summary.json
+```
+
+Default policy:
+
+```text
+promote_named_coordination_candidate:
+  support >= 30
+  caption_alias_purity >= 0.70
+  at least 2 channels
+  at least 2 geometry clusters
+
+review_structural_coordination_candidate:
+  support >= 120
+  at least 2 channels
+
+diagnostic_coordination_motif:
+  everything else
+```
+
+This policy uses caption aliases only as naming diagnostics. The structural
+candidate still comes from channels, geometry clusters, relation profile, and
+the parent `COORD_SIG[...]` signature.
+
+## Coordination Pattern Forest Review
+
+`build_coordination_pattern_forest.py` groups the promotion queue into a small
+offline forest for human inspection. It is still a review artifact, not the
+runtime AML tree.
+
+Inputs:
+
+```text
+coordination_pattern_promotion_candidates.json
+```
+
+Outputs:
+
+```text
+coordination_pattern_forest.json
+coordination_pattern_forest_tree.txt
+coordination_pattern_forest_review.md
+summary.json
+```
+
+The forest has two node levels:
+
+```text
+named_coordination_family / structural_coordination_family
+  -> coordination_motif_leaf
+```
+
+The grouping policy is deliberately simple:
+
+- named promote candidates group by their top diagnostic caption alias;
+- unnamed structural candidates group by required channels plus required
+  geometry clusters;
+- each leaf keeps the source `<COM_*>` motif, support, structural definition,
+  caption diagnostics, and example captions.
+
+Important summary fields:
+
+```text
+family_count
+leaf_count
+node_count
+edge_count
+status_counts
+family_status_counts
+leaf_status_counts
+```
+
+`status_counts` counts both family and leaf nodes, so use
+`family_status_counts` or `leaf_status_counts` when checking how many actual
+motif leaves are ready to promote.
+
+## Text Pseudo-GT Audit Points
+
+Some compact action names in HumanML3D can be used as pseudo-GT audit points
+for a learned motif, without feeding text into Motion-BPE. `jumping_jack` is
+the first such audit point.
+
+Target aliases and regex definitions live in:
+
+```text
+configs/motion_pattern_text_targets.json
+```
+
+Audit scripts read that registry at runtime. Adding `sit_down`, `karate`,
+`ballet`, or `tennis` should be a registry/data change first, not a Python
+motion-rule change.
+
+`audit_motion_pattern_pseudo_gt.py` compares:
+
+```text
+HumanML3D text pseudo-GT positives
+  caption_alias_ids contains target alias
+  OR target regex matches caption_texts
+
+learned motif predictions
+  case contains selected `<COM_*>` motif in case_multichannel_bpe_sequences
+```
+
+The main metric for human review is:
+
+```text
+precision_subset_accuracy = true_positive / predicted_case_count
+```
+
+This answers: among the subset recognized by the learned motif, how many are
+correct according to HumanML3D text pseudo-GT? The audit also reports recall,
+false positives, and false negatives so we can see whether the motif is too
+narrow.
+
+Example command:
+
+```bash
+python scripts/audit_motion_pattern_pseudo_gt.py \
+  --target-alias jumping_jack \
+  --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl \
+  --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/case_multichannel_bpe_sequences.jsonl \
+  --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json \
+  --output-dir outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_loose_v1
+```
+
+After a seed motif is audited, use
+`audit_motion_pattern_recall_candidates.py` to inspect the false negatives. It
+finds coordination symbols that occur in missed pseudo-GT cases, then reports:
+
+```text
+candidate_precision
+union_precision_with_seed
+union_recall_with_seed
+greedy_precision_preserving_expansion
+```
+
+This gives a controlled way to expand a named pattern. For example, current
+`jumping_jack` starts from `<COM_0036>`:
+
+```text
+seed precision: 0.804878
+seed recall:    0.089674
+```
+
+With a precision floor of `0.80`, the greedy expansion reaches:
+
+```text
+expanded precision: 0.800000
+expanded recall:    0.315217
+```
+
+With a stricter precision floor of `0.85`, it reaches:
+
+```text
+expanded precision: 0.864865
+expanded recall:    0.173913
+```
+
+The top missed `jumping_jack` variants are not random. They concentrate around
+vertical up/down plus arm-high posture signatures, sometimes with
+`BIMANUAL_PERIODIC/BI_RAISE_SPREAD`. That means the next improvement should be
+a promotion/naming policy for a family of related coordination signatures, not
+a one-off case rule.
+
+`build_motion_pattern_family_proposals.py` turns this audit pair into a generic
+review-only family proposal:
+
+```text
+pseudo-GT audit
+recall-candidate diagnostic
+optional promotion candidates
+-> pattern_family_proposal.json
+-> pattern_family_proposal.md
+```
+
+The builder is target-agnostic. A target alias such as `jumping_jack` is only an
+input label and pseudo-GT definition; the builder does not contain
+action-specific motion rules. Variants are assigned generic statuses:
+
+```text
+seed_promoted_motif
+promote_family_variant_candidate
+review_family_variant_candidate
+diagnostic_family_variant_candidate
+reject_noisy_variant_candidate
+```
+
+The status policy is based on candidate precision, incremental true positives,
+incremental false positives, and whether the variant is selected by the
+precision-preserving expansion.
+
+Multichannel BPE minimum summary fields:
 
 ```json
 {
@@ -910,10 +1182,13 @@ Minimum summary fields:
   "single_member_packet_count": 0,
   "parallel_packet_count": 0,
   "learned_motif_count": 0,
+  "channel_input_token_count": 0,
+  "channel_output_token_count": 0,
+  "coordination_output_token_count": 0,
   "final_token_count": 0,
   "final_vocab_size": 0,
-  "compression_ratio": 0.0,
-  "parallel_motif_ratio": 0.0,
+  "channel_bpe_output_ratio": 0.0,
+  "coordination_motif_ratio": 0.0,
   "case_coverage": 0.0
 }
 ```

@@ -218,6 +218,45 @@ Takeaway:
 
 ## Current interpretation
 
+### v0 AML pipeline snapshot
+
+Goal:
+
+- treat HumanML3D motion as the motion corpus;
+- build motion-derived structure with multi-channel Motion-BPE;
+- keep language as naming/audit evidence rather than family-generation logic.
+
+Active design doc:
+
+- `docs/design/v0_aml_pipeline.md`
+
+Main scripts:
+
+- `scripts/audit_hml3d_multichannel_motion_bpe.py`
+- `scripts/promote_coordination_motif_candidates.py`
+- `scripts/build_coordination_pattern_forest.py`
+- `scripts/run_motion_pattern_registry_audits.py`
+- `scripts/mine_hml3d_caption_wordnet_name_candidates_v0.py`
+
+Current artifacts:
+
+- Motion-BPE: `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/`
+- Coordination forest: `outputs/aml_regression_testset_v2/coordination_pattern_forest_loose_v1/`
+- Manual target audits: `outputs/aml_regression_testset_v2/manual_text_target_audits_v0/`
+- Caption/WordNet naming: `outputs/aml_regression_testset_v2/hml3d_caption_wordnet_name_candidates_v0/`
+
+Current metrics:
+
+- manual registry audit: 14 targets, 7302 text pseudo-GT cases, 29228 indexed cases, 5736 indexed BPE symbols;
+- caption/WordNet naming: 29228 caption cases, 87372 captions, 12030 retained phrases, 27986 WordNet terms, 164 motion nodes, 1968 node-name candidates;
+- current high-signal manual targets: `jumping_jack`, `cartwheel`, `swim`, and weak `sit`;
+- weak or uncovered under default threshold: `jump_rope`, `stand_up`, `kneel`, `karate_or_martial`, `dance`, `ballet`, `basketball`, `tennis`, `climb`, `duck_under`.
+
+Takeaway:
+
+- v0 is now a full-HML3D offline AML pipeline candidate, not a case-by-case prompt patching loop;
+- many failures are object/environment/intent-heavy labels, which should feed naming and motif refinement rather than immediate runtime rule additions.
+
 - `continue`-only training is useful as a prior but weak as a headline task
 - `semantic continue` shows that adding words is not enough if the prompt still mainly describes posture rather than dynamic motion primitives
 - `atomic realization` is currently the cleaner main direction, but likely needs a shift from posture prompts to dynamic primitive prompts such as `wave`, `swing`, `lift-and-lower`, and `step`
@@ -2743,7 +2782,7 @@ Current conclusion:
     reconstruct structured token sequences once from the learned merge table.
 - Verification:
   - `python -m py_compile scripts/audit_hml3d_multichannel_motion_bpe.py`
-  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_smoke_v5 --max-records 200 --num-merges 32 --min-pair-count 4 --min-pair-support 3`
+  - Historical smoke command, not a retained artifact: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_smoke_v5 --max-records 200 --num-merges 32 --min-pair-count 4 --min-pair-support 3`
   - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/summary.json`
   - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/motif_audit.json`
   - `python -m json.tool outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1/motif_family_candidates.json`
@@ -2771,10 +2810,7 @@ Current conclusion:
   - small cached tuning run:
     - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_v1 --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_cache_v1 --max-records 200 --num-merges 32 --min-pair-count 4 --min-pair-support 3`
 - Debug output:
-  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_v1/summary.json`
-  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_v1/audit_report.md`
-  - cache:
-    - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_debug_clean_cache_v1/`
+  - artifact status: metrics were recorded, then the temporary debug output and cache directories were removed after the full loose run became the retained mainline artifact.
 - Debug summary:
   - records: `200`
   - channel events: `2812`
@@ -2790,3 +2826,348 @@ Current conclusion:
   - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --self-test`
   - searched the script for the removed feedback keyword/action regex terms;
     no hits.
+
+### Two-stage channel-to-coordination Motion-BPE
+
+- Updated:
+  - `scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `docs/design/multi_channel_motion_bpe_extraction.md`
+- Motivation:
+  - replace the previous direct packet-sequence BPE with a clearer body
+    coordination hierarchy;
+  - first learn same-channel temporal motifs, then promote frequently
+    overlapping cross-channel motifs into coordination motifs;
+  - keep overlap packets as diagnostics and cached intermediate data, not as
+    the primary BPE merge stream.
+- Active merge flow:
+  - channel event sequences -> `SEQ_CHANNEL_MERGE` motifs (`<CHM_0001>`, ...);
+  - structured channel motifs are projected back onto the timeline;
+  - overlapping channel motifs keep raw member provenance but are counted by
+    geometry-level `COORD_SIG[...]` structural signatures;
+  - high-support coordination signatures become `COORDINATION_MERGE` motifs
+    (`<COM_0001>`, ...).
+- New / clarified summary fields:
+  - `channel_input_token_count`
+  - `channel_output_token_count`
+  - `coordination_output_token_count`
+  - `channel_bpe_output_ratio`
+  - `all_output_view_ratio`
+  - `coordination_motif_count`
+  - `coordination_motif_ratio`
+- Smoke command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_smoke_v1 --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_smoke_cache_v1 --max-records 200 --num-merges 32 --channel-merge-ratio 0.5 --min-pair-count 4 --min-pair-support 3`
+- Smoke output:
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_smoke_v1/summary.json`
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_smoke_v1/audit_report.md`
+- Smoke summary:
+  - records: `200`
+  - channel events: `2812`
+  - channel input tokens: `2812`
+  - channel output tokens: `2144`
+  - coordination output tokens: `36`
+  - learned motifs: `17`
+  - operator counts: `SEQ_CHANNEL_MERGE=16`, `COORDINATION_MERGE=1`
+  - channel-BPE output ratio: `0.762447`
+  - all-output-view ratio: `0.775249`
+  - covered cases: `100 / 200`
+  - motif families: `13`
+  - forest nodes: `30`
+  - cache status on rerun: `hit`
+- First observed coordination motif:
+  - `<COM_0001>` combines left-leg and right-leg kick-forward channel motifs;
+  - support cases: `7`
+  - occurrences: `9`
+  - interpretation: implementation path is working, but 200 cases and the
+    current support thresholds are too small/conservative to expose rich
+    jumping-jack-like coordination; full-corpus sweeps should be next.
+- Verification:
+  - `python -m py_compile scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --self-test`
+
+### Full-HML3D two-stage coordination Motion-BPE sweeps
+
+- Updated:
+  - `scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `docs/design/multi_channel_motion_bpe_extraction.md`
+- Important implementation fix:
+  - exact `COACT[left_leg:<CHM_i>+right_leg:<CHM_j>]` keys fragmented
+    equivalent coordination patterns across many channel-motif ids;
+  - promotion now counts geometry-level `COORD_SIG[...]` signatures, while
+    raw member `<CHM_*>` ids remain available as provenance in each occurrence.
+- Cached full intermediate records:
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_full_cache_v1/`
+  - record cache size: about `696M`
+  - source records: `29228`
+  - channel events: `393032`
+  - packets: `87058`
+  - parallel packets: `40703`
+- Strict full sweep:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_v1 --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_full_cache_v1 --num-merges 256 --channel-merge-ratio 0.5 --min-pair-count 80 --min-pair-support 40`
+  - artifact status:
+    - metrics were recorded, then the strict output directory was removed because it produced no named promote candidate and the loose full run is the retained mainline artifact.
+  - runtime:
+    - elapsed: `1:32.99`
+    - max RSS: `2882780 KB`
+  - summary:
+    - learned motifs: `142`
+    - operator counts: `SEQ_CHANNEL_MERGE=128`, `COORDINATION_MERGE=14`
+    - channel-BPE output ratio: `0.681202`
+    - all-output-view ratio: `0.71052`
+    - covered cases: `19555 / 29228`
+    - motif families: `58`
+    - forest nodes: `200`
+    - max caption alias purity after case-level fix: `0.6104`
+- Loose diagnostic full sweep:
+  - command:
+    - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1 --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_full_cache_v1 --num-merges 384 --channel-merge-ratio 0.5 --min-pair-count 40 --min-pair-support 20`
+  - output:
+    - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/`
+  - runtime:
+    - elapsed: `2:09.59`
+    - max RSS: `2884524 KB`
+  - summary:
+    - learned motifs: `231`
+    - operator counts: `SEQ_CHANNEL_MERGE=192`, `COORDINATION_MERGE=39`
+    - channel-BPE output ratio: `0.658758`
+    - all-output-view ratio: `0.691895`
+    - case coverage: `0.702238`
+    - motif families: `87`
+    - forest nodes: `318`
+    - max caption alias purity after case-level fix: `0.8049`
+- Key discovered coordination candidate:
+  - motif: `<COM_0036>`
+  - parent signature:
+    `COORD_SIG[whole_body_vertical:WHOLE_BODY_VERTICAL/WB_VERT_DOWN&WHOLE_BODY_VERTICAL/WB_VERT_UP+bimanual:BIMANUAL_PERIODIC/BI_RAISE_SPREAD]`
+  - support cases: `41`
+  - occurrences: `44`
+  - top caption alias: `jumping_jack`
+  - caption alias purity: `0.8049` (`33 / 41` cases)
+  - interpretation: the two-stage channel-to-coordination pipeline can recover
+    a jumping-jack-like structural pattern without case-by-case action rules.
+- New review artifact:
+  - `coordination_review.md` is written for every run;
+  - it lists each `COORDINATION_MERGE` motif with support, geometry, aliases,
+    parent signature, and example captions.
+- Verification:
+  - `python -m py_compile scripts/audit_hml3d_multichannel_motion_bpe.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_hml3d_multichannel_motion_bpe.py --self-test`
+  - `python -m json.tool` checks passed for retained loose full summaries,
+    motif audits, and forest candidates.
+
+
+### Coordination motif promotion queue
+
+- New script:
+  - `scripts/promote_coordination_motif_candidates.py`
+- Purpose:
+  - convert learned `COORDINATION_MERGE` motifs into an offline promotion review queue;
+  - do not modify the AML runtime tree automatically;
+  - keep caption aliases as naming diagnostics, not as structural evidence.
+- Strict comparison:
+  - coordination motifs: `14`
+  - status counts: `review_structural_coordination_candidate=7`, `diagnostic_coordination_motif=7`
+  - named promote candidates: `0`
+  - artifact status: temporary strict promotion output was removed; the retained input is the loose promotion queue below.
+- Loose diagnostic input:
+  - `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/motif_audit.json`
+- Loose diagnostic output:
+  - `outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/`
+- Loose diagnostic summary:
+  - coordination motifs: `39`
+  - status counts: `promote_named_coordination_candidate=1`, `review_structural_coordination_candidate=6`, `diagnostic_coordination_motif=32`
+  - top alias counts: `jumping_jack=1`
+- First promoted named coordination candidate:
+  - `coord_candidate_com_0036` from `<COM_0036>`
+  - structural signature: `COORD_SIG[whole_body_vertical:WHOLE_BODY_VERTICAL/WB_VERT_DOWN&WHOLE_BODY_VERTICAL/WB_VERT_UP+bimanual:BIMANUAL_PERIODIC/BI_RAISE_SPREAD]`
+  - required channels: `bimanual`, `whole_body_vertical`
+  - required geometry: `BIMANUAL_PERIODIC/BI_RAISE_SPREAD`, `WHOLE_BODY_VERTICAL/WB_VERT_DOWN`, `WHOLE_BODY_VERTICAL/WB_VERT_UP`
+  - support cases: `41`
+  - caption alias: `jumping_jack`
+  - caption alias purity: `0.8049`
+- Commands:
+  - Historical strict comparison command, not a retained artifact: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/promote_coordination_motif_candidates.py --motif-audit outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_v1/motif_audit.json --output-dir outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_strict_v1`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/promote_coordination_motif_candidates.py --motif-audit outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/motif_audit.json --output-dir outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/promote_coordination_motif_candidates.py`
+
+### Coordination pattern forest review artifacts
+
+- New script:
+  - `scripts/build_coordination_pattern_forest.py`
+- Purpose:
+  - group the coordination promotion queue into an offline forest for review;
+  - do not modify the AML runtime tree automatically;
+  - separate family-level status counts from leaf-level motif status counts.
+- Strict comparison:
+  - families: `13`
+  - leaves: `14`
+  - nodes: `27`
+  - edges: `14`
+  - family status counts: `review_structural_coordination_candidate=7`, `diagnostic_coordination_motif=6`
+  - leaf status counts: `review_structural_coordination_candidate=7`, `diagnostic_coordination_motif=7`
+  - artifact status: temporary strict forest output was removed; the retained review forest is the loose forest below.
+- Loose diagnostic input:
+  - `outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json`
+- Loose diagnostic output:
+  - `outputs/aml_regression_testset_v2/coordination_pattern_forest_loose_v1/`
+- Loose diagnostic summary:
+  - families: `38`
+  - leaves: `39`
+  - nodes: `77`
+  - edges: `39`
+  - family status counts: `promote_named_coordination_candidate=1`, `review_structural_coordination_candidate=6`, `diagnostic_coordination_motif=31`
+  - leaf status counts: `promote_named_coordination_candidate=1`, `review_structural_coordination_candidate=6`, `diagnostic_coordination_motif=32`
+- Current named promote candidate:
+  - `coord_family_0001` / `<COM_0036>`
+  - display name: `jumping_jack`
+  - support cases: `41`
+  - caption alias purity: `0.8049`
+  - structural signature: `COORD_SIG[whole_body_vertical:WHOLE_BODY_VERTICAL/WB_VERT_DOWN&WHOLE_BODY_VERTICAL/WB_VERT_UP+bimanual:BIMANUAL_PERIODIC/BI_RAISE_SPREAD]`
+- Review files:
+  - review markdown now includes representative HumanML3D captions under each motif leaf;
+  - `outputs/aml_regression_testset_v2/coordination_pattern_forest_loose_v1/coordination_pattern_forest_tree.txt`
+  - `outputs/aml_regression_testset_v2/coordination_pattern_forest_loose_v1/coordination_pattern_forest_review.md`
+- Commands:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_coordination_pattern_forest.py --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json --output-dir outputs/aml_regression_testset_v2/coordination_pattern_forest_loose_v1`
+  - Historical strict comparison command, not a retained artifact: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_coordination_pattern_forest.py --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_strict_v1/coordination_pattern_promotion_candidates.json --output-dir outputs/aml_regression_testset_v2/coordination_pattern_forest_strict_v1`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_coordination_pattern_forest.py`
+
+### Jumping-jack text pseudo-GT audit point
+
+- New script:
+  - `scripts/audit_motion_pattern_pseudo_gt.py`
+- Purpose:
+  - audit a learned motion motif against HumanML3D text pseudo-GT;
+  - use text only for evaluation/naming diagnostics;
+  - do not feed text into Motion-BPE or modify the AML runtime tree.
+- Pseudo-GT definition for `jumping_jack`:
+  - `caption_alias_ids` contains `jumping_jack`, or
+  - caption text matches `jumping jack`, `star jump`, or `starjump` variants.
+- Prediction definition:
+  - a case contains the selected learned motif id in `case_multichannel_bpe_sequences.jsonl`.
+- Loose diagnostic input:
+  - BPE sequences: `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/case_multichannel_bpe_sequences.jsonl`
+  - candidates: `outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json`
+- Loose diagnostic output:
+  - `outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_loose_v1/`
+- Loose diagnostic summary:
+  - selected motif ids: `<COM_0036>`
+  - pseudo-GT cases: `368`
+  - predicted cases: `41`
+  - true positives: `33`
+  - false positives: `8`
+  - false negatives: `335`
+  - precision / subset accuracy: `0.804878`
+  - recall against text pseudo-GT: `0.089674`
+  - f1: `0.161369`
+- Strict diagnostic comparison:
+  - selected motif ids: none
+  - pseudo-GT cases: `368`
+  - predicted cases: `0`
+  - recall: `0.0`
+  - interpretation: strict thresholds are too conservative to expose a named jumping-jack motif.
+  - artifact status: metrics were recorded, then the temporary output directory was removed because this comparison is not used by the generic proposal builder.
+- Important interpretation:
+  - current loose `<COM_0036>` is fairly precise as a recognized subset;
+  - recall is low, so the current motif covers only one clean jumping-jack variant;
+  - next improvement should recover more jumping-jack variants without reducing subset precision too much.
+- Commands:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_motion_pattern_pseudo_gt.py --target-alias jumping_jack --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/case_multichannel_bpe_sequences.jsonl --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json --output-dir outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_loose_v1`
+  - Historical strict comparison command, not a retained artifact: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_motion_pattern_pseudo_gt.py --target-alias jumping_jack --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_v1/case_multichannel_bpe_sequences.jsonl --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_strict_v1/coordination_pattern_promotion_candidates.json --output-dir outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_strict_v1`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/audit_motion_pattern_pseudo_gt.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_motion_pattern_pseudo_gt.py --self-test`
+
+### Jumping-jack recall-candidate diagnostic
+
+- New script:
+  - `scripts/audit_motion_pattern_recall_candidates.py`
+- Purpose:
+  - inspect false negatives from a text pseudo-GT audit;
+  - identify coordination symbols that could improve recall;
+  - simulate precision-preserving expansion without modifying Motion-BPE or the AML runtime tree.
+- Input seed:
+  - `target_alias=jumping_jack`
+  - seed motif: `<COM_0036>`
+  - pseudo-GT cases: `368`
+  - seed predicted cases: `41`
+  - seed true positives: `33`
+  - seed false positives: `8`
+  - seed precision: `0.804878`
+  - seed recall: `0.089674`
+- Output with precision floor `0.80`:
+  - `outputs/aml_regression_testset_v2/jumping_jack_recall_candidates_loose_v1/`
+  - candidate symbols: `19`
+  - greedy selected candidates: `11`
+  - expanded predicted cases: `145`
+  - expanded true positives: `116`
+  - expanded false positives: `29`
+  - expanded precision: `0.800000`
+  - expanded recall: `0.315217`
+- Precision floor `0.85` comparison:
+  - candidate symbols: `19`
+  - greedy selected candidates: `5`
+  - expanded predicted cases: `74`
+  - expanded true positives: `64`
+  - expanded false positives: `10`
+  - expanded precision: `0.864865`
+  - expanded recall: `0.173913`
+  - artifact status: metrics were recorded, then the temporary output directory was removed because the `0.80` audit is the retained input to the generic proposal builder.
+- Top recall candidate under individual ranking:
+  - `COORD_SIG[whole_body_vertical:WHOLE_BODY_VERTICAL/WB_VERT_DOWN&WHOLE_BODY_VERTICAL/WB_VERT_UP+left_arm:LEFT_ARM_POSTURE/LA_HAND_HIGH+right_arm:RIGHT_ARM_POSTURE/RA_HAND_HIGH]`
+  - false-negative hits: `22`
+  - support cases: `24`
+  - candidate precision: `0.916667`
+  - union precision with seed: `0.846154`
+  - union recall with seed: `0.149457`
+- Interpretation:
+  - current `jumping_jack` seed is a clean but narrow variant;
+  - missed variants concentrate around vertical up/down plus arm-high posture signatures;
+  - the next structural step should group related coordination signatures into one named pattern-family proposal, rather than adding a case-specific rule.
+- Commands:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_motion_pattern_recall_candidates.py --target-alias jumping_jack --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/case_multichannel_bpe_sequences.jsonl --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json --precision-floor 0.80 --output-dir outputs/aml_regression_testset_v2/jumping_jack_recall_candidates_loose_v1`
+  - Historical `0.85` comparison command, not a retained artifact: `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_motion_pattern_recall_candidates.py --target-alias jumping_jack --source-corpus outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_coord_sig_full_loose_v1/case_multichannel_bpe_sequences.jsonl --candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json --precision-floor 0.85 --output-dir outputs/aml_regression_testset_v2/jumping_jack_recall_candidates_loose_p085_v1`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/audit_motion_pattern_recall_candidates.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/audit_motion_pattern_recall_candidates.py --self-test`
+
+### Generic motion pattern family proposal builder
+
+- New script:
+  - `scripts/build_motion_pattern_family_proposals.py`
+- Purpose:
+  - build a target-agnostic, review-only family proposal from a pseudo-GT audit and recall-candidate audit;
+  - keep compact action names such as `jumping_jack` as input labels only;
+  - do not hard-code action-specific motion logic;
+  - do not modify the AML runtime tree automatically.
+- Input for this smoke test:
+  - target alias: `jumping_jack`
+  - pseudo-GT audit: `outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_loose_v1/pattern_pseudo_gt_audit.json`
+  - recall candidates: `outputs/aml_regression_testset_v2/jumping_jack_recall_candidates_loose_v1/recall_candidate_symbols.json`
+  - promotion candidates: `outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json`
+- Output:
+  - `outputs/aml_regression_testset_v2/pattern_family_proposals_v1/jumping_jack/`
+- Summary:
+  - proposal id: `pattern_family_jumping_jack`
+  - variants: `20`
+  - seed variants: `1`
+  - recall candidates: `19`
+  - status counts: `seed_promoted_motif=1`, `promote_family_variant_candidate=5`, `review_family_variant_candidate=6`, `reject_noisy_variant_candidate=8`
+  - recommended family precision: `0.8`
+  - recommended family recall: `0.315217`
+- Review entry points:
+  - `outputs/aml_regression_testset_v2/pattern_family_proposals_v1/jumping_jack/pattern_family_proposal.md`
+  - `outputs/aml_regression_testset_v2/pattern_family_proposals_v1/jumping_jack/pattern_family_proposal.json`
+  - `outputs/aml_regression_testset_v2/pattern_family_proposals_v1/jumping_jack/summary.json`
+- Cleanup:
+  - removed temporary comparison output `outputs/aml_regression_testset_v2/jumping_jack_recall_candidates_loose_p085_v1/`;
+  - removed temporary strict comparison output `outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_strict_v1/`;
+  - kept `jumping_jack_recall_candidates_loose_v1/` because the family proposal uses it as an input audit artifact;
+  - kept `jumping_jack_pseudo_gt_audit_loose_v1/` because it is the pseudo-GT audit source.
+- Command:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_motion_pattern_family_proposals.py --target-alias jumping_jack --pseudo-gt-audit outputs/aml_regression_testset_v2/jumping_jack_pseudo_gt_audit_loose_v1/pattern_pseudo_gt_audit.json --recall-candidates outputs/aml_regression_testset_v2/jumping_jack_recall_candidates_loose_v1/recall_candidate_symbols.json --promotion-candidates outputs/aml_regression_testset_v2/coordination_pattern_promotion_candidates_loose_v1/coordination_pattern_promotion_candidates.json --output-dir outputs/aml_regression_testset_v2/pattern_family_proposals_v1`
+- Verification:
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python -m py_compile scripts/build_motion_pattern_family_proposals.py`
+  - `/mnt/data/home/guoruoxi/miniconda3/envs/h2char/bin/python scripts/build_motion_pattern_family_proposals.py --self-test`

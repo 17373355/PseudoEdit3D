@@ -47,14 +47,15 @@ Reason:
 - should no longer define AML semantics
 - same-case HumanML3D text must not be used to generate AML labels
 
-## Candidate Legacy: Earlier Pattern-Repair Batch Workflow
+## Moved Legacy: Earlier Pattern-Repair Batch Workflow
 
-Move to `legacy/auto_prompt_pattern_batches/` once no active script imports them:
+Moved to `legacy/auto_prompt_pattern_batches/` on 2026-06-16 after confirming
+no active script imports them:
 
-- `scripts/build_hml3d_pattern_batch.py`
-- `scripts/analyze_hml3d_pattern_batch.py`
-- `scripts/report_hml3d_batch_sizes.py`
-- `scripts/mine_hml3d_missing_patterns.py`
+- `legacy/auto_prompt_pattern_batches/scripts/build_hml3d_pattern_batch.py`
+- `legacy/auto_prompt_pattern_batches/scripts/analyze_hml3d_pattern_batch.py`
+- `legacy/auto_prompt_pattern_batches/scripts/report_hml3d_batch_sizes.py`
+- `legacy/auto_prompt_pattern_batches/scripts/mine_hml3d_missing_patterns.py`
 - `docs/humanml3d_pattern_iteration_plan.md`
 - `docs/hml3d_experiment_pipeline.md`
 - `docs/experiments/regression_check_protocol.md`
@@ -96,6 +97,18 @@ Reason:
 - `pseudoedit3d/edit/iterative.py` was only imported by `scripts/iterate_mined_pairs.py`
 - the loop belongs to the old mined-pair Stage 1 scaffold, not the current AML coarse action path
 - current unknown-family / approximate-slot work lives in `pseudoedit3d/edit/coarse_signature.py` and `scripts/analyze_aml_semantic_family_status.py`
+
+## Moved Legacy: Hard-Coded Text Phrase Mining Probe
+
+Moved to `legacy/text_phrase_mining/` on 2026-06-23:
+
+- `legacy/text_phrase_mining/scripts/mine_hml3d_upperbody_phrases.py`
+
+Reason:
+
+- this script used a Python-local hard-coded word-family list for earlier upper-body phrase mining;
+- current Motion-BPE mainline separates text pseudo-GT target definitions into `configs/motion_pattern_text_targets.json`;
+- generic audit scripts consume those target definitions only for evaluation/naming diagnostics, not for Motion-BPE merge learning or runtime AML rules.
 
 ## Candidate Legacy: Old Hierarchical Atomic Training Scaffold
 

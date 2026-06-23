@@ -1,0 +1,107 @@
+{
+  "schema_version": "motion_pattern_text_target_registry_v1",
+  "purpose": "Text-derived pseudo-GT target aliases for motion-pattern audits. This file is used only for evaluation and naming diagnostics, not for Motion-BPE merge learning or runtime AML rules.",
+  "targets": [
+    {
+      "id": "jumping_jack",
+      "display_name": "jumping jack",
+      "regex": "\\bjumping\\s+jacks?\\b|\\bstar\\s*jumps?\\b|\\bstarjumps?\\b",
+      "sources": [
+        "HumanML3D caption text",
+        "caption_alias_ids"
+      ],
+      "notes": "Smoke-test target for evaluating whether learned coordination motifs recover a compact named exercise pattern."
+    },
+    {
+      "id": "jump_rope",
+      "display_name": "jump rope",
+      "regex": "\\bjump\\s+rope\\b|\\bskipping\\s+rope\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "sit",
+      "display_name": "sit or sit down",
+      "regex": "\\bsits?\\s+down\\b|\\bsitting\\b|\\bsat\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "stand_up",
+      "display_name": "stand up",
+      "regex": "\\bstands?\\s+(back\\s+)?up\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "kneel",
+      "display_name": "kneel",
+      "regex": "\\bkneels?\\b|\\bknees\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "karate_or_martial",
+      "display_name": "karate or martial art",
+      "regex": "\\bkarate\\b|\\bmartial\\b|\\bfighting\\b|\\bpunch",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "dance",
+      "display_name": "dance",
+      "regex": "\\bdanc",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "ballet",
+      "display_name": "ballet",
+      "regex": "\\bballet\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "cartwheel",
+      "display_name": "cartwheel or inverted acrobatics",
+      "regex": "\\bcartwheel|\\bhandstand|\\bflip\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "basketball",
+      "display_name": "basketball",
+      "regex": "\\bbasketball\\b|\\bdribbl",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "tennis",
+      "display_name": "tennis",
+      "regex": "\\btennis\\b",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "swim",
+      "display_name": "swim",
+      "regex": "\\bswimm",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "climb",
+      "display_name": "climb",
+      "regex": "\\bclimb",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    },
+    {
+      "id": "duck_under",
+      "display_name": "duck under",
+      "regex": "\\bduck|\\bunder",
+      "sources": ["HumanML3D caption text"],
+      "notes": "Text pseudo-GT target for later motif audit; not a motion rule."
+    }
+  ]
+}
