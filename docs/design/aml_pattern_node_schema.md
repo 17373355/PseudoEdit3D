@@ -385,6 +385,228 @@ python scripts/search_aml_composable_pattern_program_v0.py \
   --max-cases 250
 ```
 
+Promotion audit:
+
+```bash
+python scripts/audit_v1_support_state_promotion_candidates.py
+```
+
+Output:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_promotion_audit_v0/
+```
+
+The audit uses strict target aliases only as diagnostics. It does not use text
+to match motion. Current 250-case result has no new direct promotions: accepted
+cartwheel stays positive, while two sit-down candidates need split review and
+most jumping-jack/swim/martial candidates are too broad.
+
+Split-axis audit:
+
+```bash
+python scripts/audit_v1_support_state_split_axes.py
+```
+
+Schema:
+
+```text
+pseudoedit3d/edit/aml_pattern_split_axes.json
+```
+
+Output:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_split_axis_audit_v0/
+```
+
+Split axes are data-defined motion-evidence schemas. They sit between raw tree
+search and pattern promotion:
+
+```text
+tree-search hit
+  -> split-axis evidence audit
+  -> route to a cleaner structural family or keep pending
+```
+
+The first axis, `body_level_sit_transition_v0`, is intentionally named as the
+motion structure `body_level_low_transition`. It is not a direct `sit_down`
+detector. On the support-state 250-case search output, it accepts 10 candidate
+cases with diagnostic `sit_down` alias precision 0.8 and recall 0.5333. This is
+good enough to separate a low-body transition branch from broad martial/kick or
+generic posture candidates, but not good enough to promote a semantic sit-down
+node.
+
+Rules for using split axes:
+
+- The schema may contain required positive evidence groups, optional support
+  evidence, negative evidence groups, and label-routing rules.
+- Captions and caption aliases are diagnostics only.
+- Torso hunch/recover may support a body-level low transition, but cannot name
+  `sit_down` by itself.
+- A split-axis candidate can become a program-side routing condition or a
+  training-ablation condition only after it is reviewed as a structural family.
+- A named semantic action such as `sit_down` needs an additional naming or
+  support/contact distinction before promotion.
+
+The second axis, `bilateral_spread_vertical_coordination_v0`, audits a
+jumping-jack-like structure without using the `jumping_jack` name as a rule. Its
+evidence groups are mined motion dimensions:
+
+- `upper_spread`: bimanual raise/spread clusters.
+- `bilateral_high_arm_pose`: both hands/arms high.
+- `large_bilateral_arm_arc`: large arm arcs or orbit cycles.
+- `vertical_rhythm`: whole-body vertical up/down or arm-raise-coupled vertical
+  rhythm.
+- `lower_spread`: left/right leg lateral abduct/adduct/out/repeat clusters,
+  plus v5 bilateral stance-width expansion/contraction/repeat clusters.
+
+The default label is `bilateral_upper_spread_vertical_component`. It is a
+component because many cases have clean upper-body plus vertical rhythm but no
+explicit lower-leg lateral evidence. The stricter
+`bilateral_upper_lower_spread_vertical_coordination` label requires
+`upper_spread + vertical_rhythm + lower_spread`.
+
+Mixed-probe audit:
+
+```bash
+python scripts/search_aml_composable_pattern_program_v0.py \
+  --support-state-v1 \
+  --semantic-priority \
+  --case-ids <100 jumping-jack pseudo-GT ids + controls> \
+  --output-dir outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_jumpaxis_probe_v0
+
+python scripts/audit_v1_support_state_split_axes.py \
+  --search-dir outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_jumpaxis_probe_v0 \
+  --output-dir outputs/aml_regression_testset_v2/aml_pattern_split_axis_jumpaxis_probe_audit_v0
+```
+
+Current mixed-probe result:
+
+```text
+cases: 298
+windows: 440
+bilateral spread axis accepted cases: 86
+diagnostic jumping-jack precision: 1.0
+diagnostic jumping-jack recall: 0.86
+accepted windows:
+  bilateral_upper_spread_vertical_component: 117
+  bilateral_upper_lower_spread_vertical_coordination: 16
+```
+
+Interpretation: the upper+vertical component is reliable; the full
+upper+lower+vertical coordination is cleaner but lower-recall. This supports a
+tree branch where the complete action is built from a high-confidence
+upper/vertical component plus optional lower-spread closure, rather than naming
+every upper/vertical hit as `jumping_jack`.
+
+### v5 Stance-Width Sidecar
+
+The v4 lower-spread bottleneck was not a coactivation-window problem. A
+case/window coverage audit showed:
+
+```text
+target jumping-jack cases: 100
+upper_spread: 94
+vertical_rhythm: 95
+lower_spread: 23
+case_has_full_rule: 17
+```
+
+The missing evidence was mostly a micro-event recall issue: single-leg lateral
+events only observe each foot relative to the pelvis, so many cases with clear
+bilateral foot separation did not emit a lower-spread token. v5 adds a
+motion-only `raw_joint_stance_width` sidecar:
+
+```text
+signal: baseline-relative left/right foot separation projected onto the
+        body-lateral axis
+clusters:
+  WHOLE_BODY_STATE/WB_STANCE_WIDTH_WIDE_BRIEF
+  WHOLE_BODY_STATE/WB_STANCE_WIDTH_WIDE_HOLD
+  WHOLE_BODY_STATE/WB_STANCE_WIDTH_EXPAND
+  WHOLE_BODY_STATE/WB_STANCE_WIDTH_CONTRACT
+  WHOLE_BODY_STATE/WB_STANCE_WIDTH_REPEAT
+```
+
+This is not a `jumping_jack` detector. It is a lower-body geometric observable
+that can participate in many future patterns.
+
+Probe command:
+
+```bash
+python scripts/audit_hml3d_multichannel_motion_bpe.py \
+  --observable-refinement v5 \
+  --case-ids <same 298 mixed-probe cases> \
+  --output-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_jumpaxis_probe_v0 \
+  --cache-dir outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_jumpaxis_probe_v0_cache \
+  --rebuild-cache
+
+python scripts/search_aml_composable_pattern_program_v0.py \
+  --support-state-v1 \
+  --semantic-priority \
+  --case-ids <same 298 mixed-probe cases> \
+  --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_jumpaxis_probe_v0/case_multichannel_bpe_sequences.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_jumpaxis_probe_v5_stance_width_v0
+```
+
+v4 -> v5 comparison on the same mixed probe:
+
+```text
+lower_spread case coverage: 23/100 -> 47/100
+case_has_full_rule: 17/100 -> 40/100
+accepted bilateral axis cases: 86 -> 89
+diagnostic precision: 1.0000 -> 0.9888
+diagnostic recall: 0.8600 -> 0.8800
+full-label accepted windows: 16 -> 39
+component-label accepted windows: 117 -> 82
+```
+
+Review interpretation:
+
+- v5 fixes a real lower-body observable gap and should be kept as a geometry
+  sidecar.
+- The full coordination label is still a closure label, not a final named
+  action node.
+- The remaining bottleneck is no longer only lower-spread; some target cases
+  lack upper-spread or vertical-rhythm evidence in the same accepted window.
+- One reviewed non-target candidate remains: a floor/low-body transition with
+  leg-strike and arm-spread evidence. It should be treated as a confound type
+  for future support/contact refinement, not patched with a case rule.
+
+Full-HML3D v5 stance-width artifacts:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/
+outputs/aml_regression_testset_v2/hml3d_composition_pattern_forest_v5_stance_width_full_v0/
+outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_full_v5_stance_width_v0/
+outputs/aml_regression_testset_v2/aml_pattern_split_axis_full_v5_stance_width_coverage_v0/
+outputs/aml_regression_testset_v2/hml3d_v4_v5_stance_width_full_comparison_v0/
+```
+
+Full-HML3D v4 -> v5 comparison:
+
+```text
+channel events: 488601 -> 512857
+channel event types: 2779 -> 2874
+stance-width sidecar events: 0 -> 24256
+coordination motifs: 64 -> 78
+motif families: 92 -> 106
+composition structure groups: 60 -> 75
+
+bilateral-spread axis on 362 jumping-jack text-target cases:
+  lower_spread case coverage: 96 -> 168
+  full upper+lower+vertical case coverage: 78 -> 146
+  full upper+lower+vertical window coverage: 77 -> 145
+```
+
+Interpretation: the full-corpus run confirms the probe conclusion. A large
+part of the missing full jumping-jack-like closure was caused by absent
+bilateral stance-width evidence. v5 increases useful lower-body coverage, but
+the full upper+lower+vertical label remains a reviewed structural closure
+candidate. It should not be promoted directly to the named `jumping_jack`
+action until phase/order and confound audits are reviewed.
+
 ## Dense Candidate Forest
 
 The reviewed v0 tree is intentionally conservative. The broader full-HML3D

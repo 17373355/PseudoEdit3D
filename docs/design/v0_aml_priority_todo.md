@@ -18,7 +18,7 @@ This board shows the full project process from corpus mining to training.
 | --- | --- | --- | --- | --- |
 | G0. Legacy cleanup | keep active scripts readable | `[~] implemented, needs final review` | `docs/design/script_inventory.md`, `legacy/README.md` | confirm no active script imports from `legacy/` |
 | G1. HumanML3D Layer3 corpus | convert full HML3D motion into symbolic event records | `[~] implemented` | `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl` | check whether missing targets need new observables |
-| G2. Multi-channel Motion-BPE | learn channel motifs and cross-channel coordination motifs | `[~] v4 support-state full-HML3D complete` | `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0/` | review full support-state closure candidates before promotion |
+| G2. Multi-channel Motion-BPE | learn channel motifs and cross-channel coordination motifs | `[~] v5 stance-width full-HML3D complete` | `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/` | review phase/confound closure before naming full action nodes |
 | G3. Motion candidate forest | group motion-derived motifs into reviewable family nodes | `[~] support-state v1 draft forest built` | `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_draft/` | visually review `promote_review`, `review_candidate`, and `split_required` families |
 | G4. Manual pseudo-GT audit | test known weak targets without creating rules | `[~] self-reviewed, needs user spot-check` | `outputs/aml_regression_testset_v2/manual_text_target_audits_v0/manual_text_target_self_review.md` | user spot-check `cartwheel`, `sit`, `swim` split decisions |
 | G5. Caption/WordNet naming | attach language names to existing motion nodes | `[~] implemented v0` | `outputs/aml_regression_testset_v2/hml3d_caption_wordnet_name_candidates_v0/` | filter low-quality n-grams and classify phrase types |
@@ -105,6 +105,18 @@ Current weak points:
   `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_full_closure_review_v0/`.
 - Current v1 support-state draft pattern forest is available:
   `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_draft/`.
+- Current split-axis schema is data-driven and lives at:
+  `pseudoedit3d/edit/aml_pattern_split_axes.json`.
+  The first axis is `body_level_sit_transition_v0`, but its promoted family is
+  deliberately `body_level_low_transition`, not `sit_down`. The caption
+  `sit_down` aliases are audit diagnostics only.
+- Full-HML3D v5 stance-width Motion-BPE is the current lower-spread recall
+  checkpoint:
+  `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/`.
+  It adds 24256 stance-width sidecar events and raises full-corpus
+  bilateral-spread-axis full-rule coverage from 78/362 to 146/362 target cases.
+  The comparison report is:
+  `outputs/aml_regression_testset_v2/hml3d_v4_v5_stance_width_full_comparison_v0/report.md`.
 
 ## Layer Contract
 
@@ -495,10 +507,10 @@ later used by the AML condition interface.
     - 250 channel cases.
     - 208 cases with coactivation windows.
     - 296 searched windows.
-    - 2 whole-body accepted-pattern candidate cases.
-    - 111 closure-required composed candidates.
-    - 26 split-required transition candidates.
-    - 3 component-dominant cases.
+    - 2 accepted full-pattern cases.
+    - 111 pending-closure candidate cases.
+    - 26 pending-split candidate cases.
+    - 3 component-hit cases.
     - 108 unmatched/local-only cases.
   - Current 250-case result:
     - 250 channel cases.
@@ -511,6 +523,116 @@ later used by the AML condition interface.
     - 68 diagnostic/ambiguous cases.
     - 58 unmatched/local-only cases.
   - Review check: inspect `search_report.md` and selected review examples.
+
+- [~] Add support-state v1 promotion audit.
+  - Script: `scripts/audit_v1_support_state_promotion_candidates.py`
+  - Artifact:
+    `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_promotion_audit_v0/`
+  - Current result under strict target-alias scoring:
+    - 21 audited nodes.
+    - 1 `keep_positive` accepted full-pattern node.
+    - 2 `split_review` sit/body-level transition nodes.
+    - 5 `keep_pending`.
+    - 11 `split_or_downgrade`.
+    - 2 `keep_component`.
+    - No new direct promotions under strict text-alias diagnostics.
+  - Review check:
+    No new node should be promoted directly from this audit. The next work is
+    to add data-driven split/closure axes, starting with sit-down ordered
+    body-level transitions and jumping-jack upper/lower/vertical closure.
+
+- [~] Add data-driven split-axis audit for broad transition nodes.
+  - Schema: `pseudoedit3d/edit/aml_pattern_split_axes.json`
+  - Script: `scripts/audit_v1_support_state_split_axes.py`
+  - Artifact:
+    `outputs/aml_regression_testset_v2/aml_pattern_split_axis_audit_v0/`
+  - Current 250-case support-state search result:
+    - 296 searched coactivation windows.
+    - 10 accepted `body_level_low_transition` candidate cases.
+    - diagnostic target-alias precision: 0.8.
+    - diagnostic target-alias recall: 0.5333.
+    - 9 `body_level_down_up_cycle_candidate` cases and
+      1 `body_level_descend_to_low_candidate` case.
+  - Review check:
+    This is a split axis, not a direct action name. It can explain why a broad
+    tree hit should be routed toward low-body transition evidence, but it should
+    not promote `sit_down` until a cleaner seat/contact or support relation is
+    available. Torso hunch/recover remains support evidence only.
+
+- [~] Add data-driven closure axis for bilateral spread + vertical rhythm.
+  - Schema axis:
+    `bilateral_spread_vertical_coordination_v0` in
+    `pseudoedit3d/edit/aml_pattern_split_axes.json`
+  - Probe search artifact:
+    `outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_jumpaxis_probe_v0/`
+  - Probe audit artifact:
+    `outputs/aml_regression_testset_v2/aml_pattern_split_axis_jumpaxis_probe_audit_v0/`
+  - Mixed probe composition:
+    100 `jumping_jack` pseudo-GT cases plus cheer/sit/martial/kneel/no-alias
+    controls.
+  - Current probe result:
+    - 298 cases, 440 searched windows.
+    - 133 accepted windows, 86 accepted cases for the bilateral spread axis.
+    - diagnostic `jumping_jack` precision: 1.0.
+    - diagnostic `jumping_jack` recall: 0.86.
+    - 117 accepted windows are `bilateral_upper_spread_vertical_component`.
+    - 16 accepted windows are
+      `bilateral_upper_lower_spread_vertical_coordination`.
+  - v5 stance-width sidecar probe:
+    - Script update:
+      `scripts/audit_hml3d_multichannel_motion_bpe.py`
+    - New observable:
+      `raw_joint_stance_width` under `observable_refinement=v5`.
+    - It emits generic bilateral foot-separation clusters:
+      `WB_STANCE_WIDTH_WIDE_BRIEF`, `WB_STANCE_WIDTH_WIDE_HOLD`,
+      `WB_STANCE_WIDTH_EXPAND`, `WB_STANCE_WIDTH_CONTRACT`,
+      `WB_STANCE_WIDTH_REPEAT`.
+    - BPE artifact:
+      `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_jumpaxis_probe_v0/`
+    - Search artifact:
+      `outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_jumpaxis_probe_v5_stance_width_v0/`
+    - Split-axis audit:
+      `outputs/aml_regression_testset_v2/aml_pattern_split_axis_jumpaxis_probe_v5_stance_width_audit_v0/`
+    - Coverage audit:
+      `outputs/aml_regression_testset_v2/aml_pattern_split_axis_jumpaxis_probe_v5_stance_width_coverage_v0/`
+    - Same 100-target mixed probe:
+      - lower-spread case coverage: 23/100 -> 47/100.
+      - full-rule case coverage: 17/100 -> 40/100.
+      - accepted bilateral axis cases: 86 -> 89.
+      - diagnostic precision: 1.0 -> 0.9888.
+      - diagnostic recall: 0.86 -> 0.88.
+      - full-label accepted windows: 16 -> 39.
+      - component-label accepted windows: 117 -> 82.
+  - Review check:
+    The upper+vertical component is reliable and should enter the component /
+    closure library. The full upper+lower+vertical coordination is cleaner but
+    still not a final named action node. v5 confirms that a meaningful part of
+    the previous recall gap was caused by missing bilateral foot-separation
+    observables, not by the coactivation-window assembler. Do not rename the
+    upper-only component as a complete jumping-jack action. The remaining
+    non-target confound is floor/low-body transition plus leg-strike evidence;
+    handle it later with support/contact refinement instead of a case rule.
+  - Full-HML3D v5 artifact:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/`
+  - Full-HML3D v5 composition forest:
+    `outputs/aml_regression_testset_v2/hml3d_composition_pattern_forest_v5_stance_width_full_v0/`
+  - Full-HML3D v5 search/audit artifacts:
+    `outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_full_v5_stance_width_v0/`
+    and
+    `outputs/aml_regression_testset_v2/aml_pattern_split_axis_full_v5_stance_width_coverage_v0/`
+  - Full-HML3D v4 -> v5 result:
+    - channel events: 488601 -> 512857.
+    - stance-width sidecar events: 0 -> 24256.
+    - coordination motifs: 64 -> 78.
+    - composition structure groups: 60 -> 75.
+    - bilateral-spread axis lower-spread coverage on 362 target cases:
+      96 -> 168.
+    - bilateral-spread full upper+lower+vertical coverage:
+      78 -> 146 target cases.
+  - Review check:
+    v5 should be kept as a generic geometry observable. The next gate is not
+    adding a `jumping_jack` case rule; it is phase-aware closure/confound review
+    so full-action naming happens only after the motion structure is stable.
 
 - [~] Add final case-level condition manifest exporter.
   - Artifact:

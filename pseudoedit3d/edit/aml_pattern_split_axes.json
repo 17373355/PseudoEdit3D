@@ -1,0 +1,294 @@
+{
+  "schema_version": "aml_pattern_split_axes_v0",
+  "runtime_policy": "Split axes are motion-evidence schemas for auditing broad pattern nodes. Captions and aliases may be used only for diagnostics, never as matching evidence.",
+  "axes": [
+    {
+      "axis_id": "body_level_sit_transition_v0",
+      "target_family": "body_level_low_transition",
+      "description": "Separate body-level descend/low-hold/rise transitions from generic low-body, squat, kneel, kick, and upper-body confusers. The resulting node is a split axis for later naming; it is not a direct sit-down detector. A torso hunch is support evidence only; it cannot name a sit transition by itself.",
+      "audit_alias_ids": ["sit_down", "sit_down_stand_up"],
+      "required_groups": ["descend_to_low", "low_posture_state"],
+      "min_score": 0.7,
+      "default_candidate_label": "body_level_descend_to_low_candidate",
+      "label_rules": [
+        {
+          "label": "body_level_down_up_cycle_candidate",
+          "require_any_groups": ["rise_from_low", "low_body_cycle"]
+        }
+      ],
+      "positive_groups": [
+        {
+          "group_id": "descend_to_low",
+          "weight": 0.3,
+          "cluster_ids": [
+            "WB_LEVEL_DESCEND_TO_LOW",
+            "WB_VERT_LOW_BODY_DESCENT"
+          ]
+        },
+        {
+          "group_id": "low_posture_state",
+          "weight": 0.2,
+          "cluster_ids": [
+            "WB_LEVEL_LOW_BRIEF",
+            "WB_LEVEL_LOW_SUSTAINED",
+            "WB_LOW_BODY_DESCENT_HOLD",
+            "WB_LOW_BODY_HOLD",
+            "WB_LOW_BODY_HOLD_LOCO_CONTEXT",
+            "WB_LOW_BODY_DOWN_UP_CYCLE",
+            "WB_SQUAT_HOLD",
+            "WB_SQUAT_HOLD_LOCO_CONTEXT"
+          ]
+        },
+        {
+          "group_id": "strong_low_sustain",
+          "weight": 0.18,
+          "cluster_ids": [
+            "WB_LEVEL_LOW_SUSTAINED",
+            "WB_LOW_BODY_DESCENT_HOLD",
+            "WB_LOW_BODY_HOLD",
+            "WB_LOW_BODY_HOLD_LOCO_CONTEXT"
+          ]
+        },
+        {
+          "group_id": "rise_from_low",
+          "weight": 0.14,
+          "cluster_ids": [
+            "WB_LEVEL_RISE_FROM_LOW",
+            "WB_LOW_BODY_RISE_FROM_LOW",
+            "WB_VERT_LOW_BODY_RISE"
+          ]
+        },
+        {
+          "group_id": "low_body_cycle",
+          "weight": 0.1,
+          "cluster_ids": [
+            "WB_LEVEL_HIGH_LOW_HIGH_CYCLE",
+            "WB_LEVEL_LOW_HIGH_LOW_CYCLE",
+            "WB_LOW_BODY_DOWN_UP_CYCLE"
+          ]
+        },
+        {
+          "group_id": "torso_support",
+          "weight": 0.04,
+          "cluster_ids": [
+            "TORSO_BEND_RECOVER",
+            "TORSO_BEND_RECOVER_LOW_BODY_CONTEXT",
+            "TORSO_HUNCHED_FORWARD",
+            "TORSO_HUNCHED_FORWARD_LOW_BODY_CONTEXT",
+            "TORSO_HUNCHED_FORWARD_SUSTAINED"
+          ]
+        }
+      ],
+      "negative_groups": [
+        {
+          "group_id": "inverted_support_confound",
+          "penalty": 0.45,
+          "hard_block": true,
+          "cluster_ids": [
+            "WB_SUPPORT_INVERTED"
+          ]
+        },
+        {
+          "group_id": "floor_prone_support_confound",
+          "penalty": 0.22,
+          "hard_block": false,
+          "cluster_ids": [
+            "WB_SUPPORT_FLOOR_LOW_HORIZONTAL",
+            "WB_SUPPORT_HAND_FLOOR_LOW"
+          ]
+        },
+        {
+          "group_id": "leg_strike_confound",
+          "penalty": 0.24,
+          "hard_block": false,
+          "cluster_ids": [
+            "LL_KICK_FORWARD",
+            "LL_LEG_FORWARD_KICK_IMPULSE",
+            "RL_KICK_FORWARD",
+            "RL_LEG_FORWARD_KICK_IMPULSE"
+          ]
+        },
+        {
+          "group_id": "climb_or_up_over_confound",
+          "penalty": 0.18,
+          "hard_block": false,
+          "cluster_ids": [
+            "CLIMB_UP_OVER_PROXY"
+          ]
+        },
+        {
+          "group_id": "locomotion_dominant_confound",
+          "penalty": 0.08,
+          "hard_block": false,
+          "cluster_ids": [
+            "LOCO_FORWARD_FAST",
+            "LOCO_FORWARD_MEDIUM",
+            "LOCO_BACKWARD_MEDIUM",
+            "LOCO_PATH_FRAGMENT_FORWARD_FAST",
+            "LOCO_PATH_FRAGMENT_FORWARD_MEDIUM",
+            "LOCO_PATH_FRAGMENT_BACKWARD_MEDIUM",
+            "LOCO_TRANSLATION_BACKWARD_MEDIUM",
+            "LOCO_TRANSLATION_RIGHT_MEDIUM",
+            "ROOT_CIRCULAR_PATH"
+          ]
+        },
+        {
+          "group_id": "large_turn_path_confound",
+          "penalty": 0.08,
+          "hard_block": false,
+          "cluster_ids": [
+            "LOCO_TURN_LEFT_HALF",
+            "LOCO_TURN_LEFT_HALF_MEDIUM_PATH",
+            "LOCO_TURN_RIGHT_FULL",
+            "LOCO_TURN_RIGHT_FULL_MEDIUM_PATH",
+            "WB_ROT_LEFT_HALF",
+            "WB_ROT_LEFT_HALF_MEDIUM_PATH",
+            "WB_ROT_RIGHT_FULL",
+            "WB_ROT_RIGHT_FULL_MEDIUM_PATH"
+          ]
+        }
+      ]
+    },
+    {
+      "axis_id": "bilateral_spread_vertical_coordination_v0",
+      "target_family": "bilateral_spread_vertical_coordination",
+      "description": "Separate a full bilateral spread-jump-like coordination from the very common upper-body raise-spread component. The default output is only an upper+vertical component; the full coordination label requires lower-limb lateral spread evidence as well.",
+      "audit_alias_ids": ["jumping_jack"],
+      "required_groups": ["upper_spread", "vertical_rhythm"],
+      "min_score": 0.64,
+      "default_candidate_label": "bilateral_upper_spread_vertical_component",
+      "label_rules": [
+        {
+          "label": "bilateral_upper_lower_spread_vertical_coordination",
+          "require_all_groups": ["upper_spread", "vertical_rhythm", "lower_spread"]
+        }
+      ],
+      "positive_groups": [
+        {
+          "group_id": "upper_spread",
+          "weight": 0.24,
+          "cluster_ids": [
+            "BI_RAISE_SPREAD",
+            "BI_RAISE_SPREAD_REFINED_GENERIC",
+            "BI_RAISE_SPREAD_VERTICAL_CONTEXT",
+            "BI_RAISE_SPREAD_LOCO_CONTEXT",
+            "BI_SPREAD",
+            "BI_SPREAD_REFINED_GENERIC",
+            "BI_SPREAD_LOW_BODY_CONTEXT"
+          ]
+        },
+        {
+          "group_id": "bilateral_high_arm_pose",
+          "weight": 0.16,
+          "cluster_ids": [
+            "LA_BILATERAL_HIGH_POSE",
+            "LA_BILATERAL_HIGH_POSE_VERTICAL_CONTEXT",
+            "RA_BILATERAL_HIGH_POSE",
+            "RA_BILATERAL_HIGH_POSE_VERTICAL_CONTEXT",
+            "LA_HAND_HIGH",
+            "RA_HAND_HIGH"
+          ]
+        },
+        {
+          "group_id": "large_bilateral_arm_arc",
+          "weight": 0.18,
+          "cluster_ids": [
+            "LA_LARGE_ARM_ARC_NEGATIVE",
+            "LA_LARGE_ARM_ARC_POSITIVE",
+            "RA_LARGE_ARM_ARC_NEGATIVE",
+            "RA_LARGE_ARM_ARC_POSITIVE",
+            "LA_ARM_ORBIT_CYCLE_NEGATIVE",
+            "LA_ARM_ORBIT_CYCLE_POSITIVE",
+            "RA_ARM_ORBIT_CYCLE_NEGATIVE",
+            "RA_ARM_ORBIT_CYCLE_POSITIVE"
+          ]
+        },
+        {
+          "group_id": "vertical_rhythm",
+          "weight": 0.2,
+          "cluster_ids": [
+            "WB_VERT_ARM_RAISE_COUPLED",
+            "WB_VERT_ARM_RAISE_COORDINATED_CYCLE",
+            "WB_VERT_UP",
+            "WB_VERT_DOWN",
+            "WB_VERT_UP_REFINED_GENERIC",
+            "WB_VERT_DOWN_REFINED_GENERIC",
+            "WB_VERT_REP",
+            "WB_VERT_REP_ALT",
+            "WB_VERT_JUMP_UP_IMPULSE"
+          ]
+        },
+        {
+          "group_id": "lower_spread",
+          "weight": 0.18,
+          "cluster_ids": [
+            "LL_LEG_LATERAL_ABDUCT",
+            "LL_LEG_LATERAL_ADDUCT",
+            "LL_LEG_LATERAL_OUT_BRIEF",
+            "LL_LEG_LATERAL_OUT_HOLD",
+            "LL_LEG_LATERAL_REPEAT",
+            "RL_LEG_LATERAL_ABDUCT",
+            "RL_LEG_LATERAL_ADDUCT",
+            "RL_LEG_LATERAL_OUT_BRIEF",
+            "RL_LEG_LATERAL_OUT_HOLD",
+            "RL_LEG_LATERAL_REPEAT",
+            "WB_STANCE_WIDTH_CONTRACT",
+            "WB_STANCE_WIDTH_EXPAND",
+            "WB_STANCE_WIDTH_REPEAT",
+            "WB_STANCE_WIDTH_WIDE_BRIEF",
+            "WB_STANCE_WIDTH_WIDE_HOLD"
+          ]
+        }
+      ],
+      "negative_groups": [
+        {
+          "group_id": "floor_or_inverted_support_confound",
+          "penalty": 0.45,
+          "hard_block": true,
+          "cluster_ids": [
+            "WB_SUPPORT_INVERTED",
+            "WB_SUPPORT_FLOOR_LOW_HORIZONTAL",
+            "WB_SUPPORT_HAND_FLOOR_LOW"
+          ]
+        },
+        {
+          "group_id": "low_body_transition_confound",
+          "penalty": 0.12,
+          "hard_block": false,
+          "cluster_ids": [
+            "WB_LEVEL_DESCEND_TO_LOW",
+            "WB_LEVEL_LOW_SUSTAINED",
+            "WB_LOW_BODY_DOWN_UP_CYCLE",
+            "WB_LOW_BODY_HOLD",
+            "WB_SQUAT_HOLD"
+          ]
+        },
+        {
+          "group_id": "strong_locomotion_confound",
+          "penalty": 0.12,
+          "hard_block": false,
+          "cluster_ids": [
+            "LOCO_FORWARD_FAST",
+            "LOCO_FORWARD_MEDIUM",
+            "LOCO_BACKWARD_MEDIUM",
+            "LOCO_PATH_FRAGMENT_FORWARD_FAST",
+            "LOCO_PATH_FRAGMENT_FORWARD_MEDIUM",
+            "LOCO_TRANSLATION_BACKWARD_MEDIUM",
+            "ROOT_CIRCULAR_PATH"
+          ]
+        },
+        {
+          "group_id": "leg_strike_confound",
+          "penalty": 0.14,
+          "hard_block": false,
+          "cluster_ids": [
+            "LL_KICK_FORWARD",
+            "LL_LEG_FORWARD_KICK_IMPULSE",
+            "RL_KICK_FORWARD",
+            "RL_LEG_FORWARD_KICK_IMPULSE"
+          ]
+        }
+      ]
+    }
+  ]
+}

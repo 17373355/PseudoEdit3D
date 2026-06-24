@@ -36,6 +36,8 @@ Tune these first:
 - --min-pair-support: minimum distinct case support.
 - --parallel-overlap-min: stricter/looser parallel packet grouping.
 - --lead-lag-gap-max: stricter/looser short temporal relation grouping.
+- --observable-refinement v5: v4 sidecars plus bilateral stance-width events.
+- --case-ids: optional comma-separated case filter for focused audits.
 
 Cache note:
 - Changing BPE thresholds reuses --cache-dir.
@@ -93,6 +95,13 @@ def _read_jsonl(path: Path, max_records: int | None = None) -> list[dict[str, An
     return rows
 
 
+def _parse_case_ids_arg(text: str | None) -> set[str] | None:
+    if not text:
+        return None
+    values = {item.strip() for item in str(text).split(",") if item.strip()}
+    return values or None
+
+
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
@@ -126,6 +135,7 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
     arm_reach_sidecar_enabled = _use_arm_reach_sidecar(args)
     hand_proximity_sidecar_enabled = _use_hand_proximity_sidecar(args)
     leg_lateral_sidecar_enabled = _use_leg_lateral_sidecar(args)
+    stance_width_sidecar_enabled = _use_stance_width_sidecar(args)
     body_support_sidecar_enabled = _use_body_support_sidecar(args)
     raw_joint_sidecar_enabled = (
         arm_sidecar_enabled
@@ -133,9 +143,10 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         or arm_reach_sidecar_enabled
         or hand_proximity_sidecar_enabled
         or leg_lateral_sidecar_enabled
+        or stance_width_sidecar_enabled
         or body_support_sidecar_enabled
     )
-    return {
+    config = {
         "source_signature": _source_signature(Path(args.source_corpus)),
         "max_records": args.max_records,
         "parallel_overlap_min": float(args.parallel_overlap_min),
@@ -192,6 +203,22 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         "body_hand_floor_ratio": float(getattr(args, "body_hand_floor_ratio", 0.12)),
         "body_foot_high_ratio": float(getattr(args, "body_foot_high_ratio", 0.75)),
     }
+    if stance_width_sidecar_enabled:
+        config.update(
+            {
+                "stance_width_sidecar": True,
+                "stance_width_threshold": float(getattr(args, "stance_width_threshold", 0.06)),
+                "stance_width_min_run": int(getattr(args, "stance_width_min_run", 4)),
+                "stance_width_hold_min_duration": int(getattr(args, "stance_width_hold_min_duration", 10)),
+                "stance_width_transition_window": int(getattr(args, "stance_width_transition_window", 10)),
+                "stance_width_min_delta": float(getattr(args, "stance_width_min_delta", 0.045)),
+                "stance_width_merge_gap": int(getattr(args, "stance_width_merge_gap", 4)),
+            }
+        )
+    case_ids = _parse_case_ids_arg(getattr(args, "case_ids", ""))
+    if case_ids:
+        config["case_ids"] = sorted(case_ids)
+    return config
 
 
 def _cache_matches(metadata: dict[str, Any], args: argparse.Namespace) -> bool:
@@ -203,37 +230,43 @@ def _cache_matches(metadata: dict[str, Any], args: argparse.Namespace) -> bool:
 def _use_arm_trajectory_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_arm_trajectory_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4", "v5"}
 
 
 def _use_body_level_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_body_level_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4", "v5"}
 
 
 def _use_arm_reach_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_arm_reach_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4", "v5"}
 
 
 def _use_hand_proximity_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_hand_proximity_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4", "v5"}
 
 
 def _use_leg_lateral_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_leg_lateral_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4", "v5"}
+
+
+def _use_stance_width_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_stance_width_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v5"
 
 
 def _use_body_support_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_body_support_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) == "v4"
+    return str(getattr(args, "observable_refinement", "v1")) in {"v4", "v5"}
 
 
 def _load_hml3d_joints_pack(hml3d_root: Path) -> dict[str, Any]:
@@ -274,6 +307,12 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         for event in (record.get("channel_events") or [])
         if "raw_joint_leg_lateral" in set(event.get("observable_refinement_tags") or [])
     )
+    stance_width_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_stance_width" in set(event.get("observable_refinement_tags") or [])
+    )
     body_support_sidecar_event_count = sum(
         1
         for record in records
@@ -298,6 +337,7 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "arm_reach_sidecar_event_count": arm_reach_sidecar_event_count,
         "hand_proximity_sidecar_event_count": hand_proximity_sidecar_event_count,
         "leg_lateral_sidecar_event_count": leg_lateral_sidecar_event_count,
+        "stance_width_sidecar_event_count": stance_width_sidecar_event_count,
         "body_level_sidecar_event_count": body_sidecar_event_count,
         "body_support_sidecar_event_count": body_support_sidecar_event_count,
         "packet_count": packet_count,
@@ -324,7 +364,12 @@ def _load_or_build_multichannel_records(args: argparse.Namespace) -> tuple[list[
                     "metadata": str(paths["metadata"]),
                 }
 
-    source_records = _read_jsonl(source_path, max_records=args.max_records)
+    case_ids = _parse_case_ids_arg(getattr(args, "case_ids", ""))
+    source_records = _read_jsonl(source_path, max_records=None if case_ids else args.max_records)
+    if case_ids:
+        source_records = [record for record in source_records if str(record.get("case_id") or "") in case_ids]
+        if args.max_records is not None:
+            source_records = source_records[: int(args.max_records)]
     joints_pack = (
         _load_hml3d_joints_pack(Path(args.hml3d_root))
         if (
@@ -332,6 +377,7 @@ def _load_or_build_multichannel_records(args: argparse.Namespace) -> tuple[list[
             or _use_arm_reach_sidecar(args)
             or _use_hand_proximity_sidecar(args)
             or _use_leg_lateral_sidecar(args)
+            or _use_stance_width_sidecar(args)
             or _use_body_level_sidecar(args)
             or _use_body_support_sidecar(args)
         )
@@ -1048,7 +1094,7 @@ def _refine_bimanual_event(event: dict[str, Any], all_events: list[dict[str, Any
 def refine_events_for_motion_bpe(events: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
     if mode == "v1":
         return events
-    if mode not in {"v2", "v3", "v4"}:
+    if mode not in {"v2", "v3", "v4", "v5"}:
         raise ValueError(f"unsupported observable refinement mode: {mode}")
     refined: list[dict[str, Any]] = []
     for event in events:
@@ -1938,6 +1984,193 @@ def _build_leg_lateral_sidecar_events(
     return rows
 
 
+def _stance_width_signal(joints: np.ndarray) -> np.ndarray:
+    left_foot = (joints[:, 7] + joints[:, 10]) * 0.5
+    right_foot = (joints[:, 8] + joints[:, 11]) * 0.5
+    lateral_axis = _body_lateral_axes(joints)
+    raw_width = np.abs(np.einsum("ij,ij->i", right_foot - left_foot, lateral_axis))
+    smoothed = _smooth_signal(raw_width.astype(np.float32), window=5)
+    baseline = float(np.percentile(smoothed, 20))
+    return np.maximum(smoothed - baseline, 0.0).astype(np.float32)
+
+
+def _stance_width_event(
+    *,
+    start_event_index: int,
+    cluster: str,
+    direction: str,
+    role: str,
+    span: list[int],
+    magnitude: float,
+    optional_semantic_name: str,
+    signature: dict[str, Any],
+    tags: list[str],
+    count: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "event_index": start_event_index,
+        "token": "",
+        "geometry_cluster_id": f"WHOLE_BODY_STATE/{cluster}",
+        "part": "whole_body",
+        "super_family": "WHOLE_BODY_STATE",
+        "cluster_id": cluster,
+        "direction": direction,
+        "role": role,
+        "span": [int(span[0]), int(span[1])],
+        "duration": int(span[1]) - int(span[0]) + 1,
+        "magnitude": round(abs(float(magnitude)), 4),
+        "unit": "m",
+        "count": count,
+        "optional_semantic_name": optional_semantic_name,
+        "motion_signature": signature,
+        "observable_refinement_tags": ["raw_joint_stance_width", "stance_width_sidecar", *tags],
+    }
+
+
+def _stance_width_events_from_signal(
+    signal: np.ndarray,
+    runs: list[list[int]],
+    args: argparse.Namespace,
+    start_event_index: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    window = int(args.stance_width_transition_window)
+    min_delta = float(args.stance_width_min_delta)
+    hold_min = int(args.stance_width_hold_min_duration)
+    for run in runs:
+        run_start, run_end = [int(item) for item in run]
+        local = signal[run_start : run_end + 1]
+        if local.size == 0:
+            continue
+        peak = float(local.max())
+        cluster = "WB_STANCE_WIDTH_WIDE_HOLD" if run_end - run_start + 1 >= hold_min else "WB_STANCE_WIDTH_WIDE_BRIEF"
+        rows.append(
+            _stance_width_event(
+                start_event_index=start_event_index + len(rows),
+                cluster=cluster,
+                direction="wide",
+                role="state",
+                span=[run_start, run_end],
+                magnitude=peak,
+                optional_semantic_name="wide_stance_width",
+                signature={
+                    "dominant_axis": "bilateral_foot_separation_body_lateral",
+                    "repeat_mode": "state",
+                    "phase_template": cluster.lower(),
+                    "context_mode": "raw_joint_stance_width_sidecar",
+                    "tempo_bucket": "medium",
+                    "coupled_with_locomotion": False,
+                    "peak_width_delta_m": round(peak, 4),
+                },
+                tags=["stance_width_state"],
+            )
+        )
+        before_start = max(0, run_start - window)
+        if run_start > before_start:
+            before_value = float(signal[before_start:run_start].min())
+            delta = peak - before_value
+            if delta >= min_delta:
+                rows.append(
+                    _stance_width_event(
+                        start_event_index=start_event_index + len(rows),
+                        cluster="WB_STANCE_WIDTH_EXPAND",
+                        direction="outward",
+                        role="transition",
+                        span=[before_start, run_start],
+                        magnitude=delta,
+                        optional_semantic_name="stance_width_expand",
+                        signature={
+                            "dominant_axis": "bilateral_foot_separation_body_lateral",
+                            "repeat_mode": "transition",
+                            "phase_template": "stance_width_expand",
+                            "context_mode": "raw_joint_stance_width_sidecar",
+                            "tempo_bucket": "medium",
+                            "coupled_with_locomotion": False,
+                            "start_width_delta_m": round(before_value, 4),
+                            "peak_width_delta_m": round(peak, 4),
+                        },
+                        tags=["stance_width_expand"],
+                    )
+                )
+        after_end = min(signal.size - 1, run_end + window)
+        if after_end > run_end:
+            after_value = float(signal[run_end + 1 : after_end + 1].min())
+            delta = peak - after_value
+            if delta >= min_delta:
+                rows.append(
+                    _stance_width_event(
+                        start_event_index=start_event_index + len(rows),
+                        cluster="WB_STANCE_WIDTH_CONTRACT",
+                        direction="inward",
+                        role="transition",
+                        span=[run_end, after_end],
+                        magnitude=delta,
+                        optional_semantic_name="stance_width_contract",
+                        signature={
+                            "dominant_axis": "bilateral_foot_separation_body_lateral",
+                            "repeat_mode": "transition",
+                            "phase_template": "stance_width_contract",
+                            "context_mode": "raw_joint_stance_width_sidecar",
+                            "tempo_bucket": "medium",
+                            "coupled_with_locomotion": False,
+                            "peak_width_delta_m": round(peak, 4),
+                            "end_width_delta_m": round(after_value, 4),
+                        },
+                        tags=["stance_width_contract"],
+                    )
+                )
+    return rows
+
+
+def _build_stance_width_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    signal = _stance_width_signal(joints)
+    min_delta = float(args.stance_width_min_delta)
+    if float(np.percentile(signal, 90) - np.percentile(signal, 10)) < min_delta:
+        return []
+    runs = _runs_from_mask(signal >= float(args.stance_width_threshold), min_run=int(args.stance_width_min_run))
+    runs = _merge_frame_spans([(int(start), int(end)) for start, end in runs], gap=int(args.stance_width_merge_gap))
+    if not runs:
+        return []
+    rows: list[dict[str, Any]] = []
+    if len(runs) >= 2:
+        span = [int(runs[0][0]), int(runs[-1][1])]
+        local = signal[span[0] : span[1] + 1]
+        rows.append(
+            _stance_width_event(
+                start_event_index=len(events),
+                cluster="WB_STANCE_WIDTH_REPEAT",
+                direction="out_in_repeated",
+                role="composed",
+                span=span,
+                magnitude=float(local.max()),
+                optional_semantic_name="repeated_stance_width_change",
+                signature={
+                    "dominant_axis": "bilateral_foot_separation_body_lateral",
+                    "repeat_mode": "repeated_width_change",
+                    "phase_template": "stance_width_repeat",
+                    "context_mode": "raw_joint_stance_width_sidecar",
+                    "tempo_bucket": "medium",
+                    "coupled_with_locomotion": False,
+                    "count": len(runs),
+                    "peak_width_delta_m": round(float(local.max()), 4),
+                    "range_width_delta_m": round(float(np.percentile(signal, 90) - np.percentile(signal, 10)), 4),
+                },
+                tags=["stance_width_repeated"],
+                count=len(runs),
+            )
+        )
+        return rows
+    return _stance_width_events_from_signal(signal, runs, args, start_event_index=len(events))
+
+
 def _runs_from_mask(mask: np.ndarray, min_run: int) -> list[list[int]]:
     indices = np.where(mask)[0]
     if indices.size == 0:
@@ -2295,6 +2528,8 @@ def build_channel_events(
         source_events = source_events + _build_hand_proximity_sidecar_events(record, source_events, args, joints_pack)
     if args is not None and _use_leg_lateral_sidecar(args):
         source_events = source_events + _build_leg_lateral_sidecar_events(record, source_events, args, joints_pack)
+    if args is not None and _use_stance_width_sidecar(args):
+        source_events = source_events + _build_stance_width_sidecar_events(record, source_events, args, joints_pack)
     if args is not None and _use_body_level_sidecar(args):
         source_events = source_events + _build_body_level_sidecar_events(record, source_events, args, joints_pack)
     if args is not None and _use_body_support_sidecar(args):
@@ -2738,6 +2973,7 @@ COORDINATION_SEED_TAGS = {
     "raw_joint_reach",
     "raw_joint_hand_proximity",
     "raw_joint_leg_lateral",
+    "raw_joint_stance_width",
     "raw_joint_body_level",
     "raw_joint_body_support",
 }
@@ -2757,6 +2993,7 @@ COORDINATION_SEED_CLUSTER_HINTS = {
     "HAND_APPROACH_HEAD",
     "HAND_LEAVE_HEAD",
     "LEG_LATERAL",
+    "STANCE_WIDTH",
     "LOW_BODY",
     "SQUAT",
     "WB_LEVEL",
@@ -2824,6 +3061,14 @@ def _coordination_role(unit: dict[str, Any]) -> str:
         if _contains_any(all_geometry, {"LEG_LATERAL_ABDUCT"}):
             return "leg_lateral_abduct"
         return "leg_lateral"
+    if "raw_joint_stance_width" in tags or _contains_any(all_geometry, {"STANCE_WIDTH"}):
+        if _contains_any(all_geometry, {"STANCE_WIDTH_REPEAT"}):
+            return "stance_width_repeat"
+        if _contains_any(all_geometry, {"STANCE_WIDTH_EXPAND"}):
+            return "stance_width_expand"
+        if _contains_any(all_geometry, {"STANCE_WIDTH_CONTRACT"}):
+            return "stance_width_contract"
+        return "stance_width_wide"
     if "raw_joint_trajectory" in tags or _contains_any(all_geometry, {"ARM_ORBIT", "LARGE_ARM_ARC"}):
         if _contains_any(all_geometry, {"ARM_ORBIT"}):
             return "arm_orbit_cycle"
@@ -2871,9 +3116,9 @@ def _coordination_role(unit: dict[str, Any]) -> str:
 
 def _coordination_role_priority(unit: dict[str, Any]) -> float:
     role = _coordination_role(unit)
-    if role in {"arm_orbit_cycle", "arm_large_arc", "bilateral_arm_vertical_cycle", "leg_lateral_repeat", "body_level_cycle", "inverted_support", "floor_low_horizontal_support"}:
+    if role in {"arm_orbit_cycle", "arm_large_arc", "bilateral_arm_vertical_cycle", "leg_lateral_repeat", "stance_width_repeat", "body_level_cycle", "inverted_support", "floor_low_horizontal_support"}:
         return 4.0
-    if role in {"hand_near_head_repeat", "hand_approach_head", "hand_leave_head", "leg_forward_impulse", "vertical_impulse", "low_body_cycle", "hand_floor_low_support"}:
+    if role in {"hand_near_head_repeat", "hand_approach_head", "hand_leave_head", "leg_forward_impulse", "vertical_impulse", "low_body_cycle", "hand_floor_low_support", "stance_width_expand", "stance_width_contract"}:
         return 3.0
     if role in {"hand_near_head", "arm_reach", "arm_retract", "leg_forward_hold", "body_level_down", "body_level_up", "low_body_posture"}:
         return 2.0
@@ -3068,6 +3313,7 @@ def _coordination_structure_features(
     arm_reach = "raw_joint_reach" in tags or any("ARM_REACH" in item or "ARM_RETRACT" in item for item in geometry)
     hand_proximity = "raw_joint_hand_proximity" in tags or any("HAND_NEAR_HEAD" in item or "HAND_APPROACH_HEAD" in item or "HAND_LEAVE_HEAD" in item for item in geometry)
     leg_lateral = "raw_joint_leg_lateral" in tags or any("LEG_LATERAL" in item for item in geometry)
+    stance_width = "raw_joint_stance_width" in tags or any("STANCE_WIDTH" in item for item in geometry)
     body_level = "raw_joint_body_level" in tags or any("WB_LEVEL" in item for item in geometry)
     body_support = "raw_joint_body_support" in tags or any("WB_SUPPORT" in item for item in geometry)
     inverted_support = any("WB_SUPPORT_INVERTED" in item for item in geometry)
@@ -3104,6 +3350,10 @@ def _coordination_structure_features(
         score += 1.25
     if leg_lateral and has_vertical:
         score += 0.90
+    if stance_width and has_upper:
+        score += 1.25
+    if stance_width and has_vertical:
+        score += 1.05
     if body_level and has_upper:
         score += 0.90
     if body_support:
@@ -3142,6 +3392,7 @@ def _coordination_structure_features(
         "arm_reach": arm_reach,
         "hand_proximity": hand_proximity,
         "leg_lateral": leg_lateral,
+        "stance_width": stance_width,
         "body_level": body_level,
         "body_support": body_support,
         "inverted_support": inverted_support,
@@ -3652,6 +3903,12 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         for event in (record.get("channel_events") or [])
         if "raw_joint_leg_lateral" in set(event.get("observable_refinement_tags") or [])
     )
+    stance_width_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_stance_width" in set(event.get("observable_refinement_tags") or [])
+    )
     body_support_sidecar_event_count = sum(
         1
         for record in records
@@ -3694,6 +3951,7 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         "arm_reach_sidecar_event_count": arm_reach_sidecar_event_count,
         "hand_proximity_sidecar_event_count": hand_proximity_sidecar_event_count,
         "leg_lateral_sidecar_event_count": leg_lateral_sidecar_event_count,
+        "stance_width_sidecar_event_count": stance_width_sidecar_event_count,
         "body_level_sidecar_event_count": body_level_sidecar_event_count,
         "body_support_sidecar_event_count": body_support_sidecar_event_count,
         "channel_event_type_count": len(base_vocab),
@@ -3741,6 +3999,7 @@ class MotionBpeSelfTest:
             "source_corpus": "",
             "output_dir": "",
             "max_records": None,
+            "case_ids": "",
             "parallel_overlap_min": 0.30,
             "lead_lag_gap_max": 6,
             "num_merges": 8,
@@ -3789,6 +4048,13 @@ class MotionBpeSelfTest:
             "leg_lateral_transition_window": 10,
             "leg_lateral_min_delta": 0.12,
             "leg_lateral_merge_gap": 4,
+            "disable_stance_width_sidecar": False,
+            "stance_width_threshold": 0.06,
+            "stance_width_min_run": 4,
+            "stance_width_hold_min_duration": 10,
+            "stance_width_transition_window": 10,
+            "stance_width_min_delta": 0.045,
+            "stance_width_merge_gap": 4,
             "disable_body_level_sidecar": False,
             "body_low_threshold": 0.52,
             "body_high_threshold": 0.58,
@@ -4129,9 +4395,10 @@ def main() -> None:
     parser.add_argument("--cache-dir", default=None, help="Optional cache directory for built multi-channel records; BPE thresholds can then be tuned without rescanning Layer3 events.")
     parser.add_argument("--rebuild-cache", action="store_true", help="Ignore an existing multi-channel record cache and rebuild it.")
     parser.add_argument("--max-records", type=int, default=None)
+    parser.add_argument("--case-ids", default="", help="Optional comma-separated case ids to scan before applying --max-records.")
     parser.add_argument("--parallel-overlap-min", type=float, default=0.30)
     parser.add_argument("--lead-lag-gap-max", type=int, default=6)
-    parser.add_argument("--observable-refinement", choices=["v1", "v2", "v3", "v4"], default="v1", help="Refine coarse Layer3 geometry labels for Motion-BPE tokenization without modifying the source corpus. v4 adds raw-joint whole-body support sidecar events.")
+    parser.add_argument("--observable-refinement", choices=["v1", "v2", "v3", "v4", "v5"], default="v1", help="Refine coarse Layer3 geometry labels for Motion-BPE tokenization without modifying the source corpus. v5 adds raw-joint stance-width sidecar events.")
     parser.add_argument("--hml3d-root", default=str(DEFAULT_HML3D_ROOT), help="HumanML3D root used by raw-joint sidecar events.")
     parser.add_argument("--disable-arm-trajectory-sidecar", action="store_true", help="Disable v3 raw-joint arm trajectory sidecar events.")
     parser.add_argument("--arm-span-gap", type=int, default=6, help="Merge same-side arm source spans separated by at most this many frames before trajectory scoring.")
@@ -4166,6 +4433,13 @@ def main() -> None:
     parser.add_argument("--leg-lateral-transition-window", type=int, default=10, help="Frames before/after leg-out state used to emit abduct/adduct transitions.")
     parser.add_argument("--leg-lateral-min-delta", type=float, default=0.12, help="Minimum lateral displacement change for leg abduct/adduct transitions.")
     parser.add_argument("--leg-lateral-merge-gap", type=int, default=4, help="Merge leg-lateral runs separated by at most this many frames.")
+    parser.add_argument("--disable-stance-width-sidecar", action="store_true", help="Disable v5 raw-joint bilateral stance-width sidecar events.")
+    parser.add_argument("--stance-width-threshold", type=float, default=0.06, help="Minimum baseline-relative bilateral foot separation for wide-stance state.")
+    parser.add_argument("--stance-width-min-run", type=int, default=4, help="Minimum consecutive frames for a wide-stance state.")
+    parser.add_argument("--stance-width-hold-min-duration", type=int, default=10, help="Minimum duration for a sustained wide-stance hold.")
+    parser.add_argument("--stance-width-transition-window", type=int, default=10, help="Frames before/after wide-stance state used to emit expand/contract transitions.")
+    parser.add_argument("--stance-width-min-delta", type=float, default=0.045, help="Minimum bilateral foot-separation change for stance-width events.")
+    parser.add_argument("--stance-width-merge-gap", type=int, default=4, help="Merge wide-stance runs separated by at most this many frames.")
     parser.add_argument("--disable-body-level-sidecar", action="store_true", help="Disable v3 raw-joint body-level sidecar events.")
     parser.add_argument("--body-low-threshold", type=float, default=0.52, help="Normalized pelvis-height threshold for low body-level state.")
     parser.add_argument("--body-high-threshold", type=float, default=0.58, help="Normalized pelvis-height threshold for high stand-like body-level state.")

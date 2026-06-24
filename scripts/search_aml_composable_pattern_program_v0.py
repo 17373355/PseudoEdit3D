@@ -163,14 +163,19 @@ def classify_case(windows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     levels = Counter(str(hit.get("semantic_level") or "") for hit in best_hits)
     scopes = Counter(str(hit.get("edit_scope") or "") for hit in best_hits)
-    if levels.get("whole_body_pattern", 0) >= 1 or levels.get("whole_body_pattern_candidate", 0) >= 1:
-        pattern_type = "whole_body_or_full_composition_candidate"
-    elif levels.get("multi_part_coordination", 0) >= 1 or levels.get("closure_required_candidate", 0) >= 1:
-        pattern_type = "composed_multi_part_pattern"
-    elif levels.get("transition", 0) >= 1 or levels.get("split_required_candidate", 0) >= 1:
-        pattern_type = "transition_pattern"
+    statuses = Counter(str(hit.get("review_status") or "") for hit in best_hits)
+    if statuses.get("accepted", 0) >= 1 or levels.get("whole_body_pattern", 0) >= 1:
+        pattern_type = "accepted_full_pattern"
+    elif levels.get("closure_required_candidate", 0) >= 1:
+        pattern_type = "pending_closure_candidate"
+    elif levels.get("split_required_candidate", 0) >= 1:
+        pattern_type = "pending_split_candidate"
+    elif levels.get("whole_body_pattern_candidate", 0) >= 1 or levels.get("multi_part_coordination", 0) >= 1:
+        pattern_type = "unreviewed_full_or_composed_candidate"
+    elif levels.get("transition", 0) >= 1:
+        pattern_type = "transition_candidate"
     elif levels.get("component", 0) >= 1 or levels.get("local_component", 0) >= 1:
-        pattern_type = "component_dominant"
+        pattern_type = "component_hit"
     else:
         pattern_type = "diagnostic_or_ambiguous"
     priority = {
@@ -195,6 +200,7 @@ def classify_case(windows: list[dict[str, Any]]) -> dict[str, Any]:
         "case_pattern_type": pattern_type,
         "best_window_count": len(best_hits),
         "semantic_level_counts": dict(sorted(levels.items())),
+        "review_status_counts": dict(sorted(statuses.items())),
         "edit_scope_counts": dict(sorted(scopes.items())),
         "best_hit": best_hit,
     }
@@ -375,7 +381,7 @@ def run_self_test() -> None:
     }
     rows = search_case_windows(case_id="case", coactivation_units=[unit], program=program, top_k=3, min_score=0.2)
     assert rows[0]["hits"]
-    assert classify_case(rows)["case_pattern_type"] == "composed_multi_part_pattern"
+    assert classify_case(rows)["case_pattern_type"] == "unreviewed_full_or_composed_candidate"
     with tempfile.TemporaryDirectory() as tmp:
         write_outputs(Path(tmp), {"summary": {"case_count": 1, "window_count": 1}, "cases": [], "windows": rows})
     print(json.dumps({"ok": True}, ensure_ascii=True, indent=2))
