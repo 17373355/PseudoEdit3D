@@ -55,6 +55,19 @@ DEFAULT_BPE_SEQUENCES = Path(
     "outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_composition_score_full/case_multichannel_bpe_sequences.jsonl"
 )
 DEFAULT_OUTPUT_DIR = Path("outputs/aml_regression_testset_v2/aml_composable_pattern_program_search_v0")
+DEFAULT_SUPPORT_STATE_PROGRAM_JSON = Path(
+    "outputs/aml_regression_testset_v2/"
+    "aml_composable_pattern_program_v1_support_state_reviewed_draft/"
+    "aml_composable_pattern_program.json"
+)
+DEFAULT_SUPPORT_STATE_BPE_SEQUENCES = Path(
+    "outputs/aml_regression_testset_v2/"
+    "hml3d_multichannel_motion_bpe_v4_support_state_full_v0/"
+    "case_multichannel_bpe_sequences.jsonl"
+)
+DEFAULT_SUPPORT_STATE_OUTPUT_DIR = Path(
+    "outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_v0"
+)
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -111,6 +124,8 @@ def search_case_windows(
     program: dict[str, Any],
     top_k: int,
     min_score: float,
+    semantic_priority: bool = False,
+    node_kinds: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for idx, unit in enumerate(coactivation_units, start=1):
@@ -123,6 +138,8 @@ def search_case_windows(
             event_families=evidence["event_families"],
             top_k=top_k,
             min_score=min_score,
+            semantic_priority=semantic_priority,
+            node_kinds=node_kinds,
         )
         rows.append(
             {
@@ -146,19 +163,22 @@ def classify_case(windows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     levels = Counter(str(hit.get("semantic_level") or "") for hit in best_hits)
     scopes = Counter(str(hit.get("edit_scope") or "") for hit in best_hits)
-    if levels.get("whole_body_pattern_candidate", 0) >= 1:
+    if levels.get("whole_body_pattern", 0) >= 1 or levels.get("whole_body_pattern_candidate", 0) >= 1:
         pattern_type = "whole_body_or_full_composition_candidate"
-    elif levels.get("multi_part_coordination", 0) >= 1:
+    elif levels.get("multi_part_coordination", 0) >= 1 or levels.get("closure_required_candidate", 0) >= 1:
         pattern_type = "composed_multi_part_pattern"
-    elif levels.get("transition", 0) >= 1:
+    elif levels.get("transition", 0) >= 1 or levels.get("split_required_candidate", 0) >= 1:
         pattern_type = "transition_pattern"
     elif levels.get("component", 0) >= 1 or levels.get("local_component", 0) >= 1:
         pattern_type = "component_dominant"
     else:
         pattern_type = "diagnostic_or_ambiguous"
     priority = {
+        "whole_body_pattern": 6,
         "whole_body_pattern_candidate": 5,
+        "closure_required_candidate": 5,
         "multi_part_coordination": 4,
+        "split_required_candidate": 3,
         "transition": 3,
         "component": 2,
         "local_component": 2,
@@ -193,6 +213,14 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         }
     coactivations = build_all_unit_coactivations(channel_sequences, parallel_overlap_min=float(args.parallel_overlap_min))
     program = load_composable_pattern_program(Path(args.program_json))
+    available_kinds = {
+        str(node.get("program_node_kind") or "")
+        for node in program.get("nodes") or []
+        if node.get("match_signature")
+    }
+    node_kinds = [kind for kind in ["pattern_family", "composition_family", "structure_group"] if kind in available_kinds]
+    if not node_kinds:
+        node_kinds = None
 
     case_windows: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for sequence_id, units in coactivations.items():
@@ -211,6 +239,8 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
             program=program,
             top_k=int(args.top_k),
             min_score=float(args.min_score),
+            semantic_priority=bool(args.semantic_priority),
+            node_kinds=node_kinds,
         )
         window_rows.extend(windows)
         text = case_text.get(case_id, {})
@@ -246,6 +276,8 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
             "bpe_sequences": str(args.bpe_sequences),
             "parallel_overlap_min": float(args.parallel_overlap_min),
             "min_score": float(args.min_score),
+            "semantic_priority": bool(args.semantic_priority),
+            "node_kinds": node_kinds or [],
         },
         "summary": {
             "case_count": len(case_rows),
@@ -264,7 +296,9 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
 def write_report(path: Path, payload: dict[str, Any], *, max_cases: int = 40) -> None:
     lines = ["# AML Composable Pattern Program Search v0", ""]
     summary = payload.get("summary") or {}
+    inputs = payload.get("inputs") or {}
     lines.append(f"cases={summary.get('case_count')} windows={summary.get('window_count')}")
+    lines.append(f"semantic_priority={inputs.get('semantic_priority')} node_kinds={inputs.get('node_kinds')}")
     lines.append("")
     lines.append("## Case Pattern Types")
     for key, value in (summary.get("case_pattern_type_counts") or {}).items():
@@ -359,8 +393,22 @@ def main() -> None:
     parser.add_argument("--min-score", type=float, default=0.2)
     parser.add_argument("--top-k", type=int, default=8)
     parser.add_argument("--case-top-windows", type=int, default=4)
+    parser.add_argument("--semantic-priority", action="store_true")
+    parser.add_argument(
+        "--support-state-v1",
+        action="store_true",
+        help="Use the reviewed support-state v1 program and matching v4 support-state BPE sequence defaults.",
+    )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+
+    if args.support_state_v1:
+        if args.program_json == str(DEFAULT_PROGRAM_JSON):
+            args.program_json = str(DEFAULT_SUPPORT_STATE_PROGRAM_JSON)
+        if args.bpe_sequences == str(DEFAULT_BPE_SEQUENCES):
+            args.bpe_sequences = str(DEFAULT_SUPPORT_STATE_BPE_SEQUENCES)
+        if args.output_dir == str(DEFAULT_OUTPUT_DIR):
+            args.output_dir = str(DEFAULT_SUPPORT_STATE_OUTPUT_DIR)
 
     if args.self_test:
         run_self_test()

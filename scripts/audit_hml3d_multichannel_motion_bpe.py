@@ -59,7 +59,7 @@ import numpy as np
 DEFAULT_SOURCE_CORPUS = Path("outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl")
 DEFAULT_OUTPUT_DIR = Path("outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v1")
 DEFAULT_HML3D_ROOT = Path("/mnt/data/home/guoruoxi/code/momask-codes/dataset/HumanML3D")
-CACHE_SCHEMA_VERSION = "hml3d_multichannel_record_cache_v4_micro_event_sidecars"
+CACHE_SCHEMA_VERSION = "hml3d_multichannel_record_cache_v5_support_sidecars"
 
 CHANNEL_ORDER = [
     "root_locomotion",
@@ -73,6 +73,7 @@ CHANNEL_ORDER = [
     "left_leg",
     "right_leg",
     "acrobatics_or_inversion",
+    "whole_body_support",
     "other",
 ]
 
@@ -125,12 +126,14 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
     arm_reach_sidecar_enabled = _use_arm_reach_sidecar(args)
     hand_proximity_sidecar_enabled = _use_hand_proximity_sidecar(args)
     leg_lateral_sidecar_enabled = _use_leg_lateral_sidecar(args)
+    body_support_sidecar_enabled = _use_body_support_sidecar(args)
     raw_joint_sidecar_enabled = (
         arm_sidecar_enabled
         or body_sidecar_enabled
         or arm_reach_sidecar_enabled
         or hand_proximity_sidecar_enabled
         or leg_lateral_sidecar_enabled
+        or body_support_sidecar_enabled
     )
     return {
         "source_signature": _source_signature(Path(args.source_corpus)),
@@ -143,6 +146,7 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         "hand_proximity_sidecar": hand_proximity_sidecar_enabled,
         "leg_lateral_sidecar": leg_lateral_sidecar_enabled,
         "body_level_sidecar": body_sidecar_enabled,
+        "body_support_sidecar": body_support_sidecar_enabled,
         "hml3d_joints3d": str(Path(getattr(args, "hml3d_root", DEFAULT_HML3D_ROOT)) / "joints3d.pth") if raw_joint_sidecar_enabled else "",
         "arm_span_gap": int(getattr(args, "arm_span_gap", 6)),
         "arm_span_pad": int(getattr(args, "arm_span_pad", 3)),
@@ -180,6 +184,13 @@ def _cache_config(args: argparse.Namespace) -> dict[str, Any]:
         "body_high_state_min_duration": int(getattr(args, "body_high_state_min_duration", 8)),
         "body_transition_max_gap": int(getattr(args, "body_transition_max_gap", 40)),
         "body_emit_high_state": bool(getattr(args, "body_emit_high_state", False)),
+        "body_support_min_run": int(getattr(args, "body_support_min_run", 6)),
+        "body_support_merge_gap": int(getattr(args, "body_support_merge_gap", 4)),
+        "body_prone_height_ratio": float(getattr(args, "body_prone_height_ratio", 0.34)),
+        "body_horizontal_axis_threshold": float(getattr(args, "body_horizontal_axis_threshold", 0.58)),
+        "body_inverted_head_margin": float(getattr(args, "body_inverted_head_margin", 0.10)),
+        "body_hand_floor_ratio": float(getattr(args, "body_hand_floor_ratio", 0.12)),
+        "body_foot_high_ratio": float(getattr(args, "body_foot_high_ratio", 0.75)),
     }
 
 
@@ -192,31 +203,37 @@ def _cache_matches(metadata: dict[str, Any], args: argparse.Namespace) -> bool:
 def _use_arm_trajectory_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_arm_trajectory_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
 
 
 def _use_body_level_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_body_level_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
 
 
 def _use_arm_reach_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_arm_reach_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
 
 
 def _use_hand_proximity_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_hand_proximity_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
 
 
 def _use_leg_lateral_sidecar(args: argparse.Namespace) -> bool:
     if bool(getattr(args, "disable_leg_lateral_sidecar", False)):
         return False
-    return str(getattr(args, "observable_refinement", "v1")) == "v3"
+    return str(getattr(args, "observable_refinement", "v1")) in {"v3", "v4"}
+
+
+def _use_body_support_sidecar(args: argparse.Namespace) -> bool:
+    if bool(getattr(args, "disable_body_support_sidecar", False)):
+        return False
+    return str(getattr(args, "observable_refinement", "v1")) == "v4"
 
 
 def _load_hml3d_joints_pack(hml3d_root: Path) -> dict[str, Any]:
@@ -257,6 +274,12 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         for event in (record.get("channel_events") or [])
         if "raw_joint_leg_lateral" in set(event.get("observable_refinement_tags") or [])
     )
+    body_support_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_body_support" in set(event.get("observable_refinement_tags") or [])
+    )
     packet_count = sum(len(record.get("packets") or []) for record in records)
     parallel_packet_count = sum(
         1
@@ -276,6 +299,7 @@ def _cache_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "hand_proximity_sidecar_event_count": hand_proximity_sidecar_event_count,
         "leg_lateral_sidecar_event_count": leg_lateral_sidecar_event_count,
         "body_level_sidecar_event_count": body_sidecar_event_count,
+        "body_support_sidecar_event_count": body_support_sidecar_event_count,
         "packet_count": packet_count,
         "parallel_packet_count": parallel_packet_count,
         "relation_count": sum(int(record.get("relation_count") or 0) for record in records),
@@ -309,6 +333,7 @@ def _load_or_build_multichannel_records(args: argparse.Namespace) -> tuple[list[
             or _use_hand_proximity_sidecar(args)
             or _use_leg_lateral_sidecar(args)
             or _use_body_level_sidecar(args)
+            or _use_body_support_sidecar(args)
         )
         else None
     )
@@ -435,6 +460,8 @@ def _channel_for_event(event: dict[str, Any]) -> str:
         return "whole_body_vertical"
     if super_family in {"WHOLE_BODY_POSTURE", "WHOLE_BODY_STATE", "WHOLE_BODY_LEVEL"}:
         return "whole_body_state"
+    if super_family == "WHOLE_BODY_SUPPORT":
+        return "whole_body_support"
     if super_family.startswith("TORSO_") or part == "torso":
         return "torso"
     if super_family.startswith("LEFT_ARM_") or part == "left_arm":
@@ -1021,7 +1048,7 @@ def _refine_bimanual_event(event: dict[str, Any], all_events: list[dict[str, Any
 def refine_events_for_motion_bpe(events: list[dict[str, Any]], mode: str) -> list[dict[str, Any]]:
     if mode == "v1":
         return events
-    if mode not in {"v2", "v3"}:
+    if mode not in {"v2", "v3", "v4"}:
         raise ValueError(f"unsupported observable refinement mode: {mode}")
     refined: list[dict[str, Any]] = []
     for event in events:
@@ -2095,6 +2122,161 @@ def _build_body_level_sidecar_events(
     )
 
 
+def _body_support_scale(joints: np.ndarray) -> float:
+    torso = (
+        np.linalg.norm(joints[:, 0] - joints[:, 3], axis=1)
+        + np.linalg.norm(joints[:, 3] - joints[:, 6], axis=1)
+        + np.linalg.norm(joints[:, 6] - joints[:, 9], axis=1)
+        + np.linalg.norm(joints[:, 9] - joints[:, 12], axis=1)
+        + np.linalg.norm(joints[:, 12] - joints[:, 15], axis=1)
+    )
+    left_leg = np.linalg.norm(joints[:, 1] - joints[:, 4], axis=1) + np.linalg.norm(joints[:, 4] - joints[:, 7], axis=1)
+    right_leg = np.linalg.norm(joints[:, 2] - joints[:, 5], axis=1) + np.linalg.norm(joints[:, 5] - joints[:, 8], axis=1)
+    scale = torso + 0.5 * (left_leg + right_leg)
+    finite = scale[np.isfinite(scale) & (scale > 1e-4)]
+    if finite.size == 0:
+        return 1.0
+    return max(0.25, float(np.median(finite)))
+
+
+def _body_support_signals(joints: np.ndarray) -> dict[str, np.ndarray]:
+    pelvis = joints[:, 0]
+    head = joints[:, 15]
+    left_shoulder = joints[:, 16]
+    right_shoulder = joints[:, 17]
+    left_hip = joints[:, 1]
+    right_hip = joints[:, 2]
+    left_wrist = joints[:, 20]
+    right_wrist = joints[:, 21]
+    left_foot = (joints[:, 7] + joints[:, 10]) * 0.5
+    right_foot = (joints[:, 8] + joints[:, 11]) * 0.5
+    feet = np.stack([left_foot, right_foot], axis=1)
+    wrists = np.stack([left_wrist, right_wrist], axis=1)
+    support_floor_y = np.min(np.concatenate([feet[:, :, 1], wrists[:, :, 1]], axis=1), axis=1)
+    body_scale = _body_support_scale(joints)
+    torso_axis = ((left_shoulder + right_shoulder) * 0.5) - ((left_hip + right_hip) * 0.5)
+    torso_norm = np.linalg.norm(torso_axis, axis=1)
+    vertical_component = np.abs(torso_axis[:, 1]) / np.maximum(torso_norm, 1e-6)
+    hand_floor_ratio = (np.min(wrists[:, :, 1], axis=1) - support_floor_y) / body_scale
+    foot_high_ratio = (np.max(feet[:, :, 1], axis=1) - support_floor_y) / body_scale
+    pelvis_level = (pelvis[:, 1] - support_floor_y) / body_scale
+    head_level = (head[:, 1] - support_floor_y) / body_scale
+    head_minus_pelvis = (head[:, 1] - pelvis[:, 1]) / body_scale
+    return {
+        "vertical_component": _smooth_signal(vertical_component.astype(np.float32), window=5),
+        "hand_floor_ratio": _smooth_signal(hand_floor_ratio.astype(np.float32), window=5),
+        "foot_high_ratio": _smooth_signal(foot_high_ratio.astype(np.float32), window=5),
+        "pelvis_level": _smooth_signal(pelvis_level.astype(np.float32), window=5),
+        "head_level": _smooth_signal(head_level.astype(np.float32), window=5),
+        "head_minus_pelvis": _smooth_signal(head_minus_pelvis.astype(np.float32), window=5),
+    }
+
+
+def _body_support_event(
+    *,
+    start_event_index: int,
+    cluster: str,
+    direction: str,
+    role: str,
+    span: list[int],
+    magnitude: float,
+    optional_semantic_name: str,
+    signature: dict[str, Any],
+    tags: list[str],
+) -> dict[str, Any]:
+    return {
+        "event_index": start_event_index,
+        "token": "",
+        "geometry_cluster_id": f"WHOLE_BODY_SUPPORT/{cluster}",
+        "part": "whole_body",
+        "super_family": "WHOLE_BODY_SUPPORT",
+        "cluster_id": cluster,
+        "direction": direction,
+        "role": role,
+        "span": [int(span[0]), int(span[1])],
+        "duration": int(span[1]) - int(span[0]) + 1,
+        "magnitude": round(abs(float(magnitude)), 4),
+        "unit": "ratio",
+        "count": None,
+        "optional_semantic_name": optional_semantic_name,
+        "motion_signature": signature,
+        "observable_refinement_tags": ["raw_joint_body_support", "body_support_sidecar", *tags],
+    }
+
+
+def _body_support_runs(signals: dict[str, np.ndarray], args: argparse.Namespace) -> dict[str, list[list[int]]]:
+    min_run = int(args.body_support_min_run)
+    merge_gap = int(args.body_support_merge_gap)
+    horizontal = signals["vertical_component"] <= float(args.body_horizontal_axis_threshold)
+    low_pelvis = signals["pelvis_level"] <= float(args.body_prone_height_ratio)
+    hand_floor = signals["hand_floor_ratio"] <= float(args.body_hand_floor_ratio)
+    foot_high = signals["foot_high_ratio"] >= float(args.body_foot_high_ratio)
+    inverted = hand_floor & foot_high
+    floor_low_horizontal = horizontal & low_pelvis & hand_floor & ~inverted
+    hand_floor_low = hand_floor & low_pelvis & ~floor_low_horizontal & ~inverted
+    return {
+        "inverted_support": _merge_frame_spans([(int(a), int(b)) for a, b in _runs_from_mask(inverted, min_run=min_run)], gap=merge_gap),
+        "floor_low_horizontal_support": _merge_frame_spans([(int(a), int(b)) for a, b in _runs_from_mask(floor_low_horizontal, min_run=min_run)], gap=merge_gap),
+        "hand_floor_low_support": _merge_frame_spans([(int(a), int(b)) for a, b in _runs_from_mask(hand_floor_low, min_run=min_run)], gap=merge_gap),
+    }
+
+
+def _build_body_support_sidecar_events(
+    record: dict[str, Any],
+    events: list[dict[str, Any]],
+    args: argparse.Namespace,
+    joints_pack: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    joints = _joints_for_case(joints_pack, str(record.get("case_id") or ""))
+    if joints is None:
+        return []
+    signals = _body_support_signals(joints)
+    runs_by_kind = _body_support_runs(signals, args)
+    specs = {
+        "inverted_support": ("WB_SUPPORT_INVERTED", "inverted", "inverted_support"),
+        "floor_low_horizontal_support": ("WB_SUPPORT_FLOOR_LOW_HORIZONTAL", "floor_low_horizontal", "floor_low_horizontal_support"),
+        "hand_floor_low_support": ("WB_SUPPORT_HAND_FLOOR_LOW", "hand_floor_low", "hand_floor_low_support"),
+    }
+    rows: list[dict[str, Any]] = []
+    for kind, runs in runs_by_kind.items():
+        cluster, direction, tag = specs[kind]
+        for span in runs:
+            start, end = [int(item) for item in span]
+            local = slice(start, end + 1)
+            signature = {
+                "dominant_axis": "whole_body_support_geometry",
+                "repeat_mode": "state",
+                "phase_template": kind,
+                "context_mode": "raw_joint_body_support_sidecar",
+                "tempo_bucket": "medium",
+                "coupled_with_locomotion": False,
+                "mean_vertical_component": round(float(signals["vertical_component"][local].mean()), 4),
+                "min_hand_floor_ratio": round(float(signals["hand_floor_ratio"][local].min()), 4),
+                "max_foot_high_ratio": round(float(signals["foot_high_ratio"][local].max()), 4),
+                "mean_pelvis_level": round(float(signals["pelvis_level"][local].mean()), 4),
+                "mean_head_minus_pelvis": round(float(signals["head_minus_pelvis"][local].mean()), 4),
+            }
+            magnitude = {
+                "inverted_support": max(0.0, -float(signals["head_minus_pelvis"][local].min())),
+                "floor_low_horizontal_support": max(0.0, float(args.body_horizontal_axis_threshold) - float(signals["vertical_component"][local].min())),
+                "hand_floor_low_support": max(0.0, float(args.body_hand_floor_ratio) - float(signals["hand_floor_ratio"][local].min())),
+            }[kind]
+            rows.append(
+                _body_support_event(
+                    start_event_index=len(events) + len(rows),
+                    cluster=cluster,
+                    direction=direction,
+                    role="state",
+                    span=[start, end],
+                    magnitude=magnitude,
+                    optional_semantic_name=kind,
+                    signature=signature,
+                    tags=[tag],
+                )
+            )
+    return rows
+
+
 def build_channel_events(
     record: dict[str, Any],
     observable_refinement: str = "v1",
@@ -2115,6 +2297,8 @@ def build_channel_events(
         source_events = source_events + _build_leg_lateral_sidecar_events(record, source_events, args, joints_pack)
     if args is not None and _use_body_level_sidecar(args):
         source_events = source_events + _build_body_level_sidecar_events(record, source_events, args, joints_pack)
+    if args is not None and _use_body_support_sidecar(args):
+        source_events = source_events + _build_body_support_sidecar_events(record, source_events, args, joints_pack)
     for local_idx, event in enumerate(source_events):
         channel = _channel_for_event(event)
         start, end = _span(event)
@@ -2555,6 +2739,7 @@ COORDINATION_SEED_TAGS = {
     "raw_joint_hand_proximity",
     "raw_joint_leg_lateral",
     "raw_joint_body_level",
+    "raw_joint_body_support",
 }
 
 COORDINATION_SEED_CLUSTER_HINTS = {
@@ -2575,6 +2760,7 @@ COORDINATION_SEED_CLUSTER_HINTS = {
     "LOW_BODY",
     "SQUAT",
     "WB_LEVEL",
+    "WB_SUPPORT",
     "LEG_FORWARD_HOLD_POSE",
     "LEG_FORWARD_KICK_IMPULSE",
     "LEG_FORWARD_HOP_OR_KICK_IMPULSE",
@@ -2604,6 +2790,14 @@ def _coordination_role(unit: dict[str, Any]) -> str:
     tags = {str(tag) for tag in unit.get("observable_refinement_tags") or []}
     channel = str((unit.get("channels") or ["other"])[0])
 
+    if "raw_joint_body_support" in tags or _contains_any(all_geometry, {"WB_SUPPORT"}):
+        if _contains_any(all_geometry, {"WB_SUPPORT_INVERTED"}):
+            return "inverted_support"
+        if _contains_any(all_geometry, {"WB_SUPPORT_FLOOR_LOW_HORIZONTAL"}):
+            return "floor_low_horizontal_support"
+        if _contains_any(all_geometry, {"WB_SUPPORT_HAND_FLOOR_LOW"}):
+            return "hand_floor_low_support"
+        return "body_support_state"
     if "raw_joint_body_level" in tags or _contains_any(all_geometry, {"WB_LEVEL"}):
         if _contains_any(all_geometry, {"HIGH_LOW_HIGH_CYCLE", "LOW_HIGH_LOW_CYCLE"}):
             return "body_level_cycle"
@@ -2677,9 +2871,9 @@ def _coordination_role(unit: dict[str, Any]) -> str:
 
 def _coordination_role_priority(unit: dict[str, Any]) -> float:
     role = _coordination_role(unit)
-    if role in {"arm_orbit_cycle", "arm_large_arc", "bilateral_arm_vertical_cycle", "leg_lateral_repeat", "body_level_cycle"}:
+    if role in {"arm_orbit_cycle", "arm_large_arc", "bilateral_arm_vertical_cycle", "leg_lateral_repeat", "body_level_cycle", "inverted_support", "floor_low_horizontal_support"}:
         return 4.0
-    if role in {"hand_near_head_repeat", "hand_approach_head", "hand_leave_head", "leg_forward_impulse", "vertical_impulse", "low_body_cycle"}:
+    if role in {"hand_near_head_repeat", "hand_approach_head", "hand_leave_head", "leg_forward_impulse", "vertical_impulse", "low_body_cycle", "hand_floor_low_support"}:
         return 3.0
     if role in {"hand_near_head", "arm_reach", "arm_retract", "leg_forward_hold", "body_level_down", "body_level_up", "low_body_posture"}:
         return 2.0
@@ -2834,6 +3028,10 @@ def _channel_zone(channel: str) -> str:
         return "root"
     if channel == "torso":
         return "torso"
+    if channel == "whole_body_support":
+        return "support"
+    if channel == "acrobatics_or_inversion":
+        return "inversion"
     return "other"
 
 
@@ -2854,6 +3052,8 @@ def _coordination_structure_features(
     has_vertical = "vertical" in zones
     has_root = "root" in zones
     has_torso = "torso" in zones
+    has_support = "support" in zones
+    has_inversion = "inversion" in zones
 
     gait_like = any(tag in {"gait_phase", "gait_bounce"} for tag in tags) or any("GAIT_CONTEXT" in item or "LOCO_ARM_SWING" in item for item in geometry)
     root_context = any("ROOT_DRIFT" in item or "PATH_FRAGMENT" in item for item in geometry)
@@ -2869,6 +3069,9 @@ def _coordination_structure_features(
     hand_proximity = "raw_joint_hand_proximity" in tags or any("HAND_NEAR_HEAD" in item or "HAND_APPROACH_HEAD" in item or "HAND_LEAVE_HEAD" in item for item in geometry)
     leg_lateral = "raw_joint_leg_lateral" in tags or any("LEG_LATERAL" in item for item in geometry)
     body_level = "raw_joint_body_level" in tags or any("WB_LEVEL" in item for item in geometry)
+    body_support = "raw_joint_body_support" in tags or any("WB_SUPPORT" in item for item in geometry)
+    inverted_support = any("WB_SUPPORT_INVERTED" in item for item in geometry)
+    floor_support = any("WB_SUPPORT_FLOOR_LOW_HORIZONTAL" in item or "WB_SUPPORT_HAND_FLOOR_LOW" in item for item in geometry)
 
     score = math.log1p(max(0, support_cases))
     score += 0.35 * len(channels)
@@ -2903,6 +3106,12 @@ def _coordination_structure_features(
         score += 0.90
     if body_level and has_upper:
         score += 0.90
+    if body_support:
+        score += 1.30
+    if inverted_support and (has_upper or has_lower or has_inversion):
+        score += 1.30
+    if floor_support and (has_upper or has_torso):
+        score += 1.00
     if gait_like:
         score -= 2.00
     if gait_like and not (has_upper or has_torso or low_body or leg_non_gait or vertical_impulse or bimanual_vertical):
@@ -2934,6 +3143,9 @@ def _coordination_structure_features(
         "hand_proximity": hand_proximity,
         "leg_lateral": leg_lateral,
         "body_level": body_level,
+        "body_support": body_support,
+        "inverted_support": inverted_support,
+        "floor_support": floor_support,
         "count": int(count),
         "support_cases": int(support_cases),
         "symbol": symbol,
@@ -3158,8 +3370,16 @@ def _family_motion_scope(operator: str, required_channels: list[str], role_signa
     has_vertical = "vertical" in zones
     has_torso = "torso" in zones
     has_root = "root" in zones
+    has_support = "support" in zones
+    has_inversion = "inversion" in zones
     role = role_signature.lower()
 
+    if has_support and ("floor_low_horizontal_support" in role or "hand_floor_low_support" in role):
+        return "floor_support_coordination"
+    if has_support and "inverted_support" in role:
+        return "inverted_support_coordination"
+    if has_inversion or "inversion_or_acrobatics" in role:
+        return "inversion_acrobatic_coordination"
     if "whole_body_state" in channels and (has_torso or "body_level" in role or "low_body" in role):
         return "body_level_posture_transition"
     if has_upper and has_lower and (has_vertical or has_torso or has_root or "body_level" in role):
@@ -3432,6 +3652,12 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         for event in (record.get("channel_events") or [])
         if "raw_joint_leg_lateral" in set(event.get("observable_refinement_tags") or [])
     )
+    body_support_sidecar_event_count = sum(
+        1
+        for record in records
+        for event in (record.get("channel_events") or [])
+        if "raw_joint_body_support" in set(event.get("observable_refinement_tags") or [])
+    )
     packet_count = sum(len(record.get("packets") or []) for record in records)
     parallel_packet_count = sum(1 for record in records for packet in (record.get("packets") or []) if packet.get("packet_type") == "parallel")
     relation_count = sum(int(record.get("relation_count", len(record.get("relations") or []))) for record in records)
@@ -3469,6 +3695,7 @@ def _summary(records: list[dict[str, Any]], merges: list[dict[str, Any]], sequen
         "hand_proximity_sidecar_event_count": hand_proximity_sidecar_event_count,
         "leg_lateral_sidecar_event_count": leg_lateral_sidecar_event_count,
         "body_level_sidecar_event_count": body_level_sidecar_event_count,
+        "body_support_sidecar_event_count": body_support_sidecar_event_count,
         "channel_event_type_count": len(base_vocab),
         "packet_count": packet_count,
         "packet_type_count": len(packet_vocab),
@@ -3570,6 +3797,14 @@ class MotionBpeSelfTest:
             "body_high_state_min_duration": 8,
             "body_transition_max_gap": 40,
             "body_emit_high_state": False,
+            "disable_body_support_sidecar": False,
+            "body_support_min_run": 6,
+            "body_support_merge_gap": 4,
+            "body_prone_height_ratio": 0.34,
+            "body_horizontal_axis_threshold": 0.58,
+            "body_inverted_head_margin": 0.10,
+            "body_hand_floor_ratio": 0.12,
+            "body_foot_high_ratio": 0.75,
         }
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
@@ -3896,8 +4131,8 @@ def main() -> None:
     parser.add_argument("--max-records", type=int, default=None)
     parser.add_argument("--parallel-overlap-min", type=float, default=0.30)
     parser.add_argument("--lead-lag-gap-max", type=int, default=6)
-    parser.add_argument("--observable-refinement", choices=["v1", "v2", "v3"], default="v1", help="Refine coarse Layer3 geometry labels for Motion-BPE tokenization without modifying the source corpus. v3 adds raw-joint arm trajectory sidecar events.")
-    parser.add_argument("--hml3d-root", default=str(DEFAULT_HML3D_ROOT), help="HumanML3D root used by v3 raw-joint trajectory sidecars.")
+    parser.add_argument("--observable-refinement", choices=["v1", "v2", "v3", "v4"], default="v1", help="Refine coarse Layer3 geometry labels for Motion-BPE tokenization without modifying the source corpus. v4 adds raw-joint whole-body support sidecar events.")
+    parser.add_argument("--hml3d-root", default=str(DEFAULT_HML3D_ROOT), help="HumanML3D root used by raw-joint sidecar events.")
     parser.add_argument("--disable-arm-trajectory-sidecar", action="store_true", help="Disable v3 raw-joint arm trajectory sidecar events.")
     parser.add_argument("--arm-span-gap", type=int, default=6, help="Merge same-side arm source spans separated by at most this many frames before trajectory scoring.")
     parser.add_argument("--arm-span-pad", type=int, default=3, help="Pad merged arm spans before trajectory scoring.")
@@ -3939,6 +4174,14 @@ def main() -> None:
     parser.add_argument("--body-high-state-min-duration", type=int, default=8, help="Minimum high-run duration for stand-like body-level state.")
     parser.add_argument("--body-transition-max-gap", type=int, default=40, help="Maximum gap between low/high body-level runs to create transition events.")
     parser.add_argument("--body-emit-high-state", action="store_true", help="Emit generic high stand-like body-level states. Disabled by default because they are ubiquitous context.")
+    parser.add_argument("--disable-body-support-sidecar", action="store_true", help="Disable v4 raw-joint whole-body support sidecar events.")
+    parser.add_argument("--body-support-min-run", type=int, default=6, help="Minimum consecutive frames for body-support state events.")
+    parser.add_argument("--body-support-merge-gap", type=int, default=4, help="Merge body-support runs separated by at most this many frames.")
+    parser.add_argument("--body-prone-height-ratio", type=float, default=0.34, help="Normalized pelvis height threshold for low floor-support candidates.")
+    parser.add_argument("--body-horizontal-axis-threshold", type=float, default=0.58, help="Maximum torso vertical-axis component for low horizontal floor-support candidates.")
+    parser.add_argument("--body-inverted-head-margin", type=float, default=0.10, help="Normalized head-below-pelvis margin for inverted support candidates.")
+    parser.add_argument("--body-hand-floor-ratio", type=float, default=0.12, help="Normalized wrist-to-floor height threshold for hand-floor support.")
+    parser.add_argument("--body-foot-high-ratio", type=float, default=0.75, help="Normalized foot height threshold used with hand-floor evidence for inverted support.")
     parser.add_argument("--num-merges", type=int, default=256)
     parser.add_argument("--channel-merge-ratio", type=float, default=0.5, help="Fraction of merge budget used for per-channel sequential motifs before cross-channel coordination mining.")
     parser.add_argument("--min-pair-count", type=int, default=80)

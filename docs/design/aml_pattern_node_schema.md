@@ -108,6 +108,283 @@ The next condition-schema pass should use:
 Do not train full-action labels directly from `component` or
 `blocked_by_observable_gap` nodes.
 
+## v1 Closure Draft Forest
+
+The current Motion-BPE branch also exports a newer draft forest from full-HML3D
+v4 coord-role closure candidates:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_from_v4_closure_draft/
+```
+
+Build command:
+
+```bash
+python scripts/build_v4_closure_pattern_forest_draft.py
+```
+
+Inputs:
+
+- `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_full_closure_review_v0/composition_closure_candidates.json`
+- `pseudoedit3d/edit/aml_semantic_alias_sidecar.json`
+
+Outputs:
+
+- `aml_pattern_forest_v1_draft.json`: full review forest with examples.
+- `aml_pattern_forest_v1_draft_compact.json`: compact review forest.
+- `aml_pattern_forest_v1_draft_tree.txt`: quick tree view.
+- `aml_pattern_forest_v1_draft_review.md`: family-level review table.
+- `summary.json`: counts.
+
+This forest is a review draft, not an accepted runtime AML tree. It has three
+levels:
+
+```text
+root group -> pattern family candidate -> source closure candidate
+```
+
+Current full-HML3D v1 draft size:
+
+```text
+selected source closure candidates: 57
+roots: 10
+families: 15
+nodes: 82
+edges: 72
+
+family statuses:
+  review_candidate: 5
+  split_required: 3
+  composition_needs_closure: 3
+  composition_review: remaining source-candidate nodes
+```
+
+Interpretation:
+
+- `review_candidate`: structurally stable enough to inspect visually for
+  promotion. This currently includes a full jumping-jack-like coordination
+  family, a cartwheel/inversion family, a sit/body-level transition family, a
+  martial/guard coordination family, and a cheer/dance coordination family.
+- `split_required`: naming/scope conflict. The clearest current case is
+  swim/floor-prone evidence being mixed with the coarse
+  `acrobatics_or_inversion` role; this should trigger observable refinement, not
+  direct promotion.
+- `composition_needs_closure`: a frequent near-pattern is missing one or more
+  discriminative roles from the current itemset. Treat it as evidence for
+  closure refinement, not as an action label.
+
+The language alias sidecar groups and names candidates only after motion
+closure has produced the candidate. It must not create motion evidence or
+runtime matching rules.
+
+## v1 Support-State Closure Probe
+
+The newest diagnostic branch adds a whole-body support observable before
+composition closure. The 3k probe artifacts are:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_3k_diag/
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_3k_diag_closure_review_balanced/
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_3k_draft/
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_3k_review_pack/
+```
+
+New support-state geometry evidence:
+
+```text
+WHOLE_BODY_SUPPORT/WB_SUPPORT_INVERTED
+WHOLE_BODY_SUPPORT/WB_SUPPORT_FLOOR_LOW_HORIZONTAL
+WHOLE_BODY_SUPPORT/WB_SUPPORT_HAND_FLOOR_LOW
+```
+
+This evidence is emitted from body support/contact geometry. It is not a named
+action detector. The naming layer may later attach aliases such as cartwheel,
+swim, kneel, crawl, or fall-to-knees after the motion structure exists.
+
+Current 3k result:
+
+```text
+support sidecar events: 238
+selected closure candidates: 160
+  inversion_acrobatic_candidate: 5
+  floor_prone_or_mime_candidate: 8
+
+draft forest:
+  selected source closure candidates: 60
+  roots: 10
+  families: 22
+  nodes: 92
+  edges: 82
+```
+
+Visual spot-check:
+
+- `family_cartwheel_inversion_acrobatic_candidate_needs_closure.png` contains
+  cartwheel/flip-like examples and no longer mixes the prone swimming example
+  that appeared before support-state separation.
+- `family_kneel_or_fall_to_knees_floor_prone_or_mime_candidate_needs_closure.png`
+  correctly groups floor/prone support examples, but it is still broad and
+  should later split kneel, crawl, prone-swim, and lie/get-up transitions.
+
+Full-HML3D support-state artifacts:
+
+```text
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0/
+outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0_closure_review/
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_draft/
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_review_pack/
+```
+
+Current full-HML3D result:
+
+```text
+source records: 29228
+channel events: 488601
+support sidecar events: 2234
+covered cases: 18832 / 29228 (0.6443)
+
+closure review:
+  selected candidates: 240
+  promote_review: 17
+  inversion_acrobatic_candidate: 8
+  floor_prone_or_mime_candidate: 34
+
+draft forest:
+  selected source closure candidates: 104
+  roots: 10
+  families: 26
+  nodes: 140
+  edges: 130
+```
+
+Full visual spot-check:
+
+- `family_cartwheel_inversion_acrobatic_candidate_promote_review.png` is now a
+  clean cartwheel/flip-like review family.
+- `family_swim_like_motion_floor_prone_or_mime_candidate_promote_review.png`
+  stays in floor/prone support space. It is useful but still broad; it mixes
+  swim-like prone motion with lie/get-up and some sit/kneel transitions.
+- The former swim/inversion conflict was caused by treating
+  `acrobatics_or_inversion:vertical_rhythm` as an inversion-zone item. Closure
+  mining now derives zone from channel plus role, so vertical rhythm remains
+  vertical unless explicit inversion support/acrobatic evidence is present.
+
+The editable decision draft for these 21 review families is:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_review_decisions_draft/
+```
+
+Build commands:
+
+```bash
+python scripts/propose_v1_support_state_review_decisions.py
+python scripts/build_v1_support_state_reviewed_forest_draft.py
+```
+
+The current decision draft is deliberately conservative:
+
+```text
+promote: 1
+downgrade_to_component: 6
+split: 1
+split_axis_confirmed: 10
+needs_closure: 3
+```
+
+The reviewed draft forest is:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_reviewed_draft/
+```
+
+Current reviewed draft tree:
+
+```text
+accepted_full_patterns: 1 family
+  family_cartwheel_inversion_acrobatic_candidate_promote_review
+reusable_components: 6 families
+split_required: 11 families
+closure_required: 3 families
+```
+
+This is still not final runtime matching logic. It is the first clean promotion
+surface: accepted nodes can become AML vocabulary candidates after visual
+confirmation, while split/closure/component nodes remain mining TODOs or
+building blocks.
+
+The reviewed draft can now be materialized as a searchable AML program:
+
+```text
+outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_reviewed_draft/
+```
+
+Build command:
+
+```bash
+python scripts/export_aml_composable_pattern_program_v1_support_state.py
+```
+
+Current v1 support-state program:
+
+```text
+program nodes: 113
+condition entries: 21
+positive condition entries: 1
+accepted full-pattern condition:
+  AMLV1_FAMILY_CARTWHEEL_INVERSION_ACROBATIC_CANDIDATE_PROMOTE_REVIEW
+```
+
+Condition ids are unique family-node ids. The human-readable action name remains
+in `motion_structure_label`. Only `status=accepted` conditions receive
+`condition_weight_default=1.0`; component, split-required, and closure-required
+nodes remain searchable but have zero positive training weight.
+
+Loading:
+
+```python
+from pseudoedit3d.edit import (
+    SUPPORT_STATE_V1_PROGRAM_PATH,
+    load_composable_pattern_program,
+    search_program_nodes,
+)
+
+program = load_composable_pattern_program(SUPPORT_STATE_V1_PROGRAM_PATH)
+hits = search_program_nodes(
+    program,
+    channels=["whole_body_support", "acrobatics_or_inversion", "left_leg", "right_leg"],
+    zones=["inversion", "lower"],
+    cluster_ids=[
+        "WB_SUPPORT_INVERTED",
+        "WB_CARTWHEEL_CANDIDATE",
+        "LL_LEG_LATERAL_REPEAT",
+        "RL_LEG_LATERAL_REPEAT",
+    ],
+    event_families=[
+        "WHOLE_BODY_SUPPORT",
+        "WHOLE_BODY_ACROBATICS",
+        "LEFT_LEG_LATERAL",
+        "RIGHT_LEG_LATERAL",
+    ],
+    node_kinds=["pattern_family"],
+    semantic_priority=True,
+)
+```
+
+`semantic_priority=True` should be used when the goal is an interpretable
+high-level pattern explanation. It lets an accepted whole-body pattern outrank a
+perfectly matching local component. Leave it off for pure local-evidence
+retrieval/debugging.
+
+Search debug command:
+
+```bash
+python scripts/search_aml_composable_pattern_program_v0.py \
+  --support-state-v1 \
+  --semantic-priority \
+  --max-cases 250
+```
+
 ## Dense Candidate Forest
 
 The reviewed v0 tree is intentionally conservative. The broader full-HML3D

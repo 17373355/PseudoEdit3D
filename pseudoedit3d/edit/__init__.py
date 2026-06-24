@@ -49,6 +49,10 @@ _EXPORTS: dict[str, tuple[str, str]] = {
         "pseudoedit3d.edit.aml_composable_pattern_program",
         "load_composable_pattern_program",
     ),
+    "SUPPORT_STATE_V1_PROGRAM_PATH": (
+        "pseudoedit3d.edit.aml_composable_pattern_program",
+        "SUPPORT_STATE_V1_PROGRAM_PATH",
+    ),
     "program_nodes": ("pseudoedit3d.edit.aml_composable_pattern_program", "program_nodes"),
     "child_node_ids": ("pseudoedit3d.edit.aml_composable_pattern_program", "child_node_ids"),
     "child_nodes": ("pseudoedit3d.edit.aml_composable_pattern_program", "child_nodes"),
@@ -70,4 +74,3 @@ def __getattr__(name: str) -> Any:
     value = getattr(import_module(module_name), attr_name)
     globals()[name] = value
     return value
-

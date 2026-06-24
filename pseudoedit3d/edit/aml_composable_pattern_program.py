@@ -13,6 +13,13 @@ DEFAULT_PROGRAM_PATH = (
     / "aml_composable_pattern_program_v0"
     / "aml_composable_pattern_program.json"
 )
+SUPPORT_STATE_V1_PROGRAM_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "outputs"
+    / "aml_regression_testset_v2"
+    / "aml_composable_pattern_program_v1_support_state_reviewed_draft"
+    / "aml_composable_pattern_program.json"
+)
 
 
 @lru_cache(maxsize=4)
@@ -104,6 +111,23 @@ def _signature_score(signature: dict[str, Any], evidence: dict[str, set[str]]) -
     }
 
 
+def _semantic_priority_rank(node: dict[str, Any]) -> int:
+    level = str(node.get("semantic_level") or "")
+    status = str(node.get("review_status") or "")
+    policy = str(node.get("composition_policy") or "")
+    if status == "accepted" or level in {"whole_body_pattern", "whole_body_pattern_candidate"}:
+        return 6
+    if level in {"multi_part_coordination", "closure_required_candidate"}:
+        return 5
+    if level in {"transition", "split_required_candidate"}:
+        return 4
+    if level in {"component", "local_component"} or "component" in policy:
+        return 2
+    if level in {"diagnostic_context", "source_evidence"}:
+        return 1
+    return 0
+
+
 def search_program_nodes(
     program: dict[str, Any],
     *,
@@ -115,6 +139,7 @@ def search_program_nodes(
     node_kinds: Iterable[Any] | None = ("structure_group", "composition_family"),
     top_k: int = 20,
     min_score: float = 0.20,
+    semantic_priority: bool = False,
 ) -> list[dict[str, Any]]:
     evidence = {
         "channels": _as_set(channels),
@@ -136,6 +161,7 @@ def search_program_nodes(
         score, detail = _signature_score(signature, evidence)
         if score < min_score:
             continue
+        priority_rank = _semantic_priority_rank(node)
         candidates.append(
             {
                 "program_node_id": node.get("program_node_id"),
@@ -147,17 +173,29 @@ def search_program_nodes(
                 "review_status": node.get("review_status"),
                 "scope": node.get("scope"),
                 "score": round(score, 4),
+                "semantic_priority_rank": priority_rank,
+                "priority_score": round(score + (0.05 * priority_rank), 4) if semantic_priority else round(score, 4),
                 "match_detail": detail,
                 "condition_entry": node.get("condition_entry"),
             }
         )
-    candidates.sort(
-        key=lambda row: (
-            -float(row.get("score") or 0.0),
-            str(row.get("semantic_level") or ""),
-            str(row.get("program_node_id") or ""),
+    if semantic_priority:
+        candidates.sort(
+            key=lambda row: (
+                -int(row.get("semantic_priority_rank") or 0),
+                -float(row.get("score") or 0.0),
+                str(row.get("semantic_level") or ""),
+                str(row.get("program_node_id") or ""),
+            )
         )
-    )
+    else:
+        candidates.sort(
+            key=lambda row: (
+                -float(row.get("score") or 0.0),
+                str(row.get("semantic_level") or ""),
+                str(row.get("program_node_id") or ""),
+            )
+        )
     return candidates[: max(0, int(top_k))]
 
 

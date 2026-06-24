@@ -18,8 +18,8 @@ This board shows the full project process from corpus mining to training.
 | --- | --- | --- | --- | --- |
 | G0. Legacy cleanup | keep active scripts readable | `[~] implemented, needs final review` | `docs/design/script_inventory.md`, `legacy/README.md` | confirm no active script imports from `legacy/` |
 | G1. HumanML3D Layer3 corpus | convert full HML3D motion into symbolic event records | `[~] implemented` | `outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl` | check whether missing targets need new observables |
-| G2. Multi-channel Motion-BPE | learn channel motifs and cross-channel coordination motifs | `[~] v4 coord-role 3k sanity complete` | `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_3k/` | review whether composition candidates should be promoted or kept as components |
-| G3. Motion candidate forest | group motion-derived motifs into reviewable family nodes | `[~] composition forest v0 built` | `outputs/aml_regression_testset_v2/hml3d_composition_pattern_forest_v0_structure_groups/` | review structure groups before promotion |
+| G2. Multi-channel Motion-BPE | learn channel motifs and cross-channel coordination motifs | `[~] v4 support-state full-HML3D complete` | `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0/` | review full support-state closure candidates before promotion |
+| G3. Motion candidate forest | group motion-derived motifs into reviewable family nodes | `[~] support-state v1 draft forest built` | `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_draft/` | visually review `promote_review`, `review_candidate`, and `split_required` families |
 | G4. Manual pseudo-GT audit | test known weak targets without creating rules | `[~] self-reviewed, needs user spot-check` | `outputs/aml_regression_testset_v2/manual_text_target_audits_v0/manual_text_target_self_review.md` | user spot-check `cartwheel`, `sit`, `swim` split decisions |
 | G5. Caption/WordNet naming | attach language names to existing motion nodes | `[~] implemented v0` | `outputs/aml_regression_testset_v2/hml3d_caption_wordnet_name_candidates_v0/` | filter low-quality n-grams and classify phrase types |
 | G6. Reviewed AML pattern forest | promote accepted motion nodes into AML vocabulary | `[~] v2 recall audit says full nodes need composition mining` | `outputs/aml_regression_testset_v2/aml_pattern_forest_v0/`, `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_coactivation_recall_audit_all_units/` | do not promote more full nodes until composition candidates are mined |
@@ -97,6 +97,14 @@ Current weak points:
 - The v4 coord-role promotion review surface now separates likely named
   compositions from reusable components:
   `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_promotion_review/`.
+- Full-HML3D v4 coord-role Motion-BPE baseline is available:
+  `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_full_v0/`.
+- Full-HML3D v4 support-state Motion-BPE is the current Motion-BPE mainline:
+  `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0/`.
+- Full-HML3D v4 coord-role composition closure review baseline is available:
+  `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_full_closure_review_v0/`.
+- Current v1 support-state draft pattern forest is available:
+  `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_draft/`.
 
 ## Layer Contract
 
@@ -207,7 +215,6 @@ schema.
         `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v3_arm_traj_3k/`.
       - Current check: `008692` produces right-arm orbit-cycle tokens;
         `003191`, `003082`, and `009072` produce large-arm-arc tokens;
-        `007581` and `000576` no longer trigger after threshold tightening.
     - `[~]` sit/stand state machine with sit-down, sit-up, stand-up,
       sit-back-down temporal order.
       - Implemented as raw-joint body-level sidecar events:
@@ -248,15 +255,27 @@ schema.
     - `[~]` strike/punch reach-and-retract cycles.
       - Current evidence comes from arm reach/retract sidecars. It should be
         composed with torso/root context before promotion.
-  - v4 debug artifact:
-    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_micro_sidecar_failure_probe/`
-  - v4 3k sanity artifact:
-    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_micro_sidecar_3k/`
-  - Current check:
-    `003082`, `011643`, `014607`, and `M008014` expose spread-jump evidence;
-    `007581` exposes sit/stand plus hand-to-head approach/hold/leave;
-    `008692` exposes right-arm orbit cycles; `003020` exposes lateral repeat;
-    `000576` no longer emits leg-lateral noise in the failure probe.
+    - `[~]` whole-body support state for floor/prone/inverted separation.
+      - Implemented in `scripts/audit_hml3d_multichannel_motion_bpe.py` as
+        `--observable-refinement v4` support sidecar events:
+        `WHOLE_BODY_SUPPORT/WB_SUPPORT_INVERTED`,
+        `WB_SUPPORT_FLOOR_LOW_HORIZONTAL`, and `WB_SUPPORT_HAND_FLOOR_LOW`.
+      - This is geometry evidence for support/contact state, not a named
+        `cartwheel`, `swim`, `kneel`, or `crawl` rule.
+      - Current check: cartwheel-like cases `000452`, `002828`, and `002932`
+        emit `WB_SUPPORT_INVERTED`; prone/swim-like `000865` emits
+        `WB_SUPPORT_FLOOR_LOW_HORIZONTAL`, not inverted support.
+    - v4 debug artifact:
+      `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_micro_sidecar_failure_probe/`
+    - v4 3k sanity artifact:
+      `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_micro_sidecar_3k/`
+    - v4 support-state 3k diagnostic artifact:
+      `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_3k_diag/`
+    - Current check:
+      `003082`, `011643`, `014607`, and `M008014` expose spread-jump evidence;
+      `007581` exposes sit/stand plus hand-to-head approach/hold/leave;
+      `008692` exposes right-arm orbit cycles; `003020` exposes lateral repeat;
+      `000576` no longer emits leg-lateral noise in the failure probe.
   - v4 micro-event 3k sanity metrics:
     `channel_event_count` increases from 43350 to 50113; `channel_event_type_count`
     increases from 1833 to 2062; `forest_node_count` stays controlled
@@ -267,7 +286,7 @@ schema.
 
 - [~] Improve multichannel BPE merge policy.
   - Current artifact:
-    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_3k/`
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_full_v0/`
   - Debug artifact:
     `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_failure_probe/`
   - Review check: compare v1 vs v2 on compression, motif purity, target audit recall,
@@ -291,6 +310,11 @@ schema.
       from 0.534 to 0.592. Families are now tagged by motion scope:
       14 `stable_component_candidate`, 21 `component_candidate`, and
       7 `composition_candidate`.
+    - On the full-HML3D v4 coord-role run, 29228 records produce 486367 channel
+      events, 2747 channel-event types, 29142 packet types, 96 learned motifs,
+      53 coordination merges, 76 motif families, and 172 forest nodes. Case
+      coverage is 15299 / 29228 (`0.5234`). This run is the current full-corpus
+      source for closure review.
     - Current limitation: many high-support motifs are valid components
       rather than full semantic actions. Promotion should therefore use
       `motion_scope`, caption/WordNet naming, and visual spot checks instead of
@@ -301,6 +325,32 @@ schema.
       upper/vertical component as `named_component_review`, not a full pattern.
       Next step is composition closure / family-level grouping over related
       role signatures, not more micro-events.
+    - Support-state closure note: selection now reserves budget for low-support
+      high-specificity scopes so `inversion_acrobatic_candidate` is not
+      squeezed out by high-support generic whole-body candidates. In the 3k
+      support-state diagnostic closure, 160 selected candidates include
+      5 `inversion_acrobatic_candidate` and 8 `floor_prone_or_mime_candidate`
+      rows.
+    - Support-state 3k draft forest:
+      `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_3k_draft/`
+      contains 92 nodes, 22 families, and 60 selected source candidates.
+      The review pack is:
+      `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_3k_review_pack/`.
+      Visual spot-check: cartwheel/inversion review examples are now cartwheel
+      or flip-like; prone/swim examples remain in floor/prone support families
+      and need later split.
+    - Support-state full-HML3D run:
+      `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0/`
+      covers 18832 / 29228 cases (`0.6443`) with 488601 channel events and
+      2234 support sidecar events. Closure review:
+      `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_support_state_full_v0_closure_review/`
+      selects 240 candidates, including 17 `promote_review`,
+      8 `inversion_acrobatic_candidate`, and 34
+      `floor_prone_or_mime_candidate` rows. Draft forest:
+      `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_draft/`
+      contains 140 nodes, 26 families, and 104 selected source candidates.
+      Review pack:
+      `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_support_state_full_v0_review_pack/`.
 
 - [~] Build v4 coord-role promotion/component review.
   - Script:
@@ -315,6 +365,55 @@ schema.
     `sit_down` body-level/torso compositions are the only immediate named
     promote-review rows; jumping-jack-like evidence is deliberately kept as a
     named component until upper/vertical/lower closure is promoted.
+
+- [~] Build v4 coord-role composition closure review.
+  - Script:
+    `scripts/build_v4_coord_role_composition_closure.py`
+  - Full artifact:
+    `outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v4_coord_role_full_closure_review_v0/`
+  - Current result:
+    - 79954 coactivation occurrences.
+    - 3425 raw closure candidates.
+    - 240 exported review candidates.
+    - 11 `promote_review` and 229 `composition_review`.
+    - Promote-review rows recover full jumping-jack-like coordination, several
+      cartwheel/inversion phase candidates, a sit/body-level transition
+      candidate, a martial/guard-kick coordination candidate, and one
+      cheer/dance coordination candidate.
+  - Review check:
+    Promotion is still not final. The closure stage reveals that swim/floor-prone
+    structures conflict with the current `acrobatics_or_inversion` role and need
+    an observable split before they can enter the accepted tree.
+
+- [~] Build v4 closure draft pattern forest.
+  - Script:
+    `scripts/build_v4_closure_pattern_forest_draft.py`
+  - Artifact:
+    `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_from_v4_closure_draft/`
+  - Current result:
+    - 57 source closure candidates selected from full closure review.
+    - 15 family candidates under 10 roots.
+    - 5 family-level `review_candidate` nodes, 3 `split_required` nodes, and
+      3 `composition_needs_closure` nodes.
+  - Review check:
+    Inspect `aml_pattern_forest_v1_draft_tree.txt` first, then
+    `aml_pattern_forest_v1_draft_review.md` for examples. Only visual-reviewed
+    family nodes should become accepted AML pattern nodes.
+
+- [~] Render v4 closure draft visual review pack.
+  - Script:
+    `scripts/render_v4_closure_pattern_forest_review_pack.py`
+  - Artifact:
+    `outputs/aml_regression_testset_v2/aml_pattern_forest_v1_from_v4_closure_review_pack/`
+  - Current result:
+    11 PNG family sheets plus `review_queue.md` and
+    `review_decision_template.json`.
+  - Review check:
+    Fill family-level decisions after visual inspection. The key decisions are
+    whether each `review_candidate` is a complete pattern, whether each
+    `split_required` family needs a new observable split, and whether each
+    `composition_needs_closure` family should merge with an existing candidate
+    or be downgraded to a component.
 
 - [~] Audit missed full-pattern coactivations.
   - Artifact:
@@ -368,14 +467,39 @@ later used by the AML condition interface.
   - Review check: inspect `aml_composable_pattern_program_tree.txt` and verify
     semantic levels/edit scopes are meaningful.
 
+- [~] Export reviewed support-state AML program.
+  - Artifact:
+    `outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_reviewed_draft/`
+  - Script: `scripts/export_aml_composable_pattern_program_v1_support_state.py`
+  - Current result: 113 program nodes, 21 unique condition entries, 1 positive
+    accepted full-pattern condition, 20 searchable component/split/closure TODO
+    conditions with zero positive training weight.
+  - Review check: inspect `aml_composable_pattern_program_tree.txt` and confirm
+    only reviewed accepted nodes become positive training labels.
+
 - [~] Add lightweight AML program loader and tree search API.
   - Module: `pseudoedit3d/edit/aml_composable_pattern_program.py`
   - Package import: `from pseudoedit3d.edit import load_composable_pattern_program, search_program_nodes`
+  - Use `semantic_priority=True` for high-level pattern explanation; leave it
+    off for pure local evidence retrieval.
   - Review check: loader works without importing heavy numeric dependencies.
 
 - [~] Add motion-to-tree search debug script.
   - Script: `scripts/search_aml_composable_pattern_program_v0.py`
   - Artifact: `outputs/aml_regression_testset_v2/aml_composable_pattern_program_search_v0/`
+  - Support-state v1 command:
+    `python scripts/search_aml_composable_pattern_program_v0.py --support-state-v1 --semantic-priority --max-cases 250`
+  - Support-state v1 artifact:
+    `outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_v0/`
+  - Support-state v1 250-case result:
+    - 250 channel cases.
+    - 208 cases with coactivation windows.
+    - 296 searched windows.
+    - 2 whole-body accepted-pattern candidate cases.
+    - 111 closure-required composed candidates.
+    - 26 split-required transition candidates.
+    - 3 component-dominant cases.
+    - 108 unmatched/local-only cases.
   - Current 250-case result:
     - 250 channel cases.
     - 192 cases with coactivation windows.
