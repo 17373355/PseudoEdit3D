@@ -109,3 +109,42 @@ No active file should import from this folder.
 - `scripts/mine_hml3d_upperbody_phrases.py` -> `legacy/text_phrase_mining/scripts/mine_hml3d_upperbody_phrases.py`
   - reason: earlier hard-coded upper-body text phrase scanner is superseded by the target-registry based text pseudo-GT audit path
   - replacement: `configs/motion_pattern_text_targets.json`, `scripts/audit_motion_pattern_pseudo_gt.py`, and `scripts/audit_motion_pattern_recall_candidates.py`
+
+### 2026-06-24
+
+Moved pre-v1 AML Pattern Mining Explorer scripts to `legacy/aml_pattern_mining_pre_v1/scripts/`.
+
+Reason: the active mainline has been renamed and narrowed to `AML Pattern Mining Explorer v1`:
+`motion evidence extraction -> candidate pattern mining -> candidate audit -> pattern registry`.
+The moved scripts are historical BPE-first forests, promotion/proposal drafts, and older parallel
+forest/program formats. They are kept for reproducibility but should not be extended as the main path.
+
+Replacement: see `docs/design/aml_pattern_mining_explorer_v1.md` and `docs/design/script_inventory.md`.
+Active entrypoints are `scripts/run_pattern_axis_audit.py` and
+`scripts/export_pattern_mining_explorer_bundle_v1.py`.
+
+Moved files:
+
+- `scripts/promote_coordination_motif_candidates.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/promote_coordination_motif_candidates.py`
+- `scripts/build_coordination_pattern_forest.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_coordination_pattern_forest.py`
+- `scripts/propose_motion_pattern_tree_candidates.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/propose_motion_pattern_tree_candidates.py`
+- `scripts/build_text_bpe_wordnet_naming_layer.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_text_bpe_wordnet_naming_layer.py`
+- `scripts/build_promoted_motion_tree_draft.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_promoted_motion_tree_draft.py`
+- `scripts/plan_motion_node_splits.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/plan_motion_node_splits.py`
+- `scripts/build_motion_split_proposals.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_motion_split_proposals.py`
+- `scripts/render_motion_split_review_artifacts.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/render_motion_split_review_artifacts.py`
+- `scripts/build_motion_pattern_forest.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_motion_pattern_forest.py`
+- `scripts/build_full_candidate_motion_forest.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_full_candidate_motion_forest.py`
+- `scripts/render_motion_forest_review_pack.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/render_motion_forest_review_pack.py`
+- `scripts/build_aml_pattern_forest_dense_v0.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_aml_pattern_forest_dense_v0.py`
+- `scripts/build_aml_pattern_forest_v0.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_aml_pattern_forest_v0.py`
+- `scripts/build_aml_pattern_promotion_review_v0.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_aml_pattern_promotion_review_v0.py`
+- `scripts/review_aml_pattern_promotion_table_v0.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/review_aml_pattern_promotion_table_v0.py`
+- `scripts/build_v4_closure_pattern_forest_draft.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_v4_closure_pattern_forest_draft.py`
+- `scripts/build_v4_coord_role_composition_closure.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_v4_coord_role_composition_closure.py`
+- `scripts/build_v4_coord_role_promotion_review.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_v4_coord_role_promotion_review.py`
+- `scripts/render_v4_closure_pattern_forest_review_pack.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/render_v4_closure_pattern_forest_review_pack.py`
+- `scripts/build_v1_support_state_reviewed_forest_draft.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/build_v1_support_state_reviewed_forest_draft.py`
+- `scripts/propose_v1_support_state_review_decisions.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/propose_v1_support_state_review_decisions.py`
+- `scripts/audit_v1_support_state_promotion_candidates.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/audit_v1_support_state_promotion_candidates.py`
+- `scripts/export_aml_composable_pattern_program_v0.py` -> `legacy/aml_pattern_mining_pre_v1/scripts/export_aml_composable_pattern_program_v0.py`

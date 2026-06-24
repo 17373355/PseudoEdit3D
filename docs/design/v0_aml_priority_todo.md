@@ -3,6 +3,42 @@
 This is the shared checklist for the current AML design and training iteration.
 We mark an item done only after its artifact exists and has been reviewed.
 
+## Current Direction, 2026-06-24
+
+The project structure is being converged under `AML Pattern Mining Explorer v1`.
+Motion-BPE is no longer the name of the whole system; it is one optional miner.
+
+Current golden path:
+
+```text
+motion evidence extraction
+-> candidate pattern mining
+-> candidate audit
+-> pattern registry
+```
+
+Current core artifacts:
+
+- `outputs/aml_regression_testset_v2/aml_pattern_mining_explorer_v1/evidence_cases.jsonl`
+- `outputs/aml_regression_testset_v2/aml_pattern_mining_explorer_v1/candidate_patterns.jsonl`
+- `outputs/aml_regression_testset_v2/aml_pattern_mining_explorer_v1/pattern_registry.json`
+- `outputs/aml_regression_testset_v2/aml_pattern_mining_explorer_v1/audit_report.md`
+
+Current implementation status:
+
+| Priority | Step | Status | Artifact / script | Gate |
+| --- | --- | --- | --- | --- |
+| P0 | Freeze and document v1 golden path | `[x]` | `docs/design/aml_pattern_mining_explorer_v1.md` | done |
+| P1 | Move pre-v1 forest/proposal/program variants to legacy | `[~]` | `legacy/aml_pattern_mining_pre_v1/scripts/` | validate no active imports |
+| P2 | Unified axis audit entrypoint | `[x]` | `scripts/run_pattern_axis_audit.py` | smoke compiled |
+| P3 | Unified pattern mining bundle exporter | `[x]` | `scripts/export_pattern_mining_explorer_bundle_v1.py` | v1 bundle generated |
+| P4 | Keep evidence extraction declarative | `[ ]` | `pseudoedit3d/pattern_mining/evidence_extractors/` | split the frozen v5 extractor later |
+| P5 | AML runtime / condition interface from registry | `[ ]` | TBD | after registry review |
+| P6 | MoMask native-vs-AML comparison using registry prompts | `[ ]` | TBD | after AML interface |
+
+Older v0/v1/v2/v3/v4/v5 experiment notes below are retained as historical
+context, not as the active golden path.
+
 ## Status Legend
 
 - `[ ]` not started
@@ -629,10 +665,22 @@ later used by the AML condition interface.
       96 -> 168.
     - bilateral-spread full upper+lower+vertical coverage:
       78 -> 146 target cases.
+  - Phase-aware closure artifact:
+    `outputs/aml_regression_testset_v2/aml_pattern_split_axis_phase_closure_v5_stance_width_full_v0/`
+  - Phase-aware closure result with generic arm-quality gate
+    `bilateral_high_arm_pose OR large_bilateral_arm_arc`:
+    - strict phase-closed cases: 441, including 131 / 362 target cases.
+    - strict diagnostic precision: 0.2971.
+    - strict diagnostic recall: 0.3619.
+    - phase connected-or-closed cases: 782, including 144 / 362 target cases.
+    - phase connected-or-closed diagnostic precision: 0.1841.
+    - phase connected-or-closed diagnostic recall: 0.3978.
   - Review check:
-    v5 should be kept as a generic geometry observable. The next gate is not
-    adding a `jumping_jack` case rule; it is phase-aware closure/confound review
-    so full-action naming happens only after the motion structure is stable.
+    v5 should be kept as a generic geometry observable. Phase-aware closure
+    confirms that `bilateral_spread_vertical_coordination` is a useful reusable
+    structure, but it is still too broad to name directly as `jumping_jack`.
+    The next gate is subtype/confound review over the phase-closed set, not a
+    caption-specific rule.
 
 - [~] Add final case-level condition manifest exporter.
   - Artifact:

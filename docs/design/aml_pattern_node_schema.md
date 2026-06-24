@@ -1,5 +1,11 @@
 # AML Pattern Node Schema v0
 
+Status note, 2026-06-24: this is a historical pre-v1 forest schema. The
+current mainline is `AML Pattern Mining Explorer v1`, documented in
+`docs/design/aml_pattern_mining_explorer_v1.md`. The old build scripts were
+moved to `legacy/aml_pattern_mining_pre_v1/scripts/` and should not be
+extended as the golden path.
+
 This document describes the first reviewed motion pattern forest:
 
 ```text
@@ -12,7 +18,7 @@ and does not encode case-specific action rules.
 ## Build Command
 
 ```bash
-python scripts/build_aml_pattern_forest_v0.py
+python legacy/aml_pattern_mining_pre_v1/scripts/build_aml_pattern_forest_v0.py
 ```
 
 Inputs:
@@ -606,6 +612,61 @@ bilateral stance-width evidence. v5 increases useful lower-body coverage, but
 the full upper+lower+vertical label remains a reviewed structural closure
 candidate. It should not be promoted directly to the named `jumping_jack`
 action until phase/order and confound audits are reviewed.
+
+Phase-aware closure audit:
+
+```text
+outputs/aml_regression_testset_v2/aml_pattern_split_axis_phase_closure_v5_stance_width_full_v0/
+```
+
+Command:
+
+```bash
+python scripts/audit_split_axis_phase_closure.py \
+  --axis-id bilateral_spread_vertical_coordination_v0 \
+  --bpe-sequences outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/case_multichannel_bpe_sequences.jsonl \
+  --output-dir outputs/aml_regression_testset_v2/aml_pattern_split_axis_phase_closure_v5_stance_width_full_v0
+```
+
+The phase audit checks group spans directly from channel tokens. It separates:
+
+- `phase_closed_all_pairs`: upper, lower, and vertical groups are tightly
+  overlap/near aligned.
+- `phase_connected_chain`: all groups are connected by a phase-aligned chain,
+  but not every pair is tight.
+- `broad_context_closure`: one group is a broad repeat/context span, so it
+  supports closure but does not prove cycle-level phase.
+- `*_low_quality`: the same timing relation exists, but the auxiliary arm
+  quality gate is missing.
+
+Current full-HML3D result with the generic arm-quality gate
+`bilateral_high_arm_pose OR large_bilateral_arm_arc`:
+
+```text
+target jumping-jack text cases: 362
+strict phase-closed cases: 441
+  target: 131
+  diagnostic precision: 0.2971
+  diagnostic recall: 0.3619
+
+phase connected-or-closed cases: 782
+  target: 144
+  diagnostic precision: 0.1841
+  diagnostic recall: 0.3978
+
+target missing groups:
+  lower_spread: 194
+  upper_spread: 20
+  vertical_rhythm: 14
+```
+
+Interpretation: phase/order filtering improves precision over raw co-presence,
+but the same motion structure still appears in many non-`jumping_jack` captions
+such as squat jumps, balance recovery, martial/boxing footwork, and dance-like
+spread motions. Therefore this node should enter the tree as a reusable
+`bilateral_spread_vertical_coordination` closure/program component. The
+language name `jumping_jack` should remain a naming candidate or a later
+high-precision subtype, not the parent motion node.
 
 ## Dense Candidate Forest
 

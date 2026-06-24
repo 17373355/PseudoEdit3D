@@ -3,36 +3,65 @@
 This document keeps the active `scripts/` folder readable. Files moved to
 `legacy/` are recorded in `legacy/README.md`.
 
-## Motion-Corpus / BPE Mainline
+## AML Pattern Mining Explorer v1 Golden Path
+
+This is the current mainline. New work should extend this path instead of
+creating another parallel forest/proposal/program format.
+
+```text
+motion evidence extraction
+-> candidate pattern mining
+-> candidate audit
+-> pattern registry / bundle export
+```
+
+Active scripts:
+
+- `audit_hml3d_multichannel_motion_bpe.py`
+  - frozen v5 evidence extractor / optional Motion-BPE miner
+  - keep for reproducibility; do not keep adding v6/v7 logic here
+- `build_hml3d_composition_pattern_forest_v0.py`
+  - coactivation / composition candidate mining from multichannel evidence
+- `export_aml_composable_pattern_program_v1_support_state.py`
+  - current reviewed support-state program exporter
+- `search_aml_composable_pattern_program_v0.py`
+  - temporary program-search bridge used to make support-state search outputs
+- `audit_split_axis_case_coverage.py`
+  - split-axis coverage audit helper
+- `audit_v1_support_state_split_axes.py`
+  - split-axis window scoring helper
+- `audit_split_axis_phase_closure.py`
+  - phase/order closure audit helper
+- `run_pattern_axis_audit.py`
+  - preferred unified entrypoint for coverage + split + phase axis audits
+- `export_pattern_mining_explorer_bundle_v1.py`
+  - preferred final exporter for the four v1 artifacts:
+    `evidence_cases.jsonl`, `candidate_patterns.jsonl`,
+    `pattern_registry.json`, `audit_report.md`
+
+Primary design doc:
+
+- `docs/design/aml_pattern_mining_explorer_v1.md`
+
+Current bundle:
+
+- `outputs/aml_regression_testset_v2/aml_pattern_mining_explorer_v1/`
+
+## Optional Mining / Naming Diagnostics
+
+These are useful probes, but they are not the golden path and should not define
+motion structure by themselves. Captions, WordNet, and future TMR belong to the
+audit/naming layer, not the mining layer.
 
 - `audit_hml3d_layer3_event_bpe.py`
-- `audit_hml3d_multichannel_motion_bpe.py`
-- `promote_coordination_motif_candidates.py`
-- `build_coordination_pattern_forest.py`
+- `audit_hml3d_coactivation_recall_v0.py`
 - `audit_motion_pattern_pseudo_gt.py`
 - `audit_motion_pattern_recall_candidates.py`
 - `build_motion_pattern_family_proposals.py`
 - `run_motion_pattern_registry_audits.py`
 - `mine_hml3d_caption_wordnet_name_candidates_v0.py`
-- `propose_motion_pattern_tree_candidates.py`
-- `build_text_bpe_wordnet_naming_layer.py`
-- `build_promoted_motion_tree_draft.py`
-- `plan_motion_node_splits.py`
-- `build_motion_split_proposals.py`
-- `render_motion_split_review_artifacts.py`
-- `build_motion_pattern_forest.py`
-- `build_full_candidate_motion_forest.py`
-- `render_motion_forest_review_pack.py`
-
-Purpose:
-
-```text
-HumanML3D motion corpus
--> event/multichannel Motion-BPE
--> motif family audit
--> motion pattern forest
--> text/WordNet naming diagnostics
-```
+- `build_humanml3d_action_lexicon.py`
+- `build_wordnet_action_lexicon.py`
 
 ## AML Condition / Dataset Mainline
 
@@ -47,6 +76,10 @@ HumanML3D motion corpus
 - `smoke_aml_condition_motion_loader.py`
 - `extract_aml_layers.py`
 - `summarize_aml_family_taxonomy.py`
+- `audit_aml_program_condition_manifest_v0.py`
+- `export_aml_program_condition_manifest_v0.py`
+- `filter_aml_program_condition_manifest_v0.py`
+- `train_aml_condition_encoder_smoke.py`
 
 Purpose:
 
@@ -66,6 +99,7 @@ AML extraction
 - `visualize_momask_auto_gt.py`
 - `visualize_momask_case_study.py`
 - `analyze_momask_probe_kinematics.py`
+- `build_momask_review_failure_ledger_v0.py`
 
 Purpose:
 
@@ -75,7 +109,10 @@ AML AutoPrompt / selected prompt
 -> GT vs generated visual review
 ```
 
-## Active Diagnostics
+## Focused AML Diagnostics
+
+Keep these while their findings still feed the current extractor / registry
+work. Move them to legacy once the issue is folded into v1 evidence groups.
 
 - `analyze_aml_semantic_family_status.py`
 - `audit_aml_language_coverage.py`
@@ -90,13 +127,6 @@ AML AutoPrompt / selected prompt
 - `analyze_bimanual_split_candidates.py`
 - `visualize_bimanual_cluster_contact_sheet.py`
 - `visualize_bimanual_split_report.py`
-
-Purpose:
-
-```text
-Focused audits for known weak areas.
-Keep while their findings still feed current AML/Motion-BPE decisions.
-```
 
 ## General Project Utilities / Older Training
 
@@ -113,8 +143,6 @@ Keep while their findings still feed current AML/Motion-BPE decisions.
 - `infer_and_visualize.py`
 - `build_group_split.py`
 - `build_hml3d_case_index.py`
-- `build_humanml3d_action_lexicon.py`
-- `build_wordnet_action_lexicon.py`
 - `export_embody3d_chunk_manifest.py`
 - `export_momask_multi_atomic_bridge.py`
 - `audit_embody3d_daylife.py`
@@ -124,12 +152,15 @@ Keep while their findings still feed current AML/Motion-BPE decisions.
 Purpose:
 
 ```text
-General data prep, older stage-1 training/eval utilities, lexicon builders,
-and visualization helpers. Review individually before moving.
+General data prep, older stage-1 training/eval utilities, and visualization
+helpers. Review individually before moving.
 ```
 
-## Recently Moved To Legacy
+## Legacy Groups
 
+- `legacy/aml_pattern_mining_pre_v1/scripts/`
+  - pre-v1 BPE-first forests, proposal drafts, promotion tables, and old
+    parallel tree/program formats
 - `legacy/auto_prompt_pattern_batches/scripts/`
 - `legacy/early_submotion_mining/scripts/`
 - `legacy/motion_bpe_baseline/scripts/`

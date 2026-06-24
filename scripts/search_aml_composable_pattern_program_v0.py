@@ -4,8 +4,8 @@ This is the bridge between mined pattern forests and an AML runtime interface.
 It does not use captions as matching rules. Captions are copied only for review.
 
 Pipeline:
-1. Load the composable pattern program exported by
-   `export_aml_composable_pattern_program_v0.py`.
+1. Load the reviewed support-state composable pattern program exported by
+   `export_aml_composable_pattern_program_v1_support_state.py`.
 2. Load full-HML3D multichannel Motion-BPE sequences.
 3. Rebuild all-unit coactivation windows for each motion.
 4. Convert each window into structural evidence: channels, zones, event
@@ -49,12 +49,19 @@ from scripts.audit_hml3d_coactivation_recall_v0 import (  # noqa: E402
 from scripts.build_hml3d_composition_pattern_forest_v0 import _item_zone  # noqa: E402
 
 
-DEFAULT_PROGRAM_JSON = Path("outputs/aml_regression_testset_v2/aml_composable_pattern_program_v0/aml_composable_pattern_program.json")
+DEFAULT_PROGRAM_JSON = Path(
+    "outputs/aml_regression_testset_v2/"
+    "aml_composable_pattern_program_v1_support_state_reviewed_draft/"
+    "aml_composable_pattern_program.json"
+)
 DEFAULT_SOURCE_CORPUS = Path("outputs/aml_regression_testset_v2/hml3d_layer3_event_bpe_full_v1/layer3_event_bpe_corpus.jsonl")
 DEFAULT_BPE_SEQUENCES = Path(
-    "outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v2_composition_score_full/case_multichannel_bpe_sequences.jsonl"
+    "outputs/aml_regression_testset_v2/hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/"
+    "case_multichannel_bpe_sequences.jsonl"
 )
-DEFAULT_OUTPUT_DIR = Path("outputs/aml_regression_testset_v2/aml_composable_pattern_program_search_v0")
+DEFAULT_OUTPUT_DIR = Path(
+    "outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_full_v5_stance_width_v0"
+)
 DEFAULT_SUPPORT_STATE_PROGRAM_JSON = Path(
     "outputs/aml_regression_testset_v2/"
     "aml_composable_pattern_program_v1_support_state_reviewed_draft/"
@@ -62,11 +69,11 @@ DEFAULT_SUPPORT_STATE_PROGRAM_JSON = Path(
 )
 DEFAULT_SUPPORT_STATE_BPE_SEQUENCES = Path(
     "outputs/aml_regression_testset_v2/"
-    "hml3d_multichannel_motion_bpe_v4_support_state_full_v0/"
+    "hml3d_multichannel_motion_bpe_v5_stance_width_full_v0/"
     "case_multichannel_bpe_sequences.jsonl"
 )
 DEFAULT_SUPPORT_STATE_OUTPUT_DIR = Path(
-    "outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_v0"
+    "outputs/aml_regression_testset_v2/aml_composable_pattern_program_v1_support_state_search_full_v5_stance_width_v0"
 )
 
 
@@ -403,7 +410,7 @@ def main() -> None:
     parser.add_argument(
         "--support-state-v1",
         action="store_true",
-        help="Use the reviewed support-state v1 program and matching v4 support-state BPE sequence defaults.",
+        help="Use the reviewed support-state v1 program and matching v5 stance-width sequence defaults.",
     )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()

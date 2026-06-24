@@ -157,6 +157,10 @@
       "required_groups": ["upper_spread", "vertical_rhythm"],
       "min_score": 0.64,
       "default_candidate_label": "bilateral_upper_spread_vertical_component",
+      "phase_quality_gate": {
+        "require_any_groups": ["bilateral_high_arm_pose", "large_bilateral_arm_arc"],
+        "description": "A promotable full bilateral spread-jump-like closure should show either both arms high or a large bilateral arm arc, not only a one-frame generic spread token."
+      },
       "label_rules": [
         {
           "label": "bilateral_upper_lower_spread_vertical_coordination",
